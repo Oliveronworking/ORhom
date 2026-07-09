@@ -11,13 +11,10 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private readonly ToolStripMenuItem _statusItem;
     private readonly SemaphoreSlim _operationLock = new(1, 1);
     private readonly FocusTracker _focusTracker;
-    private readonly AudioRecorder _audioRecorder;
-    private readonly TranscriptionService _transcriptionService;
     private readonly PasteService _pasteService;
     private readonly AppSettings _settings;
     private AppStatus _status = AppStatus.Idle;
     private RecordingSession? _session;
-    private CancellationTokenSource? _transcriptionCancellation;
 
     public DictationTrayAppContext()
     {
@@ -25,8 +22,6 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _logger = new AppLogger(Path.Combine(baseDirectory, "logs"));
         _settings = AppSettings.Load(Path.Combine(baseDirectory, "settings.json"), _logger);
         _focusTracker = new FocusTracker(_logger);
-        _audioRecorder = new AudioRecorder(_logger);
-        _transcriptionService = new TranscriptionService(_settings, _logger);
         _pasteService = new PasteService(_logger);
         _logger.Info("Application started.");
 
@@ -60,9 +55,6 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     {
         if (disposing)
         {
-            _transcriptionCancellation?.Cancel();
-            _transcriptionCancellation?.Dispose();
-            _audioRecorder.Dispose();
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
             _hotkeyWindow.Dispose();
@@ -83,11 +75,11 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         {
             if (_status == AppStatus.Idle)
             {
-                BeginRecording();
+                await BeginWebDictationAsync();
             }
             else if (_status == AppStatus.Recording)
             {
-                await FinishRecordingAsync();
+                await FinishWebDictationAsync();
             }
         }
         finally
@@ -96,7 +88,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
     }
 
-    private void BeginRecording()
+    private async Task BeginWebDictationAsync()
     {
         var target = _focusTracker.Capture(_settings);
         if (target.IsPasswordField)
@@ -107,23 +99,33 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
-        try
+        var chatWindow = await ChatGptWindowFinder.FindOrLaunchAsync(_settings, _logger, target.WindowHandle);
+        if (chatWindow == IntPtr.Zero)
         {
-            _audioRecorder.Start(_settings);
-            _session = new RecordingSession(target);
-            _hotkeyWindow.SetEscapeEnabled(true);
-            SetStatus(AppStatus.Recording);
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Audio recording could not be started.", ex);
-            _pasteService.RestoreClipboard(target, _settings);
-            ShowMessage("Mikrofonaufnahme konnte nicht gestartet werden.");
+            ShowMessage("Kein ChatGPT-Fenster gefunden.");
             SetTemporaryError();
+            return;
+        }
+
+        if (!TryStartOrStopChatGptDictation(chatWindow, out var chatInput))
+        {
+            _pasteService.RestoreClipboard(target, _settings);
+            ShowMessage("ChatGPT-Eingabefeld nicht sicher fokussiert. Es wurde kein Shortcut gesendet.");
+            SetTemporaryError();
+            return;
+        }
+
+        _session = new RecordingSession(target, chatWindow, chatInput);
+        _hotkeyWindow.SetEscapeEnabled(true);
+        SetStatus(AppStatus.Recording);
+
+        if (_settings.RestoreTargetAfterStart)
+        {
+            _pasteService.RestoreTargetFocus(target);
         }
     }
 
-    private async Task FinishRecordingAsync()
+    private async Task FinishWebDictationAsync()
     {
         var session = _session;
         if (session is null)
@@ -132,112 +134,88 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
-        AudioRecordingResult? recording = null;
-        try
+        SetStatus(AppStatus.Pasting);
+        var chatWindow = NativeMethods.IsWindow(session.ChatWindow)
+            ? session.ChatWindow
+            : ChatGptWindowFinder.Find(_settings, _logger, session.Target.WindowHandle);
+        if (chatWindow == IntPtr.Zero)
         {
-            SetStatus(AppStatus.Transcribing);
-            recording = await _audioRecorder.StopAsync();
-
-            _transcriptionCancellation?.Dispose();
-            _transcriptionCancellation = new CancellationTokenSource();
-            var text = await _transcriptionService.TranscribeAsync(recording.FilePath, _settings, _transcriptionCancellation.Token);
-            text = text.Trim();
-            _logger.Info($"Transcription completed. TextLength={text.Length}");
-
-            if (text.Length == 0)
-            {
-                ShowMessage("Kein diktierter Text erkannt.");
-                ResetToIdle();
-                return;
-            }
-
-            SetStatus(AppStatus.Pasting);
-            if (!_pasteService.PasteIntoTarget(text, session.Target, _settings))
-            {
-                ShowMessage("Text konnte nicht eingefuegt werden.");
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            _logger.Info("Transcription canceled.");
-            ShowMessage("Aufnahme abgebrochen.");
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("API key", StringComparison.OrdinalIgnoreCase))
-        {
-            _logger.Error("Dictation workflow failed.", ex);
-            ShowMessage("OpenAI API-Key fehlt. Setze OPENAI_API_KEY oder openAIApiKey in settings.json.");
+            _pasteService.RestoreTargetFocus(session.Target);
+            ShowMessage("ChatGPT-Fenster nicht mehr gefunden.");
             SetTemporaryError();
             return;
         }
-        catch (Exception ex)
+
+        if (!TryStartOrStopChatGptDictation(chatWindow, out var chatInput))
         {
-            _logger.Error("Dictation workflow failed.", ex);
-            ShowMessage("Diktat fehlgeschlagen. Details stehen im Log.");
+            _pasteService.RestoreTargetFocus(session.Target);
+            ShowMessage("ChatGPT-Eingabefeld nicht sicher fokussiert. Stopp-Shortcut wurde nicht gesendet.");
             SetTemporaryError();
             return;
         }
-        finally
-        {
-            if (recording is not null)
-            {
-                _audioRecorder.DeleteTemporaryFile(recording.FilePath);
-            }
 
-            if (_status != AppStatus.Error)
-            {
-                ResetToIdle();
-            }
+        await Task.Delay(Math.Max(_settings.SettleDelayMs, 0));
+        chatInput ??= AutomationHelpers.GetFocusedElement(_logger);
+        var text = await AutomationHelpers.WaitForTextAsync(chatInput, _settings.ReadTextTimeoutMs, _logger);
+        text = text.Trim();
+        _logger.Info($"Text read from ChatGPT web input. Length={text.Length}");
+
+        if (text.Length == 0)
+        {
+            _pasteService.RestoreTargetFocus(session.Target);
+            ShowMessage("Kein diktierter Text in ChatGPT gefunden.");
+            ResetToIdle();
+            return;
         }
+
+        _ = AutomationHelpers.ClearTextSafely(chatInput, chatWindow, _settings, _logger);
+        if (!_pasteService.PasteIntoTarget(text, session.Target, _settings))
+        {
+            ShowMessage("Text konnte nicht eingefuegt werden.");
+        }
+
+        ResetToIdle();
     }
 
-    private async Task AbortRecordingAsync()
+    private Task AbortRecordingAsync()
     {
-        if (_status is not (AppStatus.Recording or AppStatus.Transcribing or AppStatus.Pasting))
+        if (_status != AppStatus.Recording)
         {
-            return;
+            return Task.CompletedTask;
         }
 
-        if (!await _operationLock.WaitAsync(0))
+        _logger.Info("Abort requested.");
+        var session = _session;
+        if (session is not null && NativeMethods.IsWindow(session.ChatWindow))
         {
-            if (_status == AppStatus.Transcribing)
-            {
-                _logger.Info("Abort requested while transcription is running.");
-                _transcriptionCancellation?.Cancel();
-            }
-
-            return;
+            _ = TryStartOrStopChatGptDictation(session.ChatWindow, out _);
+            _pasteService.RestoreTargetFocus(session.Target);
+            _pasteService.RestoreClipboard(session.Target, _settings);
         }
 
-        try
-        {
-            _logger.Info("Abort requested.");
-            _transcriptionCancellation?.Cancel();
+        ShowMessage("Aufnahme abgebrochen.");
+        ResetToIdle();
+        return Task.CompletedTask;
+    }
 
-            if (_audioRecorder.IsRecording)
-            {
-                AudioRecordingResult? recording = null;
-                try
-                {
-                    recording = await _audioRecorder.StopAsync();
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error("Stopping aborted recording failed.", ex);
-                }
-                finally
-                {
-                    _audioRecorder.DeleteTemporaryFile(recording?.FilePath);
-                }
-            }
-
-            _pasteService.RestoreClipboard(_session?.Target, _settings);
-            ShowMessage("Aufnahme abgebrochen.");
-            ResetToIdle();
-        }
-        finally
+    private bool TryStartOrStopChatGptDictation(IntPtr chatWindow, out System.Windows.Automation.AutomationElement? chatInput)
+    {
+        chatInput = null;
+        if (!ChatGptWindowFinder.PrepareForAutomation(chatWindow, _logger))
         {
-            _operationLock.Release();
+            return false;
         }
+
+        chatInput = AutomationHelpers.FocusChatGptInput(chatWindow, _settings, _logger);
+        if (!AutomationHelpers.IsSafeChatGptInput(chatInput, chatWindow, _settings))
+        {
+            _logger.Info("ChatGPT dictation hotkey skipped because focused element is not safe.");
+            return false;
+        }
+
+        KeyboardHelpers.SendHotkey(_settings.ChatGptDictationHotkey);
+        _logger.Info($"ChatGPT dictation hotkey sent safely: {_settings.ChatGptDictationHotkey}");
+        return true;
     }
 
     private void ResetToIdle()
@@ -297,5 +275,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         ExitThread();
     }
 
-    private sealed record RecordingSession(FocusTarget Target);
+    private sealed record RecordingSession(
+        FocusTarget Target,
+        IntPtr ChatWindow,
+        System.Windows.Automation.AutomationElement? ChatInput);
 }

@@ -14,14 +14,15 @@ internal sealed class AppSettings
     };
 
     public string ToggleHotkey { get; set; } = "F8";
+    public string ChatGptDictationHotkey { get; set; } = "Ctrl+Shift+D";
+    public string ChatGptUrl { get; set; } = "https://chatgpt.com";
+    public string[] ChatGptWindowTitleContains { get; set; } = ["ChatGPT", "chatgpt.com"];
+    public bool LaunchChatGptIfMissing { get; set; } = true;
+    public bool RestoreTargetAfterStart { get; set; } = true;
     public bool RestoreClipboard { get; set; } = true;
-    public string AudioTempFolder { get; set; } = "temp";
-    public string TranscriptionProvider { get; set; } = "openai";
-    public string TranscriptionModel { get; set; } = "gpt-4o-mini-transcribe";
-    public string? Language { get; set; } = "de";
-    public string? OpenAIApiKey { get; set; }
-    public string OpenAIApiBaseUrl { get; set; } = "https://api.openai.com";
-    public bool LogTranscribedText { get; set; } = false;
+    public int BrowserChromeExclusionTopPx { get; set; } = 120;
+    public int SettleDelayMs { get; set; } = 500;
+    public int ReadTextTimeoutMs { get; set; } = 12000;
     public int PasteDelayMs { get; set; } = 100;
     public int RestoreClipboardDelayMs { get; set; } = 300;
     public bool BlockPasswordFields { get; set; } = true;

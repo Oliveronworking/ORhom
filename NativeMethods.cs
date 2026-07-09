@@ -6,6 +6,9 @@ namespace ChatGptDictationBridge;
 internal static class NativeMethods
 {
     public const int WmHotkey = 0x0312;
+    public const int SwRestore = 9;
+
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool RegisterHotKey(IntPtr hWnd, int id, HotkeyModifiers fsModifiers, Keys vk);
@@ -20,7 +23,19 @@ internal static class NativeMethods
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
     public static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern int GetWindowTextLength(IntPtr hWnd);
@@ -30,6 +45,9 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+    [DllImport("user32.dll")]
+    public static extern bool GetWindowRect(IntPtr hWnd, out Rect lpRect);
 
     public static string GetWindowTitle(IntPtr hWnd)
     {
@@ -56,4 +74,16 @@ internal enum HotkeyModifiers : uint
     Shift = 0x0004,
     Windows = 0x0008,
     NoRepeat = 0x4000
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct Rect
+{
+    public int Left;
+    public int Top;
+    public int Right;
+    public int Bottom;
+
+    public int Width => Right - Left;
+    public int Height => Bottom - Top;
 }

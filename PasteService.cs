@@ -50,7 +50,7 @@ internal sealed class PasteService
         }
     }
 
-    private void RestoreTargetFocus(FocusTarget target)
+    public void RestoreTargetFocus(FocusTarget target)
     {
         if (target.WindowHandle != IntPtr.Zero &&
             NativeMethods.IsWindow(target.WindowHandle) &&

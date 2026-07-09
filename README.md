@@ -1,91 +1,66 @@
 # OpenAI Flow Dictation
 
-Windows-Tray-App, die F8 als globalen Toggle fuer lokale Mikrofonaufnahme nutzt und den transkribierten Text automatisch in das zuletzt fokussierte Textfeld einfuegt.
+Windows-Tray-App, die F8 als globalen Toggle verwendet, ChatGPT im Browser per `Ctrl+Shift+D` diktieren laesst und den fertigen Text automatisch in das urspruengliche Textfeld einfuegt.
 
-Der Hauptworkflow verwendet keine ChatGPT-Weboberflaeche, keine ChatGPT-Windows-App und keine Browser-Automation mehr.
-
-## Installation
-
-Voraussetzung: .NET 8 SDK oder neuer auf Windows.
-
-```powershell
-dotnet restore
-dotnet build -c Release
-```
-
-Die App liegt danach unter:
-
-```text
-bin\Release\net8.0-windows\ChatGptDictationBridge.exe
-```
+Die App braucht keinen OpenAI API-Key. Sie nutzt deine bereits geoeffnete ChatGPT-Webseite.
 
 ## Start
 
+Voraussetzung: .NET 8 SDK oder die gebaute Release-EXE.
+
 ```powershell
-dotnet run -c Release
+dotnet build -c Release
+Start-Process "bin\Release\net8.0-windows\ChatGptDictationBridge.exe"
 ```
 
-Oder die erzeugte EXE direkt starten. Es erscheint kein Hauptfenster; die App laeuft im Infobereich der Taskleiste.
+Es erscheint kein Hauptfenster; die App laeuft im Infobereich der Taskleiste.
 
-## Nutzung mit F8
+## Nutzung
 
-1. In ein Ziel-Textfeld klicken, zum Beispiel Codex, VS Code, Browser, Word oder Discord.
-2. F8 druecken: Die App merkt sich Ziel-Fenster, fokussiertes UIAutomation-Element und Clipboard und startet die lokale Mikrofonaufnahme.
-3. Sprechen. Der Fokus bleibt im Ziel-Textfeld.
-4. Wieder F8 druecken: Die App stoppt die Aufnahme, transkribiert die temporaere WAV-Datei und fuegt den Text automatisch per Clipboard und `Ctrl+V` ein.
+1. ChatGPT im Browser oeffnen und angemeldet lassen.
+2. In dein Ziel-Textfeld klicken, zum Beispiel Codex, VS Code, Browser, Word oder Discord.
+3. F8 druecken.
+4. Die App fokussiert kurz das ChatGPT-Eingabefeld, sendet dort `Ctrl+Shift+D` und springt zurueck zum Ziel.
+5. Sprechen.
+6. Wieder F8 druecken.
+7. Die App fokussiert wieder das ChatGPT-Eingabefeld, sendet dort `Ctrl+Shift+D`, liest den diktierten Text aus dem ChatGPT-Eingabefeld und fuegt ihn bei deinem urspruenglichen Cursor ein.
 
-Der vorherige Clipboard-Inhalt wird danach wiederhergestellt, sofern `restoreClipboard` in `settings.json` aktiv ist.
-
-## Tray-Menue
-
-- Status: `Idle`, `Recording`, `Transcribing`, `Pasting`, `Error`
-- Aufnahme abbrechen
-- Einstellungen oeffnen
-- Logs oeffnen
-- Beenden
+Wichtig: `Ctrl+Shift+D` wird nur gesendet, wenn vorher ein sicheres ChatGPT-Eingabefeld fokussiert wurde. Wenn die App nur die Chrome-Adressleiste oder kein passendes Feld findet, sendet sie keinen Shortcut.
 
 ## Settings
 
-Die Datei `settings.json` wird neben der EXE verwendet. Wichtige Werte:
+`settings.json` liegt neben der EXE:
 
 ```json
 {
   "toggleHotkey": "F8",
+  "chatGptDictationHotkey": "Ctrl+Shift+D",
+  "chatGptUrl": "https://chatgpt.com",
+  "chatGptWindowTitleContains": [ "ChatGPT", "chatgpt.com" ],
+  "launchChatGptIfMissing": true,
+  "restoreTargetAfterStart": true,
   "restoreClipboard": true,
-  "audioTempFolder": "temp",
-  "transcriptionProvider": "openai",
-  "transcriptionModel": "gpt-4o-mini-transcribe",
-  "language": "de",
-  "openAIApiKey": null,
-  "openAIApiBaseUrl": "https://api.openai.com",
-  "logTranscribedText": false,
+  "browserChromeExclusionTopPx": 120,
+  "settleDelayMs": 500,
+  "readTextTimeoutMs": 12000,
   "pasteDelayMs": 100,
   "restoreClipboardDelayMs": 300,
   "blockPasswordFields": true
 }
 ```
 
-Setze den API-Key bevorzugt als Umgebungsvariable:
+Wenn ChatGPT zwar geoeffnet ist, aber das Eingabefeld nicht gefunden wird, pruefe zuerst:
 
-```powershell
-$env:OPENAI_API_KEY = "sk-..."
+- Ist der ChatGPT-Tab sichtbar und angemeldet?
+- Ist der Fenstertitel in `chatGptWindowTitleContains` enthalten?
+- Ist `browserChromeExclusionTopPx` gross genug, damit Adressleiste und Tabs nie als Eingabefeld gelten?
+
+## Logging
+
+Logs liegen unter:
+
+```text
+bin\Release\net8.0-windows\logs\app.log
 ```
 
-Alternativ kann `openAIApiKey` in `settings.json` gesetzt werden.
-
-## Datenschutz und Logging
-
-Die App loggt keine diktierten Inhalte. Standardmaessig werden nur technische Informationen geschrieben: Statuswechsel, gespeicherte Fensterhandles, Start/Stop der Aufnahme, Audiodauer, Transkriptionsergebnis als Textlaenge, Paste-Erfolg und Fehlerdetails.
-
-Temporaere Audiodateien werden nach Transkription oder Abbruch geloescht.
-
-## F8 testen
-
-1. App starten.
-2. In ein Textfeld klicken.
-3. F8 druecken. Im Tray sollte `Recording` stehen; Chrome, Edge oder ChatGPT duerfen nicht aktiviert werden.
-4. Einen kurzen Satz sprechen.
-5. Wieder F8 druecken. Der Status wechselt ueber `Transcribing` und `Pasting` zurueck zu `Idle`.
-6. Der Text sollte im urspruenglichen Textfeld erscheinen, ohne dass du selbst `Ctrl+V` drueckst.
-
-Wenn nichts eingefuegt wird, zuerst `logs\app.log` pruefen. Hauefige Ursachen sind fehlender `OPENAI_API_KEY`, kein Mikrofonzugriff oder ein blockiertes Passwortfeld.
+Es werden keine diktierten Inhalte geloggt, nur technische Informationen wie Statuswechsel, Fensterhandle, sicher fokussiertes ChatGPT-Feld, Textlaenge und Paste-Erfolg.
