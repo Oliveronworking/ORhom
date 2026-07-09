@@ -44,6 +44,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         {
             Enabled = _settings.OpenChatGptProfileVisibleForSetup
         });
+        menu.Items.Add(new ToolStripMenuItem("Chrome-Mikrofon auswählen", null, (_, _) => OpenChromeMicrophoneSettings()));
         menu.Items.Add(new ToolStripMenuItem("Chrome-Profil prüfen", null, (_, _) => CheckChromeProfile()));
         menu.Items.Add(new ToolStripMenuItem("ChatGPT Diagnose speichern", null, (_, _) => _ = WriteChatGptDiagnosticsAsync())
         {
@@ -282,6 +283,18 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
         _logger.Info($"Chrome profile check failed. Reason={validation.FailureReason}");
         ShowConfiguredProfileUnavailable();
+    }
+
+    private void OpenChromeMicrophoneSettings()
+    {
+        if (!_chromeProfileLauncher.TryOpenMicrophoneSettings(out var failureReason))
+        {
+            _logger.Info($"Chrome microphone settings could not be opened. Reason={failureReason}");
+            ShowMessage("Chrome-Mikrofoneinstellungen konnten nicht geöffnet werden. Bitte Profile 3 prüfen.");
+            return;
+        }
+
+        ShowMessage("In Chrome das gewünschte Mikrofon auswählen und das Einstellungsfenster danach schließen.");
     }
 
     private async Task WriteChatGptDiagnosticsAsync()

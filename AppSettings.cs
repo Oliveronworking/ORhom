@@ -43,6 +43,8 @@ internal sealed class AppSettings
     public int DictationResultTimeoutMs { get; set; } = 30000;
     public int DictationResultPollIntervalMs { get; set; } = 100;
     public int DictationSettleDelayMs { get; set; } = 0;
+    public int DictationTextStableMs { get; set; } = 1100;
+    public int DictationStopGracePeriodMs { get; set; } = 250;
     public bool EnableChatGptInputDiagnostics { get; set; } = true;
     public int PasteDelayMs { get; set; } = 25;
     public int RestoreClipboardDelayMs { get; set; } = 180;

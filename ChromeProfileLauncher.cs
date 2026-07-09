@@ -104,6 +104,42 @@ internal sealed class ChromeProfileLauncher
         }
     }
 
+    public bool TryOpenMicrophoneSettings(out string failureReason)
+    {
+        var validation = ValidateConfiguredProfile();
+        if (!validation.IsValid)
+        {
+            failureReason = validation.FailureReason;
+            return false;
+        }
+
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = _settings.ChromeExecutablePath,
+                UseShellExecute = false
+            };
+            startInfo.ArgumentList.Add($"--user-data-dir={_settings.ChromeUserDataDir}");
+            startInfo.ArgumentList.Add($"--profile-directory={_settings.ChromeProfileDirectory}");
+            startInfo.ArgumentList.Add("--new-window");
+            startInfo.ArgumentList.Add("--no-first-run");
+            startInfo.ArgumentList.Add("--no-default-browser-check");
+            startInfo.ArgumentList.Add("chrome://settings/content/microphone");
+
+            _ = Process.Start(startInfo);
+            _logger.Info($"Chrome microphone settings opened for configured profile. ProfileDirectory='{_settings.ChromeProfileDirectory}'.");
+            failureReason = string.Empty;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not open Chrome microphone settings for the configured profile.", ex);
+            failureReason = "Chrome microphone settings could not be opened.";
+            return false;
+        }
+    }
+
     private ChromeProfileValidationResult Invalid(string reason)
     {
         _logger.Info($"Configured Chrome profile validation failed. Reason={reason}");

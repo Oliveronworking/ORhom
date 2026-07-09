@@ -39,8 +39,9 @@ Zur Ersteinrichtung:
 
 1. Im Tray-Menü **ChatGPT Profil öffnen** wählen.
 2. In dem geöffneten Profile-3-Fenster einmal bei ChatGPT anmelden.
-3. Den Mikrofonzugriff für `https://chatgpt.com` erlauben.
-4. In ein beliebiges Zieltextfeld klicken und F8 testen.
+3. Im Tray-Menü **Chrome-Mikrofon auswählen** öffnen und den gewünschten Eingang einstellen. Auf diesem Rechner ist das **Mikrofon (Logi C525 HD WebCam)**.
+4. Den Mikrofonzugriff für `https://chatgpt.com` erlauben.
+5. In ein beliebiges Zieltextfeld klicken und F8 testen.
 
 Fehlt das Profil, startet die Diktierung nicht und die Tray-Meldung verweist auf `settings.json`.
 
@@ -50,7 +51,7 @@ Fehlt das Profil, startet die Diktierung nicht und die Tray-Meldung verweist auf
 2. F8 drücken. OpenAIFlow merkt sich Fenster, Eingabefeld und Zwischenablage.
 3. Die App verwendet ihr einziges unsichtbares ChatGPT-Hintergrundfenster in Profile 3, prüft Login und Composer, klickt bevorzugt den kleinen Diktierbutton und bestätigt den Aufnahmezustand.
 4. Sprechen. Unten mittig zeigt eine fokusfreie Desktop-Pille **Hört zu …** sowie **F8 zum Stoppen · Esc Abbruch**. Die Anzeige ist klickdurchlässig und verändert weder Fokus noch Cursor.
-5. F8 erneut drücken. Die App bestätigt den Stop-Zustand, wartet bis zu 30 Sekunden auf die Transkription und liest den Composer über mehrere UI-Automation-Verfahren oder einen abgesicherten Zwischenablage-Fallback.
+5. F8 erneut drücken. Die App lässt dem letzten gesprochenen Wort noch einen kurzen Audiopuffer, bestätigt den Stop-Zustand und liest den Composer wiederholt über mehrere UI-Automation-Verfahren oder einen abgesicherten Zwischenablage-Fallback. Übernommen wird der Text erst, wenn er sich für die konfigurierte Stabilitätszeit nicht mehr verändert hat.
 6. Der Text wird am ursprünglichen Cursor eingefügt und die vorherige Zwischenablage wiederhergestellt.
 
 Der große Audio-/Sprachmodus-Button für Voice Conversations wird nicht als Diktierbutton akzeptiert. `Ctrl+Shift+D` wird nur als Fallback verwendet, wenn kein kleiner Diktier-/Mikrofonbutton gefunden wurde; auch danach muss die Oberfläche den Aufnahme- beziehungsweise Stop-Zustand bestätigen.
@@ -74,6 +75,7 @@ Beim Einfügen wird das ursprüngliche Zielfenster verifiziert aktiviert. In VS 
 ## Diagnose im Tray-Menü
 
 - **ChatGPT Profil öffnen** öffnet ChatGPT sichtbar mit Profile 3 für Anmeldung und Mikrofonfreigabe.
+- **Chrome-Mikrofon auswählen** öffnet direkt die Mikrofon-Auswahl von Profile 3. Dadurch kann Chrome denselben Eingang wie eine andere Diktier-App verwenden, statt unbemerkt dem Windows-Standardgerät zu folgen.
 - **Chrome-Profil prüfen** validiert `chrome.exe`, User-Data-Ordner, `Profile 3` und dessen `Preferences`-Datei.
 - **ChatGPT Diagnose speichern** protokolliert Profilstatus, Fenster, Login-Eindruck, sicher redigierte Composer-Kandidaten, Diktierbutton-Kandidaten und erkannten Aufnahmezustand.
 - **Chrome-Profilordner öffnen** öffnet den validierten Ordner `Profile 3`.
@@ -101,12 +103,14 @@ Die mitgelieferte `settings.json` enthält insbesondere:
   "dictationResultTimeoutMs": 30000,
   "dictationResultPollIntervalMs": 100,
   "dictationSettleDelayMs": 0,
+  "dictationTextStableMs": 1100,
+  "dictationStopGracePeriodMs": 250,
   "pasteDelayMs": 25,
   "restoreClipboardDelayMs": 180
 }
 ```
 
-`dictationResultTimeoutMs` gilt für das wiederholte frische Suchen und Lesen des ChatGPT-Composers. Ein einzelnes leeres Ergebnis beendet die Suche nicht. Der feste Settle-Delay ist deaktiviert, weil die robuste Leseroutine selbst pollt und dadurch schneller reagieren kann.
+`dictationResultTimeoutMs` gilt für das wiederholte frische Suchen und Lesen des ChatGPT-Composers. Ein einzelnes leeres Ergebnis beendet die Suche nicht. `dictationTextStableMs` verhindert, dass ein frühes Teiltranskript eingefügt wird; die Wartezeit beginnt bei jeder Textänderung neu. `dictationStopGracePeriodMs` schützt das letzte gesprochene Wort vor einem zu harten Aufnahmeende. Der alte feste Settle-Delay bleibt deaktiviert, damit ein fertiges Ergebnis ohne unnötige Mehrsekundenpause übernommen wird.
 
 ## Logs
 

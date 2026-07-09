@@ -28,6 +28,8 @@
   "dictationResultTimeoutMs": 30000,
   "dictationResultPollIntervalMs": 100,
   "dictationSettleDelayMs": 0,
+  "dictationTextStableMs": 1100,
+  "dictationStopGracePeriodMs": 250,
   "enableChatGptInputDiagnostics": true,
   "pasteDelayMs": 25,
   "restoreClipboardDelayMs": 180,

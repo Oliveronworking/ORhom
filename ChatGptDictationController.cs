@@ -75,6 +75,7 @@ internal sealed class ChatGptDictationController : IDisposable
     public async Task<ChatGptStartResult> StartDictationAsync(IntPtr excludedWindow)
     {
         await _gate.WaitAsync();
+        var recordingConfirmed = false;
         try
         {
             var ready = await EnsureChatGptReadyCoreAsync(excludedWindow);
@@ -130,6 +131,7 @@ internal sealed class ChatGptDictationController : IDisposable
 
             input = AutomationHelpers.FindChatGptInput(chatWindow, _settings, _logger) ?? input;
             _recordingComposerRect = composerRect;
+            recordingConfirmed = true;
             _logger.Info($"ChatGPT dictation start confirmed. TriggerMethod={method} ChatWindow=0x{chatWindow.ToInt64():X}");
             return ChatGptStartResult.Success(chatWindow, input);
         }
@@ -140,7 +142,10 @@ internal sealed class ChatGptDictationController : IDisposable
         }
         finally
         {
-            HideBackgroundWindow();
+            if (!recordingConfirmed)
+            {
+                HideBackgroundWindow();
+            }
             _gate.Release();
         }
     }
@@ -151,6 +156,11 @@ internal sealed class ChatGptDictationController : IDisposable
         var leavePreparedForRead = false;
         try
         {
+            if (_settings.DictationStopGracePeriodMs > 0)
+            {
+                await Task.Delay(_settings.DictationStopGracePeriodMs);
+            }
+
             if (chatWindow == IntPtr.Zero || !NativeMethods.IsWindow(chatWindow) ||
                 !ChatGptWindowFinder.PrepareForAutomation(chatWindow, _settings, _logger))
             {

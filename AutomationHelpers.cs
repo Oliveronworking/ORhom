@@ -268,6 +268,10 @@ internal static class AutomationHelpers
         var start = Environment.TickCount64;
         var attempts = 0;
         AutomationElement? lastSafeInput = null;
+        var stableMs = Math.Clamp(settings.DictationTextStableMs, 300, 3000);
+        var latestCandidate = string.Empty;
+        var latestMethod = "None";
+        var latestCandidateChangedAt = 0L;
 
         while (Environment.TickCount64 - start < timeoutMs)
         {
@@ -297,43 +301,59 @@ internal static class AutomationHelpers
 
             lastSafeInput = input;
 
-            var valueText = ReadValuePatternText(input, logger);
-            if (IsAcceptableCapturedText(valueText))
+            var candidate = ReadValuePatternText(input, logger);
+            var method = "ValuePattern";
+            if (!IsAcceptableCapturedText(candidate))
             {
-                logger.Info($"ChatGPT dictated text captured via ValuePattern. Attempt={attempts} TextLength={valueText.Trim().Length}");
-                return new ChatGptDictationReadResult(valueText.Trim(), "ValuePattern", attempts, input);
+                LogRejectedRead(method, candidate, attempts, logger);
+                candidate = ReadTextPatternText(input, logger);
+                method = "TextPattern";
             }
 
-            LogRejectedRead("ValuePattern", valueText, attempts, logger);
-
-            var textPatternText = ReadTextPatternText(input, logger);
-            if (IsAcceptableCapturedText(textPatternText))
+            if (!IsAcceptableCapturedText(candidate))
             {
-                logger.Info($"ChatGPT dictated text captured via TextPattern. Attempt={attempts} TextLength={textPatternText.Trim().Length}");
-                return new ChatGptDictationReadResult(textPatternText.Trim(), "TextPattern", attempts, input);
+                LogRejectedRead(method, candidate, attempts, logger);
+                candidate = ReadDocumentRangeText(input, logger);
+                method = "DocumentRange";
             }
 
-            LogRejectedRead("TextPattern", textPatternText, attempts, logger);
-
-            var documentRangeText = ReadDocumentRangeText(input, logger);
-            if (IsAcceptableCapturedText(documentRangeText))
+            if (!IsAcceptableCapturedText(candidate))
             {
-                logger.Info($"ChatGPT dictated text captured via DocumentRange. Attempt={attempts} TextLength={documentRangeText.Trim().Length}");
-                return new ChatGptDictationReadResult(documentRangeText.Trim(), "DocumentRange", attempts, input);
+                LogRejectedRead(method, candidate, attempts, logger);
+                var clipboardTimeoutMs = Math.Min(Math.Max(pollIntervalMs * 2, 300), 600);
+                candidate = await CopyTextSafelyAsync(input, chatWindow, settings, logger, clipboardTimeoutMs);
+                method = "Clipboard";
             }
 
-            LogRejectedRead("DocumentRange", documentRangeText, attempts, logger);
-
-            var clipboardTimeoutMs = Math.Min(Math.Max(pollIntervalMs * 2, 500), 1000);
-            var clipboardText = await CopyTextSafelyAsync(input, chatWindow, settings, logger, clipboardTimeoutMs);
-            if (IsAcceptableCapturedText(clipboardText))
+            if (IsAcceptableCapturedText(candidate))
             {
-                logger.Info($"ChatGPT dictated text captured via Clipboard. Attempt={attempts} TextLength={clipboardText.Trim().Length}");
-                return new ChatGptDictationReadResult(clipboardText.Trim(), "Clipboard", attempts, input);
+                candidate = candidate.Trim();
+                var now = Environment.TickCount64;
+                if (!candidate.Equals(latestCandidate, StringComparison.Ordinal))
+                {
+                    latestCandidate = candidate;
+                    latestMethod = method;
+                    latestCandidateChangedAt = now;
+                    logger.Info($"ChatGPT dictated text candidate changed. Attempt={attempts} Method={method} TextLength={candidate.Length}");
+                }
+                else if (now - latestCandidateChangedAt >= stableMs)
+                {
+                    logger.Info($"ChatGPT dictated text stabilized. Attempt={attempts} Method={latestMethod} TextLength={latestCandidate.Length} StableMs={now - latestCandidateChangedAt}");
+                    return new ChatGptDictationReadResult(latestCandidate, latestMethod, attempts, input);
+                }
+            }
+            else
+            {
+                LogRejectedRead(method, candidate, attempts, logger);
             }
 
-            LogRejectedRead("Clipboard", clipboardText, attempts, logger);
             await Task.Delay(pollIntervalMs);
+        }
+
+        if (latestCandidate.Length > 0)
+        {
+            logger.Info($"ChatGPT dictated text returned at timeout without full stability. Attempts={attempts} Method={latestMethod} TextLength={latestCandidate.Length}");
+            return new ChatGptDictationReadResult(latestCandidate, latestMethod, attempts, lastSafeInput);
         }
 
         logger.Info($"ChatGPT dictated text read timed out. Attempts={attempts} TimeoutMs={timeoutMs}");
