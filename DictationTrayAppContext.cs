@@ -107,7 +107,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
-        if (!TryStartOrStopChatGptDictation(chatWindow, out var chatInput))
+        if (!TrySendChatGptDictationHotkey(chatWindow, knownInput: null, requireSafeInput: true, out var chatInput))
         {
             _pasteService.RestoreClipboard(target, _settings);
             ShowMessage("ChatGPT-Eingabefeld nicht sicher fokussiert. Es wurde kein Shortcut gesendet.");
@@ -146,16 +146,16 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
-        if (!TryStartOrStopChatGptDictation(chatWindow, session.ChatInput, out var chatInput))
+        if (!TrySendChatGptDictationHotkey(chatWindow, session.ChatInput, requireSafeInput: false, out var chatInput))
         {
             _pasteService.RestoreTargetFocus(session.Target);
-            ShowMessage("ChatGPT-Eingabefeld nicht sicher fokussiert. Stopp-Shortcut wurde nicht gesendet.");
-            SetTemporaryError();
+            ShowMessage("Stopp-Shortcut konnte nicht gesendet werden. Aufnahme laeuft weiter.");
+            SetStatus(AppStatus.Recording);
             return;
         }
 
         await Task.Delay(Math.Max(_settings.SettleDelayMs, 0));
-        chatInput ??= AutomationHelpers.GetFocusedElement(_logger);
+        chatInput = await WaitForChatGptInputAsync(chatWindow, chatInput ?? session.ChatInput);
         var text = await AutomationHelpers.CopyTextSafelyAsync(chatInput, chatWindow, _settings, _logger);
         if (text.Length == 0)
         {
@@ -194,7 +194,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var session = _session;
         if (session is not null && NativeMethods.IsWindow(session.ChatWindow))
         {
-            _ = TryStartOrStopChatGptDictation(session.ChatWindow, session.ChatInput, out _);
+            _ = TrySendChatGptDictationHotkey(session.ChatWindow, session.ChatInput, requireSafeInput: false, out _);
             _pasteService.RestoreTargetFocus(session.Target);
             _pasteService.RestoreClipboard(session.Target, _settings);
         }
@@ -204,14 +204,10 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         return Task.CompletedTask;
     }
 
-    private bool TryStartOrStopChatGptDictation(IntPtr chatWindow, out System.Windows.Automation.AutomationElement? chatInput)
-    {
-        return TryStartOrStopChatGptDictation(chatWindow, knownInput: null, out chatInput);
-    }
-
-    private bool TryStartOrStopChatGptDictation(
+    private bool TrySendChatGptDictationHotkey(
         IntPtr chatWindow,
         System.Windows.Automation.AutomationElement? knownInput,
+        bool requireSafeInput,
         out System.Windows.Automation.AutomationElement? chatInput)
     {
         chatInput = null;
@@ -224,13 +220,44 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                     AutomationHelpers.FocusChatGptInput(chatWindow, _settings, _logger);
         if (!AutomationHelpers.IsSafeChatGptInput(chatInput, chatWindow, _settings))
         {
-            _logger.Info("ChatGPT dictation hotkey skipped because focused element is not safe.");
-            return false;
+            if (requireSafeInput)
+            {
+                _logger.Info("ChatGPT dictation hotkey skipped because focused element is not safe.");
+                return false;
+            }
+
+            _logger.Info("ChatGPT dictation hotkey sent via recording fallback after a safe start.");
+        }
+        else
+        {
+            _logger.Info("ChatGPT input verified before dictation hotkey.");
         }
 
         KeyboardHelpers.SendHotkey(_settings.ChatGptDictationHotkey);
-        _logger.Info($"ChatGPT dictation hotkey sent safely: {_settings.ChatGptDictationHotkey}");
+        _logger.Info($"ChatGPT dictation hotkey sent: {_settings.ChatGptDictationHotkey}");
         return true;
+    }
+
+    private async Task<System.Windows.Automation.AutomationElement?> WaitForChatGptInputAsync(
+        IntPtr chatWindow,
+        System.Windows.Automation.AutomationElement? knownInput)
+    {
+        var timeoutMs = Math.Max(_settings.ReadTextTimeoutMs, 1000);
+        var start = Environment.TickCount64;
+
+        while (Environment.TickCount64 - start < timeoutMs)
+        {
+            var chatInput = AutomationHelpers.FocusKnownChatGptInput(knownInput, chatWindow, _settings, _logger) ??
+                            AutomationHelpers.FocusChatGptInput(chatWindow, _settings, _logger);
+            if (AutomationHelpers.IsSafeChatGptInput(chatInput, chatWindow, _settings))
+            {
+                return chatInput;
+            }
+
+            await Task.Delay(250);
+        }
+
+        return null;
     }
 
     private void ResetToIdle()
