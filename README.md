@@ -1,6 +1,6 @@
 # OpenAI Flow Dictation
 
-OpenAIFlow ist eine Windows-Tray-App für browserbasierte ChatGPT-Diktierung. F8 startet die Aufnahme im kleinen Diktier-/Mikrofonbutton des ChatGPT-Composers; ein zweites F8 stoppt die Aufnahme, wartet auf die Transkription und fügt den Text am ursprünglichen Cursor ein. Escape bricht eine laufende Aufnahme ab.
+OpenAIFlow ist eine Windows-Tray-App für browserbasierte ChatGPT-Diktierung. F8 startet die Aufnahme im kleinen Diktier-/Mikrofonbutton des ChatGPT-Composers; ein zweites F8 stoppt die Aufnahme, wartet auf die Transkription und fügt den Text am ursprünglichen Cursor ein. Escape bricht eine laufende Aufnahme ab und versucht, bereits gesprochenen Text im Diktierverlauf zu retten.
 
 Die App benötigt keinen OpenAI-API-Key. Sie verwendet ausschließlich das bereits vorhandene und bei ChatGPT angemeldete Chrome-Profil `Profile 3`.
 
@@ -54,9 +54,11 @@ Fehlt das Profil, startet die Diktierung nicht und die Tray-Meldung verweist auf
 5. F8 erneut drücken. Die App lässt dem letzten gesprochenen Wort noch einen kurzen Audiopuffer, bestätigt den Stop-Zustand und liest den Composer wiederholt über mehrere UI-Automation-Verfahren oder einen abgesicherten Zwischenablage-Fallback. Übernommen wird der Text erst, wenn er sich für die konfigurierte Stabilitätszeit nicht mehr verändert hat.
 6. Der Text wird am ursprünglichen Cursor eingefügt und die vorherige Zwischenablage wiederhergestellt.
 
+Jede transkribierte Diktierung wird vor dem Einfügeversuch lokal gespeichert. Über **Diktierverlauf (letzte 10)** im Tray-Menü lassen sich die letzten zehn Einträge ansehen und wieder in die Zwischenablage kopieren. Sobald ein elfter Eintrag hinzukommt, wird automatisch der älteste entfernt. Auch Einfügefehler und abgebrochene Aufnahmen erscheinen im Verlauf; bei Escape wird der Text noch transkribiert und gesichert, aber nicht ins Ziel eingefügt. Der Verlauf liegt ausschließlich lokal unter `%LOCALAPPDATA%\OpenAIFlow\dictation-history.json` und kann im Verlaufsfenster vollständig gelöscht werden.
+
 Der große Audio-/Sprachmodus-Button für Voice Conversations wird nicht als Diktierbutton akzeptiert. `Ctrl+Shift+D` wird nur als Fallback verwendet, wenn kein kleiner Diktier-/Mikrofonbutton gefunden wurde; auch danach muss die Oberfläche den Aufnahme- beziehungsweise Stop-Zustand bestätigen.
 
-Passwortfelder werden blockiert. Browser-Adressleiste, Lesezeichendialoge und URLs werden nicht als Diktat übernommen. Diktierte Inhalte werden nie geloggt.
+Passwortfelder werden blockiert. Browser-Adressleiste, Lesezeichendialoge und URLs werden nicht als Diktat übernommen. Diktierte Inhalte werden nie geloggt. Nur der lokale Diktierverlauf enthält die letzten zehn Texte.
 
 ## Status und Fehler
 
@@ -74,6 +76,7 @@ Beim Einfügen wird das ursprüngliche Zielfenster verifiziert aktiviert. In VS 
 
 ## Diagnose im Tray-Menü
 
+- **Diktierverlauf (letzte 10)** zeigt erfolgreiche, fehlgeschlagene und abgebrochene Diktierungen. Einträge mit erkanntem Text können dort kopiert werden.
 - **ChatGPT Profil öffnen** öffnet ChatGPT sichtbar mit Profile 3 für Anmeldung und Mikrofonfreigabe.
 - **Mikrofon & Hotkey einstellen** öffnet die OpenAI-Flow-Oberfläche. Die Auswahl wird automatisch in Profile 3 übernommen; ein separates Chrome-Einstellungsfenster ist nicht nötig.
 - **Chrome-Profil prüfen** validiert `chrome.exe`, User-Data-Ordner, `Profile 3` und dessen `Preferences`-Datei.
