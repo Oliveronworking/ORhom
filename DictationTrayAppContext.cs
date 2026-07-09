@@ -6,6 +6,7 @@ namespace ChatGptDictationBridge;
 internal sealed class DictationTrayAppContext : ApplicationContext
 {
     private readonly AppLogger _logger;
+    private readonly Icon _applicationIcon;
     private readonly HotkeyWindow _hotkeyWindow;
     private readonly NotifyIcon _notifyIcon;
     private readonly ToolStripMenuItem _statusItem;
@@ -28,6 +29,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     {
         var paths = AppPaths.Create();
         _logger = new AppLogger(paths.LogDirectory);
+        _applicationIcon = LoadApplicationIcon();
         paths.MigrateLegacySettingsIfNeeded(_logger);
         _settings = AppSettings.Load(paths.SettingsPath, _logger);
         _chromeProfileLauncher = new ChromeProfileLauncher(_settings, _logger);
@@ -45,6 +47,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _hotkeyWindow.EscapePressed += (_, _) => _ = AbortRecordingAsync();
         _hotkeyWindow.CreateControl();
         _settingsForm = new SettingsForm(_settings, _audioInputDevices, ApplySettingsAsync);
+        _settingsForm.Icon = _applicationIcon;
         _settingsForm.VisibleChanged += OnSettingsVisibilityChanged;
 
         _statusItem = new ToolStripMenuItem("Status: Bereit") { Enabled = false };
@@ -76,7 +79,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
         _notifyIcon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = _applicationIcon,
             Visible = true,
             Text = "OpenAI Flow - Bereit",
             ContextMenuStrip = menu
@@ -119,6 +122,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _recordingOverlay.Dispose();
             _dictationController.Dispose();
             _operationLock.Dispose();
+            _applicationIcon.Dispose();
         }
 
         base.Dispose(disposing);
@@ -607,6 +611,19 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     {
         _logger.Info("Application exiting.");
         ExitThread();
+    }
+
+    private static Icon LoadApplicationIcon()
+    {
+        try
+        {
+            var executablePath = Environment.ProcessPath ?? Application.ExecutablePath;
+            return Icon.ExtractAssociatedIcon(executablePath) ?? (Icon)SystemIcons.Application.Clone();
+        }
+        catch
+        {
+            return (Icon)SystemIcons.Application.Clone();
+        }
     }
 
     private sealed record RecordingSession(

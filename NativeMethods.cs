@@ -7,6 +7,7 @@ internal static class NativeMethods
 {
     public const int WmHotkey = 0x0312;
     public const int WmClose = 0x0010;
+    public const int SwHide = 0;
     public const int SwMinimize = 6;
     public const int SwRestore = 9;
 
@@ -86,8 +87,15 @@ internal static class NativeMethods
     private const uint InputKeyboard = 1;
     private const uint KeyEventKeyUp = 0x0002;
     private const int GwlExStyle = -20;
+    private const int WsExToolWindow = 0x00000080;
+    private const int WsExAppWindow = 0x00040000;
     private const int WsExLayered = 0x00080000;
     private const uint LwaAlpha = 0x00000002;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
+    private const uint SwpFrameChanged = 0x0020;
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool SetProp(IntPtr hWnd, string lpString, IntPtr hData);
@@ -100,6 +108,16 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
     private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int x,
+        int y,
+        int cx,
+        int cy,
+        uint flags);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetLayeredWindowAttributes(IntPtr hWnd, uint crKey, byte bAlpha, uint dwFlags);
@@ -237,6 +255,35 @@ internal static class NativeMethods
         }
 
         return SetLayeredWindowAttributes(hWnd, 0, alpha, LwaAlpha);
+    }
+
+    public static bool HideWindowFromTaskbar(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero || !IsWindow(hWnd))
+        {
+            return false;
+        }
+
+        var extendedStyle = GetWindowLong(hWnd, GwlExStyle);
+        var backgroundStyle = (extendedStyle | WsExToolWindow) & ~WsExAppWindow;
+        if (backgroundStyle != extendedStyle)
+        {
+            Marshal.SetLastPInvokeError(0);
+            var previousStyle = SetWindowLong(hWnd, GwlExStyle, backgroundStyle);
+            if (previousStyle == 0 && Marshal.GetLastPInvokeError() != 0)
+            {
+                return false;
+            }
+        }
+
+        return SetWindowPos(
+            hWnd,
+            IntPtr.Zero,
+            0,
+            0,
+            0,
+            0,
+            SwpNoSize | SwpNoMove | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
     }
 
     private static Input CreateKeyboardInput(ushort virtualKey, bool keyUp)

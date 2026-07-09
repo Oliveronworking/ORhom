@@ -87,6 +87,11 @@ internal static class ChatGptWindowFinder
 
         try
         {
+            if (!NativeMethods.HideWindowFromTaskbar(hWnd))
+            {
+                logger.Info("ChatGPT background window could not be removed from the taskbar before automation.");
+            }
+
             if (settings.KeepChatGptWindowHidden &&
                 !NativeMethods.SetWindowOpacity(hWnd, HiddenAutomationOpacity))
             {
@@ -130,6 +135,11 @@ internal static class ChatGptWindowFinder
             _ = NativeMethods.SetWindowOpacity(hWnd, HiddenAutomationOpacity);
         }
 
+        if (!NativeMethods.HideWindowFromTaskbar(hWnd))
+        {
+            logger.Info("ChatGPT background window could not be removed from the taskbar while minimizing.");
+        }
+
         NativeMethods.ShowWindow(hWnd, NativeMethods.SwMinimize);
         logger.Info($"Persistent ChatGPT background window minimized. Handle=0x{hWnd.ToInt64():X}");
     }
@@ -139,6 +149,11 @@ internal static class ChatGptWindowFinder
         if (hWnd == IntPtr.Zero || !NativeMethods.IsWindow(hWnd))
         {
             return false;
+        }
+
+        if (!NativeMethods.HideWindowFromTaskbar(hWnd))
+        {
+            logger.Info("ChatGPT background window could not be removed from the taskbar for explicit setup.");
         }
 
         _ = NativeMethods.SetWindowOpacity(hWnd, byte.MaxValue);

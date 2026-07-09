@@ -9,6 +9,7 @@
     <AssemblyName>OpenAIFlow</AssemblyName>
     <RootNamespace>ChatGptDictationBridge</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\OpenAIFlow.ico</ApplicationIcon>
     <AssemblyTitle>OpenAI Flow Dictation</AssemblyTitle>
     <Product>OpenAI Flow Dictation</Product>
     <Description>Systemweite Windows-Diktierhilfe mit ChatGPT.</Description>

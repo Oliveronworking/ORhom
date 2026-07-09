@@ -18,7 +18,7 @@ Vorausgesetzt werden Windows x64, Google Chrome und das konfigurierte Chrome-Pro
 
 Beim ersten Start öffnet sich die OpenAI-Flow-Einrichtung. Dort werden Mikrofon und globale Tastenkombination gewählt. Das X und **Im Hintergrund schließen** blenden nur die Oberfläche aus; Diktierung, Status, Diagnose und Beenden bleiben über den Infobereich der Taskleiste erreichbar. Ein Doppelklick auf das Tray-Symbol öffnet die Einstellungen wieder. Die Mikrofonliste aktualisiert sich beim Öffnen und bei Geräteänderungen automatisch.
 
-OpenAIFlow hält genau ein eigenes ChatGPT-Fenster dauerhaft im Hintergrund. Es wird minimiert gestartet, über App-Neustarts hinweg wiedererkannt und nur nahezu transparent für die kurzen UI-Automationsschritte aktiviert. Beim normalen F8-Ablauf erscheint deshalb kein Chrome-Fenster auf dem Desktop. Sichtbar geöffnet wird es ausschließlich über den bewusst gewählten Tray-Menüpunkt **ChatGPT Profil öffnen**.
+OpenAIFlow hält genau ein eigenes ChatGPT-Fenster dauerhaft im Hintergrund. Es wird minimiert gestartet, aus der Taskleiste ausgeblendet, über App-Neustarts hinweg wiedererkannt und nur nahezu transparent für die kurzen UI-Automationsschritte aktiviert. Beim normalen F8-Ablauf erscheint deshalb kein Chrome-Fenster auf dem Desktop oder als eigener Taskleisten-Button. Sichtbar geöffnet wird es ausschließlich über den bewusst gewählten Tray-Menüpunkt **ChatGPT Profil öffnen**; auch dann bleibt der separate Taskleisten-Button ausgeblendet.
 
 ## Chrome Profile 3 einrichten
 
