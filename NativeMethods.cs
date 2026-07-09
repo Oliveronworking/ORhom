@@ -50,6 +50,18 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out Rect lpRect);
 
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out NativePoint lpPoint);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetCursorPos(int x, int y);
+
+    [DllImport("user32.dll")]
+    private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+
+    private const uint MouseEventLeftDown = 0x0002;
+    private const uint MouseEventLeftUp = 0x0004;
+
     public static string GetWindowTitle(IntPtr hWnd)
     {
         var length = Math.Max(GetWindowTextLength(hWnd), 0);
@@ -63,6 +75,25 @@ internal static class NativeMethods
         var builder = new StringBuilder(256);
         _ = GetClassName(hWnd, builder, builder.Capacity);
         return builder.ToString();
+    }
+
+    public static bool ClickAt(int x, int y)
+    {
+        var restoreCursor = GetCursorPos(out var originalPosition);
+        if (!SetCursorPos(x, y))
+        {
+            return false;
+        }
+
+        mouse_event(MouseEventLeftDown, 0, 0, 0, UIntPtr.Zero);
+        Thread.Sleep(35);
+        mouse_event(MouseEventLeftUp, 0, 0, 0, UIntPtr.Zero);
+        if (restoreCursor)
+        {
+            _ = SetCursorPos(originalPosition.X, originalPosition.Y);
+        }
+
+        return true;
     }
 }
 
@@ -87,4 +118,11 @@ internal struct Rect
 
     public int Width => Right - Left;
     public int Height => Bottom - Top;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativePoint
+{
+    public int X;
+    public int Y;
 }

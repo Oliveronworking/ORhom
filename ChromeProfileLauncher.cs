@@ -19,9 +19,19 @@ internal sealed class ChromeProfileLauncher
 
     public ChromeProfileValidationResult ValidateConfiguredProfile()
     {
-        if (!string.Equals(_settings.BrowserProfileMode, ExistingChromeProfileMode, StringComparison.Ordinal))
+        if (!string.Equals(_settings.BrowserProfileMode, ExistingChromeProfileMode, StringComparison.OrdinalIgnoreCase))
         {
             return Invalid($"BrowserProfileMode must be '{ExistingChromeProfileMode}' but was '{_settings.BrowserProfileMode}'.");
+        }
+
+        if (!_settings.RequireConfiguredChromeProfile)
+        {
+            return Invalid("RequireConfiguredChromeProfile must be enabled.");
+        }
+
+        if (_settings.AllowGuestProfile || _settings.AllowIncognitoProfile || _settings.AllowTemporaryProfile)
+        {
+            return Invalid("Guest, incognito and temporary Chrome profiles must all be disabled.");
         }
 
         if (!File.Exists(_settings.ChromeExecutablePath))
@@ -73,13 +83,15 @@ internal sealed class ChromeProfileLauncher
                 FileName = _settings.ChromeExecutablePath,
                 UseShellExecute = false
             };
+            startInfo.ArgumentList.Add($"--user-data-dir={_settings.ChromeUserDataDir}");
             startInfo.ArgumentList.Add($"--profile-directory={_settings.ChromeProfileDirectory}");
+            startInfo.ArgumentList.Add("--new-window");
             startInfo.ArgumentList.Add("--no-first-run");
             startInfo.ArgumentList.Add("--no-default-browser-check");
             startInfo.ArgumentList.Add(_settings.ChatGptUrl);
 
             _ = Process.Start(startInfo);
-            _logger.Info($"Configured Chrome profile launched for ChatGPT. ProfileDirectory='{_settings.ChromeProfileDirectory}'.");
+            _logger.Info($"Configured Chrome profile launched for ChatGPT. UserDataDir='{_settings.ChromeUserDataDir}' ProfileDirectory='{_settings.ChromeProfileDirectory}'.");
             failureReason = string.Empty;
             return true;
         }

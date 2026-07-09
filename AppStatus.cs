@@ -3,7 +3,9 @@ namespace ChatGptDictationBridge;
 internal enum AppStatus
 {
     Idle,
+    Starting,
     Recording,
-    Pasting,
-    Error
+    Stopping,
+    ReadingText,
+    Pasting
 }

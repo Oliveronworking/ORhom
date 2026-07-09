@@ -1,75 +1,85 @@
 # OpenAI Flow Dictation
 
-Windows-Tray-App, die F8 als globalen Toggle verwendet, ChatGPT im Browser per `Ctrl+Shift+D` diktieren laesst und den fertigen Text automatisch in das urspruengliche Textfeld einfuegt.
+OpenAIFlow ist eine Windows-Tray-App für browserbasierte ChatGPT-Diktierung. F8 startet die Aufnahme im kleinen Diktier-/Mikrofonbutton des ChatGPT-Composers; ein zweites F8 stoppt die Aufnahme, wartet auf die Transkription und fügt den Text am ursprünglichen Cursor ein. Escape bricht eine laufende Aufnahme ab.
 
-Die App braucht keinen OpenAI API-Key. Sie nutzt den bereits angemeldeten ChatGPT-Tab im fest konfigurierten Chrome-Profil und kann ihn beim Start automatisch vorbereiten.
+Die App benötigt keinen OpenAI-API-Key. Sie verwendet ausschließlich das bereits vorhandene und bei ChatGPT angemeldete Chrome-Profil `Profile 3`.
 
-## Start
+## Voraussetzungen und Build
 
-Voraussetzung: .NET 8 SDK oder die gebaute Release-EXE.
+- Windows mit .NET 8 SDK
+- Google Chrome unter `C:\Program Files\Google\Chrome\Application\chrome.exe`
+- das Chrome-Profil `C:\Users\Admin\AppData\Local\Google\Chrome\User Data\Profile 3`
 
 ```powershell
 dotnet build -c Release
 Start-Process "bin\Release\net8.0-windows\ChatGptDictationBridge.exe"
 ```
 
-Es erscheint kein Hauptfenster; die App laeuft im Infobereich der Taskleiste.
-Wenn ChatGPT noch nicht offen ist, wird es beim Start der Tray-App mit dem konfigurierten Chrome-Profil automatisch gestartet und danach wieder minimiert. F8 verwendet dieses vorbereitete Fenster. Wenn es nicht mehr vorhanden ist, startet die App ChatGPT erneut mit genau diesem Profil.
+Es gibt kein Hauptfenster. Status, Diagnose und Beenden befinden sich im Infobereich der Taskleiste.
 
-## Festes Chrome-Profil
+## Chrome Profile 3 einrichten
 
-OpenAIFlow verwendet standardmaessig dieses bestehende Chrome-Profil, weil dort ChatGPT angemeldet und die Diktierfunktion sichtbar ist:
-
-```text
-C:\Users\Admin\AppData\Local\Google\Chrome\User Data\Profile 3
-```
-
-Daraus ergeben sich diese Einstellungen:
+OpenAIFlow startet Chrome immer mit diesen beiden vorhandenen Profilparametern:
 
 ```text
-chromeUserDataDir: C:\Users\Admin\AppData\Local\Google\Chrome\User Data
-chromeProfileDirectory: Profile 3
+--user-data-dir=C:\Users\Admin\AppData\Local\Google\Chrome\User Data
+--profile-directory=Profile 3
 ```
 
-Beim Start wird geprueft, ob die Chrome-EXE, `chromeUserDataDir`, der Ordner `Profile 3` und dessen Datei `Preferences` vorhanden sind. Fehlt etwas, zeigt die App `Konfiguriertes Chrome-Profil nicht gefunden. Bitte settings.json prüfen.`, startet keine Diktierung und wechselt nicht still auf ein anderes, ein Gast-, Inkognito- oder temporaeres Profil.
+Gast-, Inkognito- und temporäre Profile sind deaktiviert. Die App weicht nicht still auf ein anderes Profil aus. Vor jeder Aufnahme prüft sie:
 
-ChatGPT wird sichtbar so gestartet:
+- `chrome.exe` ist vorhanden,
+- der konfigurierte User-Data-Ordner ist vorhanden,
+- der Ordner `Profile 3` ist vorhanden,
+- `Profile 3\Preferences` ist vorhanden.
 
-```text
-"C:\Program Files\Google\Chrome\Application\chrome.exe" --profile-directory="Profile 3" --no-first-run --no-default-browser-check https://chatgpt.com
-```
+Zur Ersteinrichtung:
 
-Dabei wird absichtlich kein temporaeres `--user-data-dir` gesetzt. Ist Chrome mit `Profile 3` bereits offen, oeffnet Chrome den ChatGPT-Tab im vorhandenen Profil. Die App verwendet sichtbare UI-Automation; sie benoetigt kein Remote-Debugging/CDP.
+1. Im Tray-Menü **ChatGPT Profil öffnen** wählen.
+2. In dem geöffneten Profile-3-Fenster einmal bei ChatGPT anmelden.
+3. Den Mikrofonzugriff für `https://chatgpt.com` erlauben.
+4. In ein beliebiges Zieltextfeld klicken und F8 testen.
 
-Um ein anderes bestehendes Profil einzurichten, im gewuenschten Chrome-Profil `chrome://version` oeffnen und den Wert bei **Profilpfad** kopieren. Der letzte Ordner ist `chromeProfileDirectory`; alles davor bis einschliesslich `User Data` ist `chromeUserDataDir`.
+Fehlt das Profil, startet die Diktierung nicht und die Tray-Meldung verweist auf `settings.json`.
 
 ## Nutzung
 
-1. In dein Ziel-Textfeld klicken, zum Beispiel Codex, VS Code, Browser, Word oder Discord.
-2. F8 druecken.
-3. Die App fokussiert kurz das ChatGPT-Eingabefeld, sendet dort `Ctrl+Shift+D` und springt zurueck zum Ziel.
+1. Den Cursor in das gewünschte Zieltextfeld setzen.
+2. F8 drücken. OpenAIFlow merkt sich Fenster, Eingabefeld und Zwischenablage.
+3. Die App öffnet oder verwendet ChatGPT in Profile 3, prüft Login und Composer, klickt bevorzugt den kleinen Diktierbutton und bestätigt den Aufnahmezustand.
 4. Sprechen.
-5. Wieder F8 druecken.
-6. Die App fokussiert wieder ChatGPT, sendet dort `Ctrl+Shift+D`, liest den diktierten Text aus dem ChatGPT-Eingabefeld und fuegt ihn bei deinem urspruenglichen Cursor ein.
+5. F8 erneut drücken. Die App bestätigt den Stop-Zustand, wartet bis zu 30 Sekunden auf die Transkription und liest den Composer über mehrere UI-Automation-Verfahren oder einen abgesicherten Zwischenablage-Fallback.
+6. Der Text wird am ursprünglichen Cursor eingefügt und die vorherige Zwischenablage wiederhergestellt.
 
-Wichtig: `Ctrl+Shift+D` wird nur gesendet, wenn vorher ein sicheres ChatGPT-Eingabefeld fokussiert wurde. Wenn die App nur die Chrome-Adressleiste oder kein passendes Feld findet, sendet sie keinen Shortcut.
+Der große Audio-/Sprachmodus-Button für Voice Conversations wird nicht als Diktierbutton akzeptiert. `Ctrl+Shift+D` wird nur als Fallback verwendet, wenn kein kleiner Diktier-/Mikrofonbutton gefunden wurde; auch danach muss die Oberfläche den Aufnahme- beziehungsweise Stop-Zustand bestätigen.
 
-Wenn im Profil eine Anmeldeseite erkannt wird (zum Beispiel `Anmelden`, `Log in`, `Sign up` oder `Thanks for trying ChatGPT`), startet die App keine Diktierung. Dann im Tray-Menue **ChatGPT Profil öffnen** waehlen, die Anmeldung sowie die Mikrofonfreigabe pruefen und danach erneut F8 druecken.
+Passwortfelder werden blockiert. Browser-Adressleiste, Lesezeichendialoge und URLs werden nicht als Diktat übernommen. Diktierte Inhalte werden nie geloggt.
 
-Bugfix: Nach dem zweiten F8 wird nicht mehr blind das beim Start gefundene ChatGPT-Element wiederverwendet. Die App wartet jetzt laenger auf das fertige Diktat, sucht das ChatGPT-Eingabefeld wiederholt frisch, prueft jeden Kandidaten gegen Browser-Chrome/Passwortfeld-Regeln und liest den Text ueber ValuePattern, TextPattern und einen bewachten Clipboard-Fallback. Die Fehlermeldung `Kein sicherer diktierter Text...` erscheint erst nach Ablauf des Ergebnis-Timeouts.
+## Status und Fehler
 
-Im Tray-Menue kann `ChatGPT UI Diagnose speichern` ausgefuehrt werden. Der Punkt schreibt technische UIAutomation-Diagnose in die Logdatei, unter anderem ob ein ChatGPT-Fenster gefunden wurde und welche Input-Kandidaten als sicher oder abgelehnt bewertet wurden. Inhalte aus Textfeldern werden dabei nicht gelesen oder geloggt.
+Die State-Machine lautet:
 
-## Settings
+```text
+Idle -> Starting -> Recording -> Stopping -> ReadingText -> Pasting -> Idle
+```
 
-`settings.json` liegt neben der EXE:
+`Recording` wird erst gesetzt, wenn ChatGPT den Aufnahmezustand sichtbar bestätigt. Nach einem Fehler werden Fokus, Zwischenablage und Status bereinigt. Die Tray-Meldungen unterscheiden Profil-, Login-, Composer-, Start-, Stop-, Transkriptions- und Einfügefehler.
+
+## Diagnose im Tray-Menü
+
+- **ChatGPT Profil öffnen** öffnet ChatGPT sichtbar mit Profile 3 für Anmeldung und Mikrofonfreigabe.
+- **Chrome-Profil prüfen** validiert `chrome.exe`, User-Data-Ordner, `Profile 3` und dessen `Preferences`-Datei.
+- **ChatGPT Diagnose speichern** protokolliert Profilstatus, Fenster, Login-Eindruck, sicher redigierte Composer-Kandidaten, Diktierbutton-Kandidaten und erkannten Aufnahmezustand.
+- **Chrome-Profilordner öffnen** öffnet den validierten Ordner `Profile 3`.
+
+Die Diagnose protokolliert keine ChatGPT-Inhalte, Cookies, Tokens oder diktierten Texte. Namen möglicher Texteingaben werden redigiert; lediglich technische Metadaten und Textlängen werden gespeichert.
+
+## Relevante Einstellungen
+
+Die mitgelieferte `settings.json` enthält insbesondere:
 
 ```json
 {
-  "toggleHotkey": "F8",
-  "chatGptDictationHotkey": "Ctrl+Shift+D",
-  "chatGptUrl": "https://chatgpt.com",
-  "chatGptWindowTitleContains": [ "ChatGPT", "chatgpt.com" ],
   "browserProfileMode": "ExistingChromeProfile",
   "chromeExecutablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "chromeUserDataDir": "C:\\Users\\Admin\\AppData\\Local\\Google\\Chrome\\User Data",
@@ -78,53 +88,21 @@ Im Tray-Menue kann `ChatGPT UI Diagnose speichern` ausgefuehrt werden. Der Punkt
   "allowGuestProfile": false,
   "allowIncognitoProfile": false,
   "allowTemporaryProfile": false,
-  "openChatGptProfileVisibleForSetup": true,
-  "warnIfConfiguredChromeProfileUnavailable": true,
-  "launchChatGptIfMissing": true,
-  "launchChatGptOnHotkey": false,
-  "prepareChatGptOnStartup": true,
-  "minimizeChatGptAfterStartup": true,
-  "restoreTargetAfterStart": true,
-  "restoreClipboard": true,
-  "browserChromeExclusionTopPx": 120,
-  "maxChatGptInputHeightPx": 260,
-  "maxChatGptInputWindowWidthRatio": 0.85,
-  "settleDelayMs": 1000,
-  "readTextTimeoutMs": 20000,
-  "dictationResultTimeoutMs": 20000,
+  "recordingStateTimeoutMs": 5000,
+  "dictationResultTimeoutMs": 30000,
   "dictationResultPollIntervalMs": 250,
-  "enableChatGptInputDiagnostics": true,
-  "pasteDelayMs": 100,
-  "restoreClipboardDelayMs": 300,
-  "blockPasswordFields": true
+  "dictationSettleDelayMs": 1500
 }
 ```
 
-Das Tray-Menue enthaelt zusaetzlich:
+`dictationResultTimeoutMs` gilt für das wiederholte frische Suchen und Lesen des ChatGPT-Composers. Ein einzelnes leeres Ergebnis beendet die Suche nicht.
 
-- **ChatGPT Profil öffnen**: startet ChatGPT sichtbar im konfigurierten Chrome-Profil, damit Anmeldung und Mikrofonberechtigung geprueft werden koennen.
-- **Chrome-Profil prüfen**: prueft die konfigurierten Pfade und schreibt das Ergebnis in das Log.
-- **Chrome-Profilordner öffnen**: oeffnet direkt den Ordner `Profile 3`.
+## Logs
 
-Wenn ChatGPT zwar geoeffnet ist, aber das Eingabefeld nicht gefunden wird, pruefe zuerst:
-
-- Ist der ChatGPT-Tab sichtbar und angemeldet?
-- Ist der Fenstertitel in `chatGptWindowTitleContains` enthalten?
-- Ist `browserChromeExclusionTopPx` gross genug, damit Adressleiste und Tabs nie als Eingabefeld gelten?
-- `settleDelayMs`: kurze Wartezeit nach dem Stop-Shortcut, bevor der fertige Prompt gelesen wird.
-- `readTextTimeoutMs`: allgemeiner Timeout fuer Textsuche.
-- `dictationResultTimeoutMs`: Timeout fuer die robuste UIAutomation-Ergebnislesung nach dem zweiten F8.
-- `dictationResultPollIntervalMs`: Polling-Intervall fuer frisches Suchen und Lesen des ChatGPT-Eingabefelds.
-- `enableChatGptInputDiagnostics`: zeigt den Tray-Menuepunkt fuer technische ChatGPT-UI-Diagnose.
-
-## Logging
-
-Logs liegen unter:
+Die Release-Logs liegen hier:
 
 ```text
 bin\Release\net8.0-windows\logs\app.log
 ```
 
-Es werden keine diktierten Inhalte geloggt, nur technische Informationen wie Statuswechsel, Fensterhandle, sicher fokussiertes ChatGPT-Feld, Diktat-Start/Stop, Textlaenge und Paste-Erfolg.
-
-Bei Problemen mit der Foreground/UIAutomation-Route ist `ChatGPT UI Diagnose speichern` der schnellste naechste Schritt. Danach die aktuelle Logdatei unter `bin\Release\net8.0-windows\logs\app.log` pruefen.
+Bei Problemen zuerst **Chrome-Profil prüfen** und danach **ChatGPT Diagnose speichern** ausführen. Im Log stehen nur technische Zustände wie Profilvalidierung, Kandidatentypen, Aufnahmeerkennung, Textlänge und Einfügeerfolg.
