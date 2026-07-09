@@ -76,7 +76,9 @@ internal static class AutomationHelpers
             var candidate = FindBestInputCandidate(root, chatWindow, settings);
             if (candidate is not null && TryFocusElement(candidate, logger))
             {
+                LogElement("ChatGPT input candidate", candidate, logger);
                 var focused = GetFocusedElement(logger);
+                LogElement("Focused element after ChatGPT input focus", focused, logger);
                 if (IsSafeChatGptInput(focused, chatWindow, settings))
                 {
                     logger.Info("ChatGPT input focused safely.");
@@ -196,6 +198,46 @@ internal static class AutomationHelpers
         return string.Empty;
     }
 
+    public static async Task<string> CopyTextSafelyAsync(AutomationElement? element, IntPtr chatWindow, AppSettings settings, AppLogger logger)
+    {
+        if (element is null || !IsSafeChatGptInput(element, chatWindow, settings))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            element.SetFocus();
+            Thread.Sleep(80);
+            if (!IsSafeChatGptInput(GetFocusedElement(logger), chatWindow, settings))
+            {
+                logger.Info("ChatGPT copy skipped because focused element is not safe.");
+                return string.Empty;
+            }
+
+            Clipboard.Clear();
+            Thread.Sleep(50);
+            SendKeys.SendWait("^a");
+            Thread.Sleep(80);
+            SendKeys.SendWait("^c");
+
+            var text = await WaitForClipboardTextAsync(settings.ReadTextTimeoutMs, logger);
+            if (IsUnsafeCapturedText(text))
+            {
+                logger.Info($"Guarded ChatGPT copy rejected unsafe text. Length={text.Length}");
+                return string.Empty;
+            }
+
+            logger.Info($"Guarded ChatGPT copy captured text. Length={text.Length}");
+            return text.Trim();
+        }
+        catch (Exception ex)
+        {
+            logger.Error("Guarded ChatGPT copy failed.", ex);
+            return string.Empty;
+        }
+    }
+
     public static bool ClearTextSafely(AutomationElement? element, IntPtr chatWindow, AppSettings settings, AppLogger logger)
     {
         if (element is null || !IsSafeChatGptInput(element, chatWindow, settings))
@@ -240,6 +282,19 @@ internal static class AutomationHelpers
             logger.Error("Guarded keyboard clear failed.", ex);
             return false;
         }
+    }
+
+    public static bool IsUnsafeCapturedText(string text)
+    {
+        text = text.Trim();
+        if (text.Length == 0)
+        {
+            return false;
+        }
+
+        return Uri.TryCreate(text, UriKind.Absolute, out var uri) &&
+               (uri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase) ||
+                uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase));
     }
 
     private static AutomationElement? FindBestInputCandidate(AutomationElement root, IntPtr chatWindow, AppSettings settings)
@@ -307,5 +362,48 @@ internal static class AutomationHelpers
         return text.Equals("Stelle irgendeine Frage", StringComparison.OrdinalIgnoreCase) ||
                text.Equals("Message ChatGPT", StringComparison.OrdinalIgnoreCase) ||
                text.Equals("Ask anything", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static async Task<string> WaitForClipboardTextAsync(int timeoutMs, AppLogger logger)
+    {
+        var start = Environment.TickCount64;
+        while (Environment.TickCount64 - start < timeoutMs)
+        {
+            try
+            {
+                if (Clipboard.ContainsText())
+                {
+                    return Clipboard.GetText().Trim();
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Error("Clipboard polling failed.", ex);
+            }
+
+            await Task.Delay(100);
+        }
+
+        return string.Empty;
+    }
+
+    private static void LogElement(string label, AutomationElement? element, AppLogger logger)
+    {
+        if (element is null)
+        {
+            logger.Info($"{label}: <null>");
+            return;
+        }
+
+        try
+        {
+            var current = element.Current;
+            var rect = current.BoundingRectangle;
+            logger.Info($"{label}: ControlType='{current.ControlType.ProgrammaticName}' Name='{current.Name}' Class='{current.ClassName}' Rect={rect.Left:0},{rect.Top:0},{rect.Width:0},{rect.Height:0}");
+        }
+        catch (Exception ex)
+        {
+            logger.Error($"{label}: could not inspect element.", ex);
+        }
     }
 }

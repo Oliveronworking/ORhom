@@ -156,14 +156,20 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
         await Task.Delay(Math.Max(_settings.SettleDelayMs, 0));
         chatInput ??= AutomationHelpers.GetFocusedElement(_logger);
-        var text = await AutomationHelpers.WaitForTextAsync(chatInput, _settings.ReadTextTimeoutMs, _logger);
+        var text = await AutomationHelpers.CopyTextSafelyAsync(chatInput, chatWindow, _settings, _logger);
+        if (text.Length == 0)
+        {
+            text = await AutomationHelpers.WaitForTextAsync(chatInput, _settings.ReadTextTimeoutMs, _logger);
+        }
+
         text = text.Trim();
         _logger.Info($"Text read from ChatGPT web input. Length={text.Length}");
 
-        if (text.Length == 0)
+        if (text.Length == 0 || AutomationHelpers.IsUnsafeCapturedText(text))
         {
             _pasteService.RestoreTargetFocus(session.Target);
-            ShowMessage("Kein diktierter Text in ChatGPT gefunden.");
+            _pasteService.RestoreClipboard(session.Target, _settings);
+            ShowMessage("Kein sicherer diktierter Text in ChatGPT gefunden. Es wurde nichts eingefuegt.");
             ResetToIdle();
             return;
         }
