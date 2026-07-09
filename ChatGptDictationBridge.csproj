@@ -9,6 +9,7 @@
     <AssemblyName>ChatGptDictationBridge</AssemblyName>
     <RootNamespace>ChatGptDictationBridge</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\OpenAIFlow.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
