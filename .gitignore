@@ -1,0 +1,8 @@
+bin/
+obj/
+logs/
+.dotnet/
+.dotnet-install.ps1
+*.user
+*.suo
+.vs/

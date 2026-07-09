@@ -1,0 +1,14 @@
+{
+  "toggleHotkey": "F8",
+  "restoreClipboard": true,
+  "audioTempFolder": "temp",
+  "transcriptionProvider": "openai",
+  "transcriptionModel": "gpt-4o-mini-transcribe",
+  "language": "de",
+  "openAIApiKey": null,
+  "openAIApiBaseUrl": "https://api.openai.com",
+  "logTranscribedText": false,
+  "pasteDelayMs": 100,
+  "restoreClipboardDelayMs": 300,
+  "blockPasswordFields": true
+}
