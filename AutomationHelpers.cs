@@ -7,7 +7,8 @@ internal static class AutomationHelpers
     private static readonly ControlType[] InputControlTypes =
     [
         ControlType.Edit,
-        ControlType.Custom
+        ControlType.Custom,
+        ControlType.Document
     ];
 
     public static AutomationElement? GetFocusedElement(AppLogger logger)
@@ -117,106 +118,18 @@ internal static class AutomationHelpers
 
     public static bool IsSafeChatGptInput(AutomationElement? element, IntPtr chatWindow, AppSettings settings)
     {
-        if (element is null || chatWindow == IntPtr.Zero || !NativeMethods.GetWindowRect(chatWindow, out var windowRect))
-        {
-            return false;
-        }
-
-        try
-        {
-            var current = element.Current;
-            var rect = current.BoundingRectangle;
-            var className = current.ClassName ?? string.Empty;
-            var name = (current.Name ?? string.Empty).Trim();
-
-            if (LooksLikeUnsafeBrowserDialog(name, className))
-            {
-                return false;
-            }
-
-            if (rect.Width < 80 || rect.Height < 18)
-            {
-                return false;
-            }
-
-            if (rect.Top < windowRect.Top + settings.BrowserChromeExclusionTopPx)
-            {
-                return false;
-            }
-
-            if (LooksLikeBrowserChrome(name))
-            {
-                return false;
-            }
-
-            if (rect.Height > settings.MaxChatGptInputHeightPx)
-            {
-                return false;
-            }
-
-            if (rect.Width > windowRect.Width * settings.MaxChatGptInputWindowWidthRatio)
-            {
-                return false;
-            }
-
-            if (!className.Contains("ProseMirror", StringComparison.OrdinalIgnoreCase) &&
-                !LooksLikeChatInputName(name))
-            {
-                return false;
-            }
-
-            return current.IsKeyboardFocusable ||
-                   element.TryGetCurrentPattern(ValuePattern.Pattern, out _) ||
-                   element.TryGetCurrentPattern(TextPattern.Pattern, out _);
-        }
-        catch
-        {
-            return false;
-        }
+        return GetChatGptInputSafetyRejectionReason(element, chatWindow, settings) is null;
     }
 
     public static string ReadText(AutomationElement? element, AppLogger logger)
     {
-        if (element is null)
+        var valueText = ReadValuePatternText(element, logger);
+        if (valueText.Length > 0)
         {
-            return string.Empty;
+            return valueText;
         }
 
-        try
-        {
-            if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var valuePatternObj) &&
-                valuePatternObj is ValuePattern valuePattern)
-            {
-                var value = (valuePattern.Current.Value ?? string.Empty).Trim();
-                if (!IsPlaceholder(value))
-                {
-                    return value;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.Error("ValuePattern read failed.", ex);
-        }
-
-        try
-        {
-            if (element.TryGetCurrentPattern(TextPattern.Pattern, out var textPatternObj) &&
-                textPatternObj is TextPattern textPattern)
-            {
-                var text = textPattern.DocumentRange.GetText(-1).Trim('\r', '\n', ' ');
-                if (!IsPlaceholder(text))
-                {
-                    return text;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.Error("TextPattern read failed.", ex);
-        }
-
-        return string.Empty;
+        return ReadTextPatternText(element, logger);
     }
 
     public static async Task<string> WaitForTextAsync(AutomationElement? element, int timeoutMs, AppLogger logger)
@@ -236,7 +149,91 @@ internal static class AutomationHelpers
         return string.Empty;
     }
 
-    public static async Task<string> CopyTextSafelyAsync(AutomationElement? element, IntPtr chatWindow, AppSettings settings, AppLogger logger)
+    public static async Task<ChatGptDictationReadResult> ReadChatGptDictatedTextRobustlyAsync(
+        IntPtr chatWindow,
+        AutomationElement? previousInput,
+        AppSettings settings,
+        AppLogger logger)
+    {
+        var timeoutMs = Math.Max(settings.DictationResultTimeoutMs, settings.ReadTextTimeoutMs);
+        timeoutMs = Math.Max(timeoutMs, 1000);
+        var pollIntervalMs = Math.Clamp(settings.DictationResultPollIntervalMs, 100, 1000);
+        var start = Environment.TickCount64;
+        var attempts = 0;
+        AutomationElement? lastSafeInput = null;
+
+        while (Environment.TickCount64 - start < timeoutMs)
+        {
+            attempts++;
+            if (chatWindow == IntPtr.Zero || !NativeMethods.IsWindow(chatWindow))
+            {
+                logger.Info($"ChatGPT dictated text read attempt skipped because window is gone. Attempt={attempts}");
+                await Task.Delay(pollIntervalMs);
+                continue;
+            }
+
+            if (!ChatGptWindowFinder.PrepareForAutomation(chatWindow, logger))
+            {
+                logger.Info($"ChatGPT dictated text read attempt could not prepare window. Attempt={attempts}");
+                await Task.Delay(pollIntervalMs);
+                continue;
+            }
+
+            var input = FocusChatGptInput(chatWindow, settings, logger);
+            if (!IsSafeChatGptInput(input, chatWindow, settings))
+            {
+                input = FocusKnownChatGptInput(previousInput, chatWindow, settings, logger);
+            }
+
+            if (!IsSafeChatGptInput(input, chatWindow, settings))
+            {
+                logger.Info($"ChatGPT dictated text read attempt did not find a safe input. Attempt={attempts}");
+                await Task.Delay(pollIntervalMs);
+                continue;
+            }
+
+            lastSafeInput = input;
+
+            var valueText = ReadValuePatternText(input, logger);
+            if (IsAcceptableCapturedText(valueText))
+            {
+                logger.Info($"ChatGPT dictated text captured via ValuePattern. Attempt={attempts} TextLength={valueText.Trim().Length}");
+                return new ChatGptDictationReadResult(valueText.Trim(), "ValuePattern", attempts, input);
+            }
+
+            LogRejectedRead("ValuePattern", valueText, attempts, logger);
+
+            var textPatternText = ReadTextPatternText(input, logger);
+            if (IsAcceptableCapturedText(textPatternText))
+            {
+                logger.Info($"ChatGPT dictated text captured via TextPattern. Attempt={attempts} TextLength={textPatternText.Trim().Length}");
+                return new ChatGptDictationReadResult(textPatternText.Trim(), "TextPattern", attempts, input);
+            }
+
+            LogRejectedRead("TextPattern", textPatternText, attempts, logger);
+
+            var clipboardTimeoutMs = Math.Min(Math.Max(pollIntervalMs * 2, 500), 1000);
+            var clipboardText = await CopyTextSafelyAsync(input, chatWindow, settings, logger, clipboardTimeoutMs);
+            if (IsAcceptableCapturedText(clipboardText))
+            {
+                logger.Info($"ChatGPT dictated text captured via Clipboard. Attempt={attempts} TextLength={clipboardText.Trim().Length}");
+                return new ChatGptDictationReadResult(clipboardText.Trim(), "Clipboard", attempts, input);
+            }
+
+            LogRejectedRead("Clipboard", clipboardText, attempts, logger);
+            await Task.Delay(pollIntervalMs);
+        }
+
+        logger.Info($"ChatGPT dictated text read timed out. Attempts={attempts} TimeoutMs={timeoutMs}");
+        return new ChatGptDictationReadResult(string.Empty, "None", attempts, lastSafeInput);
+    }
+
+    public static async Task<string> CopyTextSafelyAsync(
+        AutomationElement? element,
+        IntPtr chatWindow,
+        AppSettings settings,
+        AppLogger logger,
+        int? clipboardTimeoutMs = null)
     {
         if (element is null || !IsSafeChatGptInput(element, chatWindow, settings))
         {
@@ -259,14 +256,15 @@ internal static class AutomationHelpers
             Thread.Sleep(80);
             SendKeys.SendWait("^c");
 
-            var text = await WaitForClipboardTextAsync(settings.ReadTextTimeoutMs, logger);
-            if (IsUnsafeCapturedText(text))
+            var timeoutMs = clipboardTimeoutMs ?? settings.ReadTextTimeoutMs;
+            var text = await WaitForClipboardTextAsync(timeoutMs, logger);
+            if (!IsAcceptableCapturedText(text))
             {
-                logger.Info($"Guarded ChatGPT copy rejected unsafe text. Length={text.Length}");
+                logger.Info($"Guarded ChatGPT copy did not capture acceptable text. Length={text.Trim().Length}");
                 return string.Empty;
             }
 
-            logger.Info($"Guarded ChatGPT copy captured text. Length={text.Length}");
+            logger.Info($"Guarded ChatGPT copy captured text. Length={text.Trim().Length}");
             return text.Trim();
         }
         catch (Exception ex)
@@ -335,6 +333,77 @@ internal static class AutomationHelpers
                 uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase));
     }
 
+    public static void LogElement(string label, AutomationElement? element, AppLogger logger)
+    {
+        if (element is null)
+        {
+            logger.Info($"{label}: <null>");
+            return;
+        }
+
+        try
+        {
+            var current = element.Current;
+            var rect = current.BoundingRectangle;
+            logger.Info($"{label}: ControlType='{current.ControlType.ProgrammaticName}' Name='{current.Name}' Class='{current.ClassName}' Rect={rect.Left:0},{rect.Top:0},{rect.Width:0},{rect.Height:0}");
+        }
+        catch (Exception ex)
+        {
+            logger.Error($"{label}: could not inspect element.", ex);
+        }
+    }
+
+    public static void WriteChatGptInputDiagnostics(IntPtr chatWindow, AppSettings settings, AppLogger logger)
+    {
+        logger.Info("ChatGPT UI diagnostics started.");
+        if (chatWindow == IntPtr.Zero || !NativeMethods.IsWindow(chatWindow))
+        {
+            logger.Info("ChatGPT UI diagnostics: ChatGPT window not found.");
+            return;
+        }
+
+        logger.Info($"ChatGPT UI diagnostics: WindowHandle=0x{chatWindow.ToInt64():X} Title='{NativeMethods.GetWindowTitle(chatWindow)}' Class='{NativeMethods.GetWindowClass(chatWindow)}'");
+
+        try
+        {
+            var root = AutomationElement.FromHandle(chatWindow);
+            if (root is null)
+            {
+                logger.Info("ChatGPT UI diagnostics: root automation element not available.");
+                return;
+            }
+
+            var condition = new OrCondition(InputControlTypes
+                .Select(type => new PropertyCondition(AutomationElement.ControlTypeProperty, type))
+                .Cast<Condition>()
+                .ToArray());
+
+            var elements = root.FindAll(TreeScope.Descendants, condition).Cast<AutomationElement>().Take(80).ToList();
+            logger.Info($"ChatGPT UI diagnostics: CandidateCount={elements.Count}");
+
+            for (var index = 0; index < elements.Count; index++)
+            {
+                var element = elements[index];
+                try
+                {
+                    var current = element.Current;
+                    var rect = current.BoundingRectangle;
+                    var reason = GetChatGptInputSafetyRejectionReason(element, chatWindow, settings);
+                    var status = reason is null ? "safe" : $"rejected:{reason}";
+                    logger.Info($"ChatGPT UI candidate #{index + 1}: Status={status} ControlType='{current.ControlType.ProgrammaticName}' Name='{current.Name}' Class='{current.ClassName}' AutomationId='{current.AutomationId}' Rect={rect.Left:0},{rect.Top:0},{rect.Width:0},{rect.Height:0}");
+                }
+                catch (Exception ex)
+                {
+                    logger.Error($"ChatGPT UI candidate #{index + 1}: could not inspect element.", ex);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.Error("ChatGPT UI diagnostics failed.", ex);
+        }
+    }
+
     private static AutomationElement? FindBestInputCandidate(AutomationElement root, IntPtr chatWindow, AppSettings settings)
     {
         var condition = new OrCondition(InputControlTypes
@@ -362,15 +431,20 @@ internal static class AutomationHelpers
                 score += 10000;
             }
 
-            var name = current.Name ?? string.Empty;
-            if (LooksLikeChatInputName(name))
+            var metadata = GetInputMetadata(current);
+            if (LooksLikeChatInputMetadata(metadata))
             {
                 score += 5000;
             }
 
-            if ((current.ClassName ?? string.Empty).Contains("ProseMirror", StringComparison.OrdinalIgnoreCase))
+            if (metadata.Contains("prosemirror", StringComparison.OrdinalIgnoreCase))
             {
                 score += 7000;
+            }
+
+            if (metadata.Contains("composer", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 6000;
             }
 
             return score;
@@ -381,14 +455,193 @@ internal static class AutomationHelpers
         }
     }
 
-    private static bool LooksLikeBrowserChrome(string name)
+    private static string ReadValuePatternText(AutomationElement? element, AppLogger logger)
     {
-        return name.Contains("adresse", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("address", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("such", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("search", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("url", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("tab", StringComparison.OrdinalIgnoreCase);
+        if (element is null)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var valuePatternObj) &&
+                valuePatternObj is ValuePattern valuePattern)
+            {
+                var value = (valuePattern.Current.Value ?? string.Empty).Trim();
+                if (!IsPlaceholder(value))
+                {
+                    return value;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.Error("ValuePattern read failed.", ex);
+        }
+
+        return string.Empty;
+    }
+
+    private static string ReadTextPatternText(AutomationElement? element, AppLogger logger)
+    {
+        if (element is null)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            if (element.TryGetCurrentPattern(TextPattern.Pattern, out var textPatternObj) &&
+                textPatternObj is TextPattern textPattern)
+            {
+                var text = textPattern.DocumentRange.GetText(-1).Trim('\r', '\n', ' ');
+                if (!IsPlaceholder(text))
+                {
+                    return text;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.Error("TextPattern read failed.", ex);
+        }
+
+        return string.Empty;
+    }
+
+    private static bool IsAcceptableCapturedText(string text)
+    {
+        text = text.Trim();
+        return text.Length > 0 && !IsPlaceholder(text) && !IsUnsafeCapturedText(text);
+    }
+
+    private static void LogRejectedRead(string method, string text, int attempt, AppLogger logger)
+    {
+        var trimmed = text.Trim();
+        if (trimmed.Length == 0)
+        {
+            return;
+        }
+
+        logger.Info($"ChatGPT dictated text rejected from {method}. Attempt={attempt} TextLength={trimmed.Length} Unsafe={IsUnsafeCapturedText(trimmed)} Placeholder={IsPlaceholder(trimmed)}");
+    }
+
+    private static string? GetChatGptInputSafetyRejectionReason(AutomationElement? element, IntPtr chatWindow, AppSettings settings)
+    {
+        if (element is null)
+        {
+            return "null-element";
+        }
+
+        if (chatWindow == IntPtr.Zero || !NativeMethods.GetWindowRect(chatWindow, out var windowRect))
+        {
+            return "missing-window-rect";
+        }
+
+        try
+        {
+            var current = element.Current;
+            var controlType = current.ControlType;
+            if (!InputControlTypes.Contains(controlType))
+            {
+                return "unsupported-control-type";
+            }
+
+            if (IsPasswordElement(element))
+            {
+                return "password-element";
+            }
+
+            var rect = current.BoundingRectangle;
+            if (rect.Width < 80 || rect.Height < 18)
+            {
+                return "too-small";
+            }
+
+            if (rect.Top < windowRect.Top + settings.BrowserChromeExclusionTopPx)
+            {
+                return "browser-chrome-top";
+            }
+
+            var name = (current.Name ?? string.Empty).Trim();
+            var className = current.ClassName ?? string.Empty;
+            var metadata = GetInputMetadata(current);
+
+            if (LooksLikeUnsafeBrowserDialog(name, className))
+            {
+                return "browser-dialog";
+            }
+
+            if (LooksLikeBrowserChrome(name) || metadata.Contains("omnibox", StringComparison.OrdinalIgnoreCase))
+            {
+                return "browser-chrome-name";
+            }
+
+            if (rect.Height > settings.MaxChatGptInputHeightPx)
+            {
+                return "too-tall";
+            }
+
+            if (rect.Width > windowRect.Width * settings.MaxChatGptInputWindowWidthRatio)
+            {
+                return "too-wide";
+            }
+
+            var hasReadableOrFocusableShape = current.IsKeyboardFocusable ||
+                                              element.TryGetCurrentPattern(ValuePattern.Pattern, out _) ||
+                                              element.TryGetCurrentPattern(TextPattern.Pattern, out _);
+            if (!hasReadableOrFocusableShape)
+            {
+                return "not-readable-or-focusable";
+            }
+
+            if (!LooksLikeChatInputMetadata(metadata) && !LooksLikeLikelyPageTextInput(current, rect, windowRect))
+            {
+                return "not-chatgpt-composer";
+            }
+
+            return null;
+        }
+        catch
+        {
+            return "stale-or-uninspectable";
+        }
+    }
+
+    private static bool LooksLikeLikelyPageTextInput(AutomationElement.AutomationElementInformation current, System.Windows.Rect rect, Rect windowRect)
+    {
+        if (current.ControlType != ControlType.Edit)
+        {
+            return false;
+        }
+
+        var windowHeight = Math.Max(windowRect.Height, 1);
+        var verticalPosition = (rect.Top - windowRect.Top) / windowHeight;
+        return verticalPosition > 0.35 && rect.Height <= 160 && current.IsKeyboardFocusable;
+    }
+
+    private static string GetInputMetadata(AutomationElement.AutomationElementInformation current)
+    {
+        return string.Join(" ", new[]
+        {
+            current.Name ?? string.Empty,
+            current.ClassName ?? string.Empty,
+            current.AutomationId ?? string.Empty,
+            current.HelpText ?? string.Empty,
+            current.FrameworkId ?? string.Empty,
+            current.ControlType.ProgrammaticName ?? string.Empty
+        });
+    }
+
+    private static bool LooksLikeBrowserChrome(string text)
+    {
+        return text.Contains("adresse", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("address", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("such", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("search", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("url", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("omnibox", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("tab", StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool LooksLikeUnsafeHotkeyTarget(AutomationElement? element)
@@ -403,7 +656,11 @@ internal static class AutomationHelpers
             var current = element.Current;
             var name = (current.Name ?? string.Empty).Trim();
             var className = current.ClassName ?? string.Empty;
-            return LooksLikeBrowserChrome(name) || LooksLikeUnsafeBrowserDialog(name, className);
+            var metadata = GetInputMetadata(current);
+            return LooksLikeBrowserChrome(name) ||
+                   metadata.Contains("omnibox", StringComparison.OrdinalIgnoreCase) ||
+                   LooksLikeUnsafeBrowserDialog(name, className) ||
+                   IsPasswordElement(element);
         }
         catch
         {
@@ -413,23 +670,37 @@ internal static class AutomationHelpers
 
     private static bool LooksLikeUnsafeBrowserDialog(string name, string className)
     {
-        return name.Contains("lesezeichen", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("bookmark", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("speichern", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("save", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("ordner", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("folder", StringComparison.OrdinalIgnoreCase) ||
-               className.Contains("Textfield", StringComparison.OrdinalIgnoreCase);
+        var looksLikeDialogName = name.Contains("lesezeichen", StringComparison.OrdinalIgnoreCase) ||
+                                  name.Contains("bookmark", StringComparison.OrdinalIgnoreCase) ||
+                                  name.Contains("speichern", StringComparison.OrdinalIgnoreCase) ||
+                                  name.Contains("save", StringComparison.OrdinalIgnoreCase) ||
+                                  name.Contains("ordner", StringComparison.OrdinalIgnoreCase) ||
+                                  name.Contains("folder", StringComparison.OrdinalIgnoreCase);
+        if (!looksLikeDialogName)
+        {
+            return false;
+        }
+
+        return className.Contains("Textfield", StringComparison.OrdinalIgnoreCase) ||
+               className.Contains("Edit", StringComparison.OrdinalIgnoreCase) ||
+               className.Length == 0;
     }
 
-    private static bool LooksLikeChatInputName(string name)
+    private static bool LooksLikeChatInputMetadata(string metadata)
     {
-        return name.Contains("message", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("prompt", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("frage", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("nachricht", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("ask", StringComparison.OrdinalIgnoreCase) ||
-               name.Contains("chatten", StringComparison.OrdinalIgnoreCase);
+        return metadata.Contains("ProseMirror", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("message", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("prompt", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("frage", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("nachricht", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("ask", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("chatten", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("textarea", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("textbox", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("contenteditable", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("composer", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("lexical", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("ChatGPT message composer", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsPlaceholder(string text)
@@ -441,7 +712,9 @@ internal static class AutomationHelpers
 
         return text.Equals("Stelle irgendeine Frage", StringComparison.OrdinalIgnoreCase) ||
                text.Equals("Message ChatGPT", StringComparison.OrdinalIgnoreCase) ||
-               text.Equals("Ask anything", StringComparison.OrdinalIgnoreCase);
+               text.Equals("Ask anything", StringComparison.OrdinalIgnoreCase) ||
+               text.Equals("Nachricht an ChatGPT", StringComparison.OrdinalIgnoreCase) ||
+               text.Equals("ChatGPT fragen", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<string> WaitForClipboardTextAsync(int timeoutMs, AppLogger logger)
@@ -466,24 +739,10 @@ internal static class AutomationHelpers
 
         return string.Empty;
     }
-
-    private static void LogElement(string label, AutomationElement? element, AppLogger logger)
-    {
-        if (element is null)
-        {
-            logger.Info($"{label}: <null>");
-            return;
-        }
-
-        try
-        {
-            var current = element.Current;
-            var rect = current.BoundingRectangle;
-            logger.Info($"{label}: ControlType='{current.ControlType.ProgrammaticName}' Name='{current.Name}' Class='{current.ClassName}' Rect={rect.Left:0},{rect.Top:0},{rect.Width:0},{rect.Height:0}");
-        }
-        catch (Exception ex)
-        {
-            logger.Error($"{label}: could not inspect element.", ex);
-        }
-    }
 }
+
+internal sealed record ChatGptDictationReadResult(
+    string Text,
+    string Method,
+    int Attempts,
+    AutomationElement? Input);

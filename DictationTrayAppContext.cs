@@ -33,6 +33,10 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         menu.Items.Add(new ToolStripMenuItem("Aufnahme abbrechen", null, (_, _) => _ = AbortRecordingAsync()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Einstellungen oeffnen", null, (_, _) => OpenPath(_settings.SettingsPath)));
+        menu.Items.Add(new ToolStripMenuItem("ChatGPT UI Diagnose speichern", null, (_, _) => WriteChatGptDiagnostics())
+        {
+            Enabled = _settings.EnableChatGptInputDiagnostics
+        });
         menu.Items.Add(new ToolStripMenuItem("Logs oeffnen", null, (_, _) => OpenPath(_logger.LogPath)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Beenden", null, Exit));
@@ -120,6 +124,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
+        _logger.Info($"Foreground dictation started. TargetClass='{target.WindowClass}' ChatWindow=0x{chatWindow.ToInt64():X}");
+        AutomationHelpers.LogElement("Foreground dictation start ChatGPT input", chatInput, _logger);
         _session = new RecordingSession(target, chatWindow, chatInput);
         _hotkeyWindow.SetEscapeEnabled(true);
         SetStatus(AppStatus.Recording);
@@ -206,16 +212,15 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
+        _logger.Info("Foreground dictation stop shortcut sent.");
         await Task.Delay(Math.Max(_settings.SettleDelayMs, 0));
-        chatInput = await WaitForChatGptInputAsync(chatWindow, chatInput ?? session.ChatInput);
-        var text = await AutomationHelpers.CopyTextSafelyAsync(chatInput, chatWindow, _settings, _logger);
-        if (text.Length == 0)
-        {
-            text = await AutomationHelpers.WaitForTextAsync(chatInput, _settings.ReadTextTimeoutMs, _logger);
-        }
-
-        text = text.Trim();
-        _logger.Info($"Text read from ChatGPT web input. Length={text.Length}");
+        var readResult = await AutomationHelpers.ReadChatGptDictatedTextRobustlyAsync(
+            chatWindow,
+            chatInput ?? session.ChatInput,
+            _settings,
+            _logger);
+        var text = readResult.Text.Trim();
+        _logger.Info($"Foreground dictation read finished. StopShortcutSent=True Attempts={readResult.Attempts} Method={readResult.Method} TextLength={text.Length}");
 
         if (text.Length == 0 || AutomationHelpers.IsUnsafeCapturedText(text))
         {
@@ -226,7 +231,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
-        _ = AutomationHelpers.ClearTextSafely(chatInput, chatWindow, _settings, _logger);
+        _ = AutomationHelpers.ClearTextSafely(readResult.Input ?? chatInput, chatWindow, _settings, _logger);
         if (!_pasteService.PasteIntoTarget(text, session.Target, _settings))
         {
             ShowMessage("Text konnte nicht eingefuegt werden.");
@@ -297,28 +302,6 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         return true;
     }
 
-    private async Task<System.Windows.Automation.AutomationElement?> WaitForChatGptInputAsync(
-        IntPtr chatWindow,
-        System.Windows.Automation.AutomationElement? knownInput)
-    {
-        var timeoutMs = Math.Max(_settings.ReadTextTimeoutMs, 1000);
-        var start = Environment.TickCount64;
-
-        while (Environment.TickCount64 - start < timeoutMs)
-        {
-            var chatInput = AutomationHelpers.FocusKnownChatGptInput(knownInput, chatWindow, _settings, _logger) ??
-                            AutomationHelpers.FocusChatGptInput(chatWindow, _settings, _logger);
-            if (AutomationHelpers.IsSafeChatGptInput(chatInput, chatWindow, _settings))
-            {
-                return chatInput;
-            }
-
-            await Task.Delay(250);
-        }
-
-        return null;
-    }
-
     private void ResetToIdle()
     {
         _session = null;
@@ -367,6 +350,30 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         {
             _logger.Error($"Could not open path: {path}", ex);
             ShowMessage("Datei konnte nicht geoeffnet werden.");
+        }
+    }
+
+    private void WriteChatGptDiagnostics()
+    {
+        try
+        {
+            if (!_settings.EnableChatGptInputDiagnostics)
+            {
+                ShowMessage("ChatGPT-Diagnose ist in den Einstellungen deaktiviert.");
+                return;
+            }
+
+            var excludedWindow = _session?.Target.WindowHandle ?? IntPtr.Zero;
+            var chatWindow = _session is { } session && NativeMethods.IsWindow(session.ChatWindow)
+                ? session.ChatWindow
+                : ChatGptWindowFinder.Find(_settings, _logger, excludedWindow);
+            AutomationHelpers.WriteChatGptInputDiagnostics(chatWindow, _settings, _logger);
+            ShowMessage("ChatGPT UI Diagnose wurde ins Log geschrieben.");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not write ChatGPT diagnostics.", ex);
+            ShowMessage("ChatGPT UI Diagnose konnte nicht geschrieben werden.");
         }
     }
 

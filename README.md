@@ -27,6 +27,10 @@ Wenn ChatGPT noch nicht offen ist, wird es beim Start der Tray-App automatisch g
 
 Wichtig: `Ctrl+Shift+D` wird nur gesendet, wenn vorher ein sicheres ChatGPT-Eingabefeld fokussiert wurde. Wenn die App nur die Chrome-Adressleiste oder kein passendes Feld findet, sendet sie keinen Shortcut.
 
+Bugfix: Nach dem zweiten F8 wird nicht mehr blind das beim Start gefundene ChatGPT-Element wiederverwendet. Die App wartet jetzt laenger auf das fertige Diktat, sucht das ChatGPT-Eingabefeld wiederholt frisch, prueft jeden Kandidaten gegen Browser-Chrome/Passwortfeld-Regeln und liest den Text ueber ValuePattern, TextPattern und einen bewachten Clipboard-Fallback. Die Fehlermeldung `Kein sicherer diktierter Text...` erscheint erst nach Ablauf des Ergebnis-Timeouts.
+
+Im Tray-Menue kann `ChatGPT UI Diagnose speichern` ausgefuehrt werden. Der Punkt schreibt technische UIAutomation-Diagnose in die Logdatei, unter anderem ob ein ChatGPT-Fenster gefunden wurde und welche Input-Kandidaten als sicher oder abgelehnt bewertet wurden. Inhalte aus Textfeldern werden dabei nicht gelesen oder geloggt.
+
 ## Settings
 
 `settings.json` liegt neben der EXE:
@@ -44,8 +48,13 @@ Wichtig: `Ctrl+Shift+D` wird nur gesendet, wenn vorher ein sicheres ChatGPT-Eing
   "restoreTargetAfterStart": true,
   "restoreClipboard": true,
   "browserChromeExclusionTopPx": 120,
-  "settleDelayMs": 500,
-  "readTextTimeoutMs": 12000,
+  "maxChatGptInputHeightPx": 260,
+  "maxChatGptInputWindowWidthRatio": 0.85,
+  "settleDelayMs": 1000,
+  "readTextTimeoutMs": 20000,
+  "dictationResultTimeoutMs": 20000,
+  "dictationResultPollIntervalMs": 250,
+  "enableChatGptInputDiagnostics": true,
   "pasteDelayMs": 100,
   "restoreClipboardDelayMs": 300,
   "blockPasswordFields": true
@@ -57,6 +66,11 @@ Wenn ChatGPT zwar geoeffnet ist, aber das Eingabefeld nicht gefunden wird, pruef
 - Ist der ChatGPT-Tab sichtbar und angemeldet?
 - Ist der Fenstertitel in `chatGptWindowTitleContains` enthalten?
 - Ist `browserChromeExclusionTopPx` gross genug, damit Adressleiste und Tabs nie als Eingabefeld gelten?
+- `settleDelayMs`: kurze Wartezeit nach dem Stop-Shortcut, bevor der fertige Prompt gelesen wird.
+- `readTextTimeoutMs`: allgemeiner Timeout fuer Textsuche.
+- `dictationResultTimeoutMs`: Timeout fuer die robuste UIAutomation-Ergebnislesung nach dem zweiten F8.
+- `dictationResultPollIntervalMs`: Polling-Intervall fuer frisches Suchen und Lesen des ChatGPT-Eingabefelds.
+- `enableChatGptInputDiagnostics`: zeigt den Tray-Menuepunkt fuer technische ChatGPT-UI-Diagnose.
 
 ## Logging
 
@@ -66,4 +80,6 @@ Logs liegen unter:
 bin\Release\net8.0-windows\logs\app.log
 ```
 
-Es werden keine diktierten Inhalte geloggt, nur technische Informationen wie Statuswechsel, Fensterhandle, sicher fokussiertes ChatGPT-Feld, Textlaenge und Paste-Erfolg.
+Es werden keine diktierten Inhalte geloggt, nur technische Informationen wie Statuswechsel, Fensterhandle, sicher fokussiertes ChatGPT-Feld, Diktat-Start/Stop, Textlaenge und Paste-Erfolg.
+
+Bei Problemen mit der Foreground/UIAutomation-Route ist `ChatGPT UI Diagnose speichern` der schnellste naechste Schritt. Danach die aktuelle Logdatei unter `bin\Release\net8.0-windows\logs\app.log` pruefen.

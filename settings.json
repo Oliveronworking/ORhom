@@ -12,8 +12,11 @@
   "browserChromeExclusionTopPx": 120,
   "maxChatGptInputHeightPx": 260,
   "maxChatGptInputWindowWidthRatio": 0.85,
-  "settleDelayMs": 500,
-  "readTextTimeoutMs": 12000,
+  "settleDelayMs": 1000,
+  "readTextTimeoutMs": 20000,
+  "dictationResultTimeoutMs": 20000,
+  "dictationResultPollIntervalMs": 250,
+  "enableChatGptInputDiagnostics": true,
   "pasteDelayMs": 100,
   "restoreClipboardDelayMs": 300,
   "blockPasswordFields": true
