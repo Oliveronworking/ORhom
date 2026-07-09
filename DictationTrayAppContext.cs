@@ -49,6 +49,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _hotkeyWindow.TogglePressed += (_, _) => _ = ToggleAsync();
         _hotkeyWindow.EscapePressed += (_, _) => _ = AbortRecordingAsync();
         _hotkeyWindow.CreateControl();
+
+        QueueChatGptStartupPreparation();
     }
 
     protected override void Dispose(bool disposing)
@@ -122,6 +124,53 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         if (_settings.RestoreTargetAfterStart)
         {
             _pasteService.RestoreTargetFocus(target);
+        }
+    }
+
+    private void QueueChatGptStartupPreparation()
+    {
+        if (!_settings.PrepareChatGptOnStartup || !_settings.LaunchChatGptIfMissing)
+        {
+            return;
+        }
+
+        _ = Task.Run(PrepareChatGptOnStartupAsync);
+    }
+
+    private async Task PrepareChatGptOnStartupAsync()
+    {
+        await Task.Delay(800);
+
+        try
+        {
+            var foregroundBeforeLaunch = NativeMethods.GetForegroundWindow();
+            if (ChatGptWindowFinder.Find(_settings, _logger) != IntPtr.Zero)
+            {
+                _logger.Info("ChatGPT startup preparation skipped because a ChatGPT window is already open.");
+                return;
+            }
+
+            var chatWindow = await ChatGptWindowFinder.FindOrLaunchAsync(_settings, _logger, excludedWindow: IntPtr.Zero);
+            if (chatWindow == IntPtr.Zero)
+            {
+                _logger.Info("ChatGPT startup preparation did not find a ChatGPT window after launch.");
+                return;
+            }
+
+            if (_settings.MinimizeChatGptAfterStartup)
+            {
+                NativeMethods.ShowWindow(chatWindow, NativeMethods.SwMinimize);
+                _logger.Info("ChatGPT startup window minimized after preparation.");
+            }
+
+            if (foregroundBeforeLaunch != IntPtr.Zero && NativeMethods.IsWindow(foregroundBeforeLaunch))
+            {
+                NativeMethods.SetForegroundWindow(foregroundBeforeLaunch);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("ChatGPT startup preparation failed.", ex);
         }
     }
 

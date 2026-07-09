@@ -6,6 +6,7 @@ namespace ChatGptDictationBridge;
 internal static class NativeMethods
 {
     public const int WmHotkey = 0x0312;
+    public const int SwMinimize = 6;
     public const int SwRestore = 9;
 
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
