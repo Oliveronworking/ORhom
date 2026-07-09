@@ -18,6 +18,7 @@ internal sealed class AppSettings
     public string ChatGptUrl { get; set; } = "https://chatgpt.com";
     public string[] ChatGptWindowTitleContains { get; set; } = ["ChatGPT", "chatgpt.com"];
     public bool LaunchChatGptIfMissing { get; set; } = true;
+    public bool LaunchChatGptOnHotkey { get; set; } = false;
     public bool PrepareChatGptOnStartup { get; set; } = true;
     public bool MinimizeChatGptAfterStartup { get; set; } = true;
     public bool RestoreTargetAfterStart { get; set; } = true;

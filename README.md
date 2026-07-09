@@ -14,7 +14,7 @@ Start-Process "bin\Release\net8.0-windows\ChatGptDictationBridge.exe"
 ```
 
 Es erscheint kein Hauptfenster; die App laeuft im Infobereich der Taskleiste.
-Wenn ChatGPT noch nicht offen ist, wird es automatisch gestartet und danach wieder minimiert.
+Wenn ChatGPT noch nicht offen ist, wird es beim Start der Tray-App automatisch gestartet und danach wieder minimiert. F8 startet keinen neuen ChatGPT-Tab, sondern nutzt nur ein bereits vorbereitetes ChatGPT-Fenster.
 
 ## Nutzung
 
@@ -38,6 +38,7 @@ Wichtig: `Ctrl+Shift+D` wird nur gesendet, wenn vorher ein sicheres ChatGPT-Eing
   "chatGptUrl": "https://chatgpt.com",
   "chatGptWindowTitleContains": [ "ChatGPT", "chatgpt.com" ],
   "launchChatGptIfMissing": true,
+  "launchChatGptOnHotkey": false,
   "prepareChatGptOnStartup": true,
   "minimizeChatGptAfterStartup": true,
   "restoreTargetAfterStart": true,

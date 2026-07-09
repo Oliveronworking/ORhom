@@ -129,6 +129,11 @@ internal static class AutomationHelpers
             var className = current.ClassName ?? string.Empty;
             var name = (current.Name ?? string.Empty).Trim();
 
+            if (LooksLikeUnsafeBrowserDialog(name, className))
+            {
+                return false;
+            }
+
             if (rect.Width < 80 || rect.Height < 18)
             {
                 return false;
@@ -154,8 +159,7 @@ internal static class AutomationHelpers
                 return false;
             }
 
-            if (current.ControlType != ControlType.Edit &&
-                !className.Contains("ProseMirror", StringComparison.OrdinalIgnoreCase) &&
+            if (!className.Contains("ProseMirror", StringComparison.OrdinalIgnoreCase) &&
                 !LooksLikeChatInputName(name))
             {
                 return false;
@@ -385,6 +389,37 @@ internal static class AutomationHelpers
                name.Contains("search", StringComparison.OrdinalIgnoreCase) ||
                name.Contains("url", StringComparison.OrdinalIgnoreCase) ||
                name.Contains("tab", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool LooksLikeUnsafeHotkeyTarget(AutomationElement? element)
+    {
+        if (element is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var current = element.Current;
+            var name = (current.Name ?? string.Empty).Trim();
+            var className = current.ClassName ?? string.Empty;
+            return LooksLikeBrowserChrome(name) || LooksLikeUnsafeBrowserDialog(name, className);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool LooksLikeUnsafeBrowserDialog(string name, string className)
+    {
+        return name.Contains("lesezeichen", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("bookmark", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("speichern", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("save", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("ordner", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("folder", StringComparison.OrdinalIgnoreCase) ||
+               className.Contains("Textfield", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool LooksLikeChatInputName(string name)

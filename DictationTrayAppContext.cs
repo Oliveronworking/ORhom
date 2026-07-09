@@ -101,10 +101,13 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
-        var chatWindow = await ChatGptWindowFinder.FindOrLaunchAsync(_settings, _logger, target.WindowHandle);
+        var chatWindow = _settings.LaunchChatGptOnHotkey
+            ? await ChatGptWindowFinder.FindOrLaunchAsync(_settings, _logger, target.WindowHandle)
+            : ChatGptWindowFinder.Find(_settings, _logger, target.WindowHandle);
         if (chatWindow == IntPtr.Zero)
         {
-            ShowMessage("Kein ChatGPT-Fenster gefunden.");
+            QueueChatGptStartupPreparation();
+            ShowMessage("ChatGPT wird im Hintergrund vorbereitet. Bitte gleich nochmal F8 druecken.");
             SetTemporaryError();
             return;
         }
@@ -272,6 +275,13 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             if (requireSafeInput)
             {
                 _logger.Info("ChatGPT dictation hotkey skipped because focused element is not safe.");
+                return false;
+            }
+
+            var focused = AutomationHelpers.GetFocusedElement(_logger);
+            if (AutomationHelpers.LooksLikeUnsafeHotkeyTarget(focused))
+            {
+                _logger.Info("ChatGPT dictation hotkey fallback skipped because the focused element looks like browser chrome or a browser dialog.");
                 return false;
             }
 

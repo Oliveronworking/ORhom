@@ -4,6 +4,7 @@
   "chatGptUrl": "https://chatgpt.com",
   "chatGptWindowTitleContains": [ "ChatGPT", "chatgpt.com" ],
   "launchChatGptIfMissing": true,
+  "launchChatGptOnHotkey": false,
   "prepareChatGptOnStartup": true,
   "minimizeChatGptAfterStartup": true,
   "restoreTargetAfterStart": true,
