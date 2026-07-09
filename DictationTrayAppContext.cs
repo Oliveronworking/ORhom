@@ -12,6 +12,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private readonly SemaphoreSlim _operationLock = new(1, 1);
     private readonly FocusTracker _focusTracker;
     private readonly PasteService _pasteService;
+    private readonly BackgroundChatGptBrowserService _backgroundChatGptBrowser;
     private readonly AppSettings _settings;
     private AppStatus _status = AppStatus.Idle;
     private RecordingSession? _session;
@@ -23,6 +24,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _settings = AppSettings.Load(Path.Combine(baseDirectory, "settings.json"), _logger);
         _focusTracker = new FocusTracker(_logger);
         _pasteService = new PasteService(_logger);
+        _backgroundChatGptBrowser = new BackgroundChatGptBrowserService(_settings, _logger);
         _logger.Info("Application started.");
 
         _statusItem = new ToolStripMenuItem("Status: Idle") { Enabled = false };
@@ -31,6 +33,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         menu.Items.Add(_statusItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Aufnahme abbrechen", null, (_, _) => _ = AbortRecordingAsync()));
+        menu.Items.Add(new ToolStripMenuItem("ChatGPT-Profil einrichten", null, (_, _) => _ = OpenBackgroundBrowserForSetupAsync()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Einstellungen oeffnen", null, (_, _) => OpenPath(_settings.SettingsPath)));
         menu.Items.Add(new ToolStripMenuItem("Logs oeffnen", null, (_, _) => OpenPath(_logger.LogPath)));
@@ -60,6 +63,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
             _hotkeyWindow.Dispose();
+            _backgroundChatGptBrowser.Dispose();
             _operationLock.Dispose();
         }
 
@@ -101,6 +105,38 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
+        if (_settings.UseBackgroundChatGptBrowser)
+        {
+            var started = await _backgroundChatGptBrowser.StartDictationAsync();
+            if (started.Ok)
+            {
+                _session = new RecordingSession(target, IntPtr.Zero, null, IsBackground: true);
+                _hotkeyWindow.SetEscapeEnabled(true);
+                SetStatus(AppStatus.Recording);
+                if (_settings.RestoreTargetAfterStart)
+                {
+                    _pasteService.RestoreTargetFocus(target);
+                }
+
+                return;
+            }
+
+            _pasteService.RestoreClipboard(target, _settings);
+            ShowMessage(started.Message);
+            if (!_settings.AllowForegroundFallback)
+            {
+                SetTemporaryError();
+                return;
+            }
+
+            _logger.Info("Background dictation start failed; foreground fallback is enabled.");
+        }
+
+        await BeginForegroundWebDictationAsync(target);
+    }
+
+    private async Task BeginForegroundWebDictationAsync(FocusTarget target)
+    {
         var chatWindow = _settings.LaunchChatGptOnHotkey
             ? await ChatGptWindowFinder.FindOrLaunchAsync(_settings, _logger, target.WindowHandle)
             : ChatGptWindowFinder.Find(_settings, _logger, target.WindowHandle);
@@ -120,7 +156,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
-        _session = new RecordingSession(target, chatWindow, chatInput);
+        _session = new RecordingSession(target, chatWindow, chatInput, IsBackground: false);
         _hotkeyWindow.SetEscapeEnabled(true);
         SetStatus(AppStatus.Recording);
 
@@ -146,6 +182,12 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
         try
         {
+            if (_settings.UseBackgroundChatGptBrowser)
+            {
+                await _backgroundChatGptBrowser.PrepareAsync();
+                return;
+            }
+
             var foregroundBeforeLaunch = NativeMethods.GetForegroundWindow();
             if (ChatGptWindowFinder.Find(_settings, _logger) != IntPtr.Zero)
             {
@@ -187,6 +229,48 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
 
         SetStatus(AppStatus.Pasting);
+        if (session.IsBackground)
+        {
+            await FinishBackgroundWebDictationAsync(session);
+            return;
+        }
+
+        await FinishForegroundWebDictationAsync(session);
+    }
+
+    private async Task FinishBackgroundWebDictationAsync(RecordingSession session)
+    {
+        var result = await _backgroundChatGptBrowser.StopDictationAndReadTextAsync();
+        if (!result.Ok)
+        {
+            _pasteService.RestoreTargetFocus(session.Target);
+            ShowMessage(result.Message);
+            SetStatus(AppStatus.Recording);
+            return;
+        }
+
+        var text = result.Text.Trim();
+        _logger.Info($"Text read from background ChatGPT web input. Length={text.Length}");
+
+        if (text.Length == 0 || AutomationHelpers.IsUnsafeCapturedText(text))
+        {
+            _pasteService.RestoreTargetFocus(session.Target);
+            _pasteService.RestoreClipboard(session.Target, _settings);
+            ShowMessage("Kein sicherer diktierter Text in ChatGPT gefunden. Es wurde nichts eingefuegt.");
+            ResetToIdle();
+            return;
+        }
+
+        if (!_pasteService.PasteIntoTarget(text, session.Target, _settings))
+        {
+            ShowMessage("Text konnte nicht eingefuegt werden.");
+        }
+
+        ResetToIdle();
+    }
+
+    private async Task FinishForegroundWebDictationAsync(RecordingSession session)
+    {
         var chatWindow = NativeMethods.IsWindow(session.ChatWindow)
             ? session.ChatWindow
             : ChatGptWindowFinder.Find(_settings, _logger, session.Target.WindowHandle);
@@ -244,7 +328,13 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
         _logger.Info("Abort requested.");
         var session = _session;
-        if (session is not null && NativeMethods.IsWindow(session.ChatWindow))
+        if (session is not null && session.IsBackground)
+        {
+            _ = _backgroundChatGptBrowser.AbortDictationAsync();
+            _pasteService.RestoreTargetFocus(session.Target);
+            _pasteService.RestoreClipboard(session.Target, _settings);
+        }
+        else if (session is not null && NativeMethods.IsWindow(session.ChatWindow))
         {
             _ = TrySendChatGptDictationHotkey(session.ChatWindow, session.ChatInput, requireSafeInput: false, out _);
             _pasteService.RestoreTargetFocus(session.Target);
@@ -370,6 +460,20 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
     }
 
+    private async Task OpenBackgroundBrowserForSetupAsync()
+    {
+        if (!_settings.UseBackgroundChatGptBrowser)
+        {
+            OpenPath(_settings.ChatGptUrl);
+            return;
+        }
+
+        var opened = await _backgroundChatGptBrowser.OpenForSetupAsync();
+        ShowMessage(opened.Ok
+            ? "ChatGPT-Profil wurde fuer Login/Mikrofonfreigabe geoeffnet."
+            : opened.Message);
+    }
+
     private void Exit(object? sender, EventArgs e)
     {
         _logger.Info("Application exiting.");
@@ -379,5 +483,6 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private sealed record RecordingSession(
         FocusTarget Target,
         IntPtr ChatWindow,
-        System.Windows.Automation.AutomationElement? ChatInput);
+        System.Windows.Automation.AutomationElement? ChatInput,
+        bool IsBackground);
 }

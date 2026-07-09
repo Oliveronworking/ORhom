@@ -9,6 +9,7 @@ internal sealed class AppSettings
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.Never
     };
@@ -21,6 +22,12 @@ internal sealed class AppSettings
     public bool LaunchChatGptOnHotkey { get; set; } = false;
     public bool PrepareChatGptOnStartup { get; set; } = true;
     public bool MinimizeChatGptAfterStartup { get; set; } = true;
+    public bool UseBackgroundChatGptBrowser { get; set; } = true;
+    public string BackgroundBrowserExecutablePath { get; set; } = string.Empty;
+    public string BackgroundBrowserUserDataDir { get; set; } = "%LOCALAPPDATA%\\OpenAIFlow\\ChatGptProfile";
+    public int BackgroundBrowserDebugPort { get; set; } = 9227;
+    public bool AllowForegroundFallback { get; set; } = false;
+    public bool KeepBackgroundBrowserMinimized { get; set; } = true;
     public bool RestoreTargetAfterStart { get; set; } = true;
     public bool RestoreClipboard { get; set; } = true;
     public int BrowserChromeExclusionTopPx { get; set; } = 120;

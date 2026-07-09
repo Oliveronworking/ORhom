@@ -1,0 +1,604 @@
+using System.Diagnostics;
+using System.IO;
+using Microsoft.Playwright;
+
+namespace ChatGptDictationBridge;
+
+internal sealed class BackgroundChatGptBrowserService : IDisposable
+{
+    private const int ConnectTimeoutMs = 3000;
+    private readonly AppSettings _settings;
+    private readonly AppLogger _logger;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private IPlaywright? _playwright;
+    private IBrowser? _browser;
+    private IBrowserContext? _context;
+    private IPage? _page;
+    private Process? _browserProcess;
+    private bool _disposed;
+
+    public BackgroundChatGptBrowserService(AppSettings settings, AppLogger logger)
+    {
+        _settings = settings;
+        _logger = logger;
+    }
+
+    public async Task<BackgroundDictationResult> StartDictationAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            var page = await EnsureReadyPageAsync();
+            if (page is null)
+            {
+                return BackgroundDictationResult.Failure("Hintergrundbrowser konnte nicht vorbereitet werden.");
+            }
+
+            if (!await FocusChatInputAsync(page))
+            {
+                return BackgroundDictationResult.Failure("ChatGPT-Eingabefeld nicht gefunden. Bitte im separaten Profil anmelden und Mikrofon erlauben.");
+            }
+
+            await SendDictationHotkeyAsync(page);
+            _logger.Info("Background dictation start triggered.");
+            return BackgroundDictationResult.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Background dictation start failed.", ex);
+            return BackgroundDictationResult.Failure("Hintergrund-Diktat konnte nicht gestartet werden. Bitte ChatGPT einmal oeffnen/anmelden/Mikrofon erlauben.");
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<BackgroundTextResult> StopDictationAndReadTextAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            var page = await EnsureReadyPageAsync();
+            if (page is null)
+            {
+                return BackgroundTextResult.Failure("Hintergrundbrowser ist nicht verbunden.");
+            }
+
+            if (!await FocusChatInputAsync(page))
+            {
+                return BackgroundTextResult.Failure("ChatGPT-Eingabefeld nicht gefunden.");
+            }
+
+            await SendDictationHotkeyAsync(page);
+            _logger.Info("Background dictation stop triggered.");
+
+            await Task.Delay(Math.Max(_settings.SettleDelayMs, 0));
+            var text = await WaitForPromptTextAsync(page);
+            _logger.Info($"Background ChatGPT input text read. Length={text.Length}");
+
+            if (text.Length > 0)
+            {
+                await ClearPromptAsync(page);
+            }
+
+            return BackgroundTextResult.Success(text);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Background dictation stop/read failed.", ex);
+            return BackgroundTextResult.Failure("Diktat konnte im Hintergrund nicht gestoppt oder gelesen werden.");
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task AbortDictationAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            var page = await EnsureReadyPageAsync();
+            if (page is null)
+            {
+                return;
+            }
+
+            await SendDictationHotkeyAsync(page);
+            await ClearPromptAsync(page);
+            _logger.Info("Background dictation abort triggered.");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Background dictation abort failed.", ex);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task PrepareAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            _ = await EnsureReadyPageAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Background ChatGPT startup preparation failed.", ex);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<BackgroundDictationResult> OpenForSetupAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (!StartBrowserProcess(visibleForSetup: true))
+            {
+                return BackgroundDictationResult.Failure("ChatGPT-Profil konnte nicht geoeffnet werden.");
+            }
+
+            _logger.Info("Background browser opened visibly for explicit setup.");
+            return BackgroundDictationResult.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Background browser explicit setup open failed.", ex);
+            return BackgroundDictationResult.Failure("ChatGPT-Profil konnte nicht geoeffnet werden.");
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task<IPage?> EnsureReadyPageAsync()
+    {
+        if (_page is { IsClosed: false } page && IsChatGptUrl(page.Url))
+        {
+            _logger.Info("Background ChatGPT tab reused.");
+            return page;
+        }
+
+        if (!await EnsureConnectedAsync())
+        {
+            return null;
+        }
+
+        _context = _browser!.Contexts.FirstOrDefault();
+        if (_context is null)
+        {
+            _logger.Info("CDP connection did not expose a browser context.");
+            return null;
+        }
+
+        await GrantMicrophonePermissionAsync(_context);
+
+        _page = _context.Pages.FirstOrDefault(candidate => !candidate.IsClosed && IsChatGptUrl(candidate.Url));
+        if (_page is null)
+        {
+            _page = _context.Pages.FirstOrDefault(candidate => !candidate.IsClosed);
+        }
+
+        if (_page is null)
+        {
+            _page = await _context.NewPageAsync();
+        }
+
+        if (!IsChatGptUrl(_page.Url))
+        {
+            await _page.GotoAsync(_settings.ChatGptUrl, new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.DOMContentLoaded,
+                Timeout = 20000
+            });
+        }
+
+        _logger.Info("Background ChatGPT tab found.");
+        return _page;
+    }
+
+    private async Task<bool> EnsureConnectedAsync()
+    {
+        if (_browser?.IsConnected == true)
+        {
+            return true;
+        }
+
+        _browser = null;
+        _context = null;
+        _page = null;
+
+        if (await TryConnectAsync())
+        {
+            return true;
+        }
+
+        if (!await LaunchBrowserAsync())
+        {
+            return false;
+        }
+
+        var start = Environment.TickCount64;
+        while (Environment.TickCount64 - start < 10000)
+        {
+            if (await TryConnectAsync())
+            {
+                return true;
+            }
+
+            await Task.Delay(300);
+        }
+
+        _logger.Info("CDP connection timed out after launching background browser.");
+        return false;
+    }
+
+    private async Task<bool> TryConnectAsync()
+    {
+        try
+        {
+            _playwright ??= await Playwright.CreateAsync();
+            _browser = await _playwright.Chromium.ConnectOverCDPAsync(
+                $"http://127.0.0.1:{_settings.BackgroundBrowserDebugPort}",
+                new BrowserTypeConnectOverCDPOptions { Timeout = ConnectTimeoutMs });
+            _logger.Info("CDP/Playwright connected to background browser.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("CDP/Playwright connection attempt failed.", ex);
+            return false;
+        }
+    }
+
+    private async Task<bool> LaunchBrowserAsync()
+    {
+        if (!StartBrowserProcess(visibleForSetup: false))
+        {
+            return false;
+        }
+
+        if (_settings.KeepBackgroundBrowserMinimized)
+        {
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(1200);
+                MinimizeOwnedBrowserWindow();
+            });
+        }
+
+        await Task.Delay(500);
+        return true;
+    }
+
+    private bool StartBrowserProcess(bool visibleForSetup)
+    {
+        var executable = ResolveBrowserExecutablePath();
+        if (string.IsNullOrWhiteSpace(executable))
+        {
+            _logger.Info("No Chrome or Edge executable found for background browser.");
+            return false;
+        }
+
+        var userDataDir = ExpandPath(_settings.BackgroundBrowserUserDataDir);
+        Directory.CreateDirectory(userDataDir);
+
+        var shouldMinimize = _settings.KeepBackgroundBrowserMinimized && !visibleForSetup;
+        var args = new List<string>
+        {
+            $"--remote-debugging-port={_settings.BackgroundBrowserDebugPort}",
+            $"--user-data-dir=\"{userDataDir}\"",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-background-timer-throttling",
+            "--disable-renderer-backgrounding",
+            "--disable-backgrounding-occluded-windows",
+            "--window-size=1200,900",
+            "--new-window",
+            _settings.ChatGptUrl
+        };
+
+        if (shouldMinimize)
+        {
+            args.Insert(args.Count - 2, "--start-minimized");
+        }
+
+        var startInfo = new ProcessStartInfo(executable, string.Join(" ", args))
+        {
+            UseShellExecute = false,
+            WindowStyle = shouldMinimize
+                ? ProcessWindowStyle.Minimized
+                : ProcessWindowStyle.Normal
+        };
+
+        _browserProcess = Process.Start(startInfo);
+        if (_browserProcess is null)
+        {
+            _logger.Info("Background browser process could not be started.");
+            return false;
+        }
+
+        _logger.Info($"Background browser started. Browser='{Path.GetFileName(executable)}' DebugPort={_settings.BackgroundBrowserDebugPort} VisibleSetup={visibleForSetup}");
+        return true;
+    }
+
+    private void MinimizeOwnedBrowserWindow()
+    {
+        try
+        {
+            _browserProcess?.Refresh();
+            var handle = _browserProcess?.MainWindowHandle ?? IntPtr.Zero;
+            if (handle != IntPtr.Zero && NativeMethods.IsWindow(handle))
+            {
+                NativeMethods.ShowWindow(handle, NativeMethods.SwMinimize);
+                _logger.Info("Background browser window minimized.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not minimize background browser window.", ex);
+        }
+    }
+
+    private async Task GrantMicrophonePermissionAsync(IBrowserContext context)
+    {
+        try
+        {
+            var origin = new Uri(_settings.ChatGptUrl).GetLeftPart(UriPartial.Authority);
+            await context.GrantPermissionsAsync(["microphone"], new BrowserContextGrantPermissionsOptions { Origin = origin });
+            _logger.Info("Background browser microphone permission requested through CDP.");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Background browser microphone permission request failed.", ex);
+        }
+    }
+
+    private async Task<bool> FocusChatInputAsync(IPage page)
+    {
+        var timeoutMs = Math.Max(_settings.ReadTextTimeoutMs, 3000);
+        var start = Environment.TickCount64;
+        while (Environment.TickCount64 - start < timeoutMs)
+        {
+            if (await TryFocusChatInputOnceAsync(page))
+            {
+                return true;
+            }
+
+            await Task.Delay(250);
+        }
+
+        _logger.Info("Background ChatGPT input was not found or could not be focused.");
+        return false;
+    }
+
+    private static async Task<bool> TryFocusChatInputOnceAsync(IPage page)
+    {
+        var focused = await page.EvaluateAsync<bool>(
+            """
+            () => {
+              const input = (() => {
+                const selectors = [
+                  '#prompt-textarea',
+                  '[data-testid="composer-input"]',
+                  'textarea[placeholder*="Message"]',
+                  'textarea[placeholder*="Nachricht"]',
+                  'textarea',
+                  'div[contenteditable="true"]'
+                ];
+                for (const selector of selectors) {
+                  for (const element of document.querySelectorAll(selector)) {
+                    const rect = element.getBoundingClientRect();
+                    const disabled = element.disabled || element.getAttribute('aria-disabled') === 'true';
+                    if (!disabled && rect.width > 80 && rect.height > 18) {
+                      return element;
+                    }
+                  }
+                }
+                return null;
+              })();
+
+              if (!input) {
+                return false;
+              }
+
+              input.focus({ preventScroll: true });
+              if (input.isContentEditable) {
+                const range = document.createRange();
+                range.selectNodeContents(input);
+                range.collapse(false);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+              } else if (typeof input.selectionStart === 'number') {
+                const length = input.value.length;
+                input.setSelectionRange(length, length);
+              }
+
+              return document.activeElement === input || input.contains(document.activeElement);
+            }
+            """);
+
+        return focused;
+    }
+
+    private async Task SendDictationHotkeyAsync(IPage page)
+    {
+        await page.Keyboard.PressAsync(ToPlaywrightHotkey(_settings.ChatGptDictationHotkey));
+    }
+
+    private async Task<string> WaitForPromptTextAsync(IPage page)
+    {
+        var timeoutMs = Math.Max(_settings.ReadTextTimeoutMs, 1000);
+        var start = Environment.TickCount64;
+        while (Environment.TickCount64 - start < timeoutMs)
+        {
+            var text = (await ReadPromptTextAsync(page)).Trim();
+            if (text.Length > 0)
+            {
+                return text;
+            }
+
+            await Task.Delay(250);
+        }
+
+        return string.Empty;
+    }
+
+    private static Task<string> ReadPromptTextAsync(IPage page)
+    {
+        return page.EvaluateAsync<string>(
+            """
+            () => {
+              const selectors = [
+                '#prompt-textarea',
+                '[data-testid="composer-input"]',
+                'textarea',
+                'div[contenteditable="true"]'
+              ];
+              for (const selector of selectors) {
+                for (const element of document.querySelectorAll(selector)) {
+                  const rect = element.getBoundingClientRect();
+                  if (rect.width <= 80 || rect.height <= 18) {
+                    continue;
+                  }
+
+                  const text = element.isContentEditable
+                    ? (element.innerText || element.textContent || '')
+                    : (element.value || '');
+                  if (text && text.trim().length > 0) {
+                    return text.trim();
+                  }
+                }
+              }
+
+              return '';
+            }
+            """);
+    }
+
+    private async Task ClearPromptAsync(IPage page)
+    {
+        var cleared = await page.EvaluateAsync<bool>(
+            """
+            () => {
+              const selectors = [
+                '#prompt-textarea',
+                '[data-testid="composer-input"]',
+                'textarea',
+                'div[contenteditable="true"]'
+              ];
+              for (const selector of selectors) {
+                for (const element of document.querySelectorAll(selector)) {
+                  const rect = element.getBoundingClientRect();
+                  if (rect.width <= 80 || rect.height <= 18) {
+                    continue;
+                  }
+
+                  element.focus({ preventScroll: true });
+                  if (element.isContentEditable) {
+                    element.textContent = '';
+                  } else {
+                    element.value = '';
+                  }
+
+                  element.dispatchEvent(new InputEvent('input', {
+                    bubbles: true,
+                    inputType: 'deleteContentBackward',
+                    data: null
+                  }));
+                  element.dispatchEvent(new Event('change', { bubbles: true }));
+                  return true;
+                }
+              }
+
+              return false;
+            }
+            """);
+
+        _logger.Info(cleared
+            ? "Background ChatGPT input cleared."
+            : "Background ChatGPT input clear skipped because no prompt was found.");
+    }
+
+    private string ResolveBrowserExecutablePath()
+    {
+        var configured = ExpandPath(_settings.BackgroundBrowserExecutablePath);
+        if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured))
+        {
+            return configured;
+        }
+
+        var candidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Google", "Chrome", "Application", "chrome.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Google", "Chrome", "Application", "chrome.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Google", "Chrome", "Application", "chrome.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft", "Edge", "Application", "msedge.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft", "Edge", "Application", "msedge.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "Edge", "Application", "msedge.exe")
+        };
+
+        return candidates.FirstOrDefault(File.Exists) ?? string.Empty;
+    }
+
+    private static string ExpandPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return string.Empty;
+        }
+
+        return Environment.ExpandEnvironmentVariables(path);
+    }
+
+    private static bool IsChatGptUrl(string? url)
+    {
+        return !string.IsNullOrWhiteSpace(url) &&
+               url.Contains("chatgpt.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ToPlaywrightHotkey(string hotkey)
+    {
+        return string.Join("+", hotkey
+            .Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(part => part.Equals("Ctrl", StringComparison.OrdinalIgnoreCase) ? "Control" : part));
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _gate.Dispose();
+        _browser?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        _playwright?.Dispose();
+    }
+}
+
+internal sealed record BackgroundDictationResult(bool Ok, string Message)
+{
+    public static BackgroundDictationResult Success() => new(true, string.Empty);
+
+    public static BackgroundDictationResult Failure(string message) => new(false, message);
+}
+
+internal sealed record BackgroundTextResult(bool Ok, string Text, string Message)
+{
+    public static BackgroundTextResult Success(string text) => new(true, text, string.Empty);
+
+    public static BackgroundTextResult Failure(string message) => new(false, string.Empty, message);
+}
