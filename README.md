@@ -19,6 +19,7 @@ Wenn ChatGPT noch nicht offen ist, wird beim Start der Tray-App ein separater Hi
 Beim ersten Start kann einmal Login und Mikrofonfreigabe im separaten Profil noetig sein. Wenn der Hintergrundmodus das ChatGPT-Eingabefeld nicht findet oder die Diktierfunktion nicht starten kann, zeigt die App eine Tray-Meldung. Sie holt ChatGPT standardmaessig nicht ungefragt nach vorne.
 
 Fuer die einmalige Einrichtung gibt es im Tray-Menue den Punkt `ChatGPT-Profil einrichten`. Das oeffnet das separate Profil bewusst sichtbar, damit Login und Mikrofonfreigabe erledigt werden koennen.
+Wenn ChatGPT beim ersten F8 noch nicht bereit ist, oeffnet die App dieses Setup-Fenster automatisch. Dabei werden ChatGPT und, wenn der Browser es erlaubt, die Mikrofon-Einstellungsseite des separaten Profils geoeffnet. Nach einem erfolgreichen Diktat-Start wird das Fenster wieder minimiert.
 
 ## Nutzung
 
@@ -29,7 +30,7 @@ Fuer die einmalige Einrichtung gibt es im Tray-Menue den Punkt `ChatGPT-Profil e
 5. Wieder F8 druecken.
 6. Die App stoppt das Diktat im Hintergrund, liest nur die Textlaenge ins Log und fuegt den Text bei deinem urspruenglichen Cursor ein.
 
-Wichtig: `Ctrl+Shift+D` wird nur gesendet, wenn vorher ein sicheres ChatGPT-Eingabefeld fokussiert wurde. Wenn die App nur die Chrome-Adressleiste oder kein passendes Feld findet, sendet sie keinen Shortcut.
+Wichtig: Beim Start wird `Ctrl+Shift+D` nur gesendet, wenn vorher ein ChatGPT-Eingabefeld im Hintergrund-Tab gefunden wurde. Beim Stop wird der Shortcut direkt an die ChatGPT-Seite gesendet und danach auf den fertigen Prompt-Text gewartet, weil ChatGPT waehrend laufender Diktat-Aufnahme das Eingabefeld kurz umbauen kann.
 
 Wenn `useBackgroundChatGptBrowser=false` gesetzt ist, nutzt die App wieder die alte UIAutomation-Logik. Wenn `allowForegroundFallback=true` gesetzt ist, darf diese alte Logik auch als Fallback genutzt werden; standardmaessig ist das deaktiviert, damit ChatGPT bei F8 nicht sichtbar aufpoppt.
 
@@ -53,6 +54,9 @@ Wenn `useBackgroundChatGptBrowser=false` gesetzt ist, nutzt die App wieder die a
   "backgroundBrowserDebugPort": 9227,
   "allowForegroundFallback": false,
   "keepBackgroundBrowserMinimized": true,
+  "openSetupOnBackgroundFailure": true,
+  "openMicrophoneSettingsOnSetup": true,
+  "minimizeBackgroundBrowserAfterSuccessfulStart": true,
   "restoreTargetAfterStart": true,
   "restoreClipboard": true,
   "browserChromeExclusionTopPx": 120,
@@ -72,6 +76,9 @@ Neue Hintergrund-Settings:
 - `backgroundBrowserDebugPort`: lokaler CDP-Port des Hintergrundbrowsers.
 - `allowForegroundFallback`: erlaubt die alte sichtbare UIAutomation nur, wenn bewusst auf `true` gesetzt.
 - `keepBackgroundBrowserMinimized`: startet und haelt den separaten Browser minimiert.
+- `openSetupOnBackgroundFailure`: oeffnet bei fehlendem ChatGPT-Eingabefeld automatisch das sichtbare Setup-Fenster.
+- `openMicrophoneSettingsOnSetup`: oeffnet beim Setup zusaetzlich die Browser-Mikrofonseite des separaten Profils.
+- `minimizeBackgroundBrowserAfterSuccessfulStart`: minimiert das Setup-Fenster wieder, sobald Diktat erfolgreich gestartet wurde.
 
 Wenn ChatGPT im Hintergrund nicht vorbereitet werden kann oder das Eingabefeld nicht gefunden wird, pruefe zuerst:
 

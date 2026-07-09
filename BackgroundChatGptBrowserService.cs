@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text.Json;
 using Microsoft.Playwright;
 
 namespace ChatGptDictationBridge;
@@ -15,6 +16,7 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
     private IBrowserContext? _context;
     private IPage? _page;
     private Process? _browserProcess;
+    private bool _setupWindowVisible;
     private bool _disposed;
 
     public BackgroundChatGptBrowserService(AppSettings settings, AppLogger logger)
@@ -36,10 +38,21 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
 
             if (!await FocusChatInputAsync(page))
             {
+                if (_settings.OpenSetupOnBackgroundFailure)
+                {
+                    await OpenForSetupCoreAsync();
+                    return BackgroundDictationResult.Failure("ChatGPT ist noch nicht bereit. Das separate Profil wurde fuer Login/Mikrofonwahl geoeffnet.");
+                }
+
                 return BackgroundDictationResult.Failure("ChatGPT-Eingabefeld nicht gefunden. Bitte im separaten Profil anmelden und Mikrofon erlauben.");
             }
 
             await SendDictationHotkeyAsync(page);
+            if (_setupWindowVisible && _settings.MinimizeBackgroundBrowserAfterSuccessfulStart)
+            {
+                await MinimizeBrowserWindowAsync(page);
+            }
+
             _logger.Info("Background dictation start triggered.");
             return BackgroundDictationResult.Success();
         }
@@ -63,11 +76,6 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
             if (page is null)
             {
                 return BackgroundTextResult.Failure("Hintergrundbrowser ist nicht verbunden.");
-            }
-
-            if (!await FocusChatInputAsync(page))
-            {
-                return BackgroundTextResult.Failure("ChatGPT-Eingabefeld nicht gefunden.");
             }
 
             await SendDictationHotkeyAsync(page);
@@ -142,12 +150,7 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
         await _gate.WaitAsync();
         try
         {
-            if (!StartBrowserProcess(visibleForSetup: true))
-            {
-                return BackgroundDictationResult.Failure("ChatGPT-Profil konnte nicht geoeffnet werden.");
-            }
-
-            _logger.Info("Background browser opened visibly for explicit setup.");
+            await OpenForSetupCoreAsync();
             return BackgroundDictationResult.Success();
         }
         catch (Exception ex)
@@ -161,6 +164,30 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
         }
     }
 
+    private async Task OpenForSetupCoreAsync()
+    {
+        if (!await EnsureConnectedAsync(visibleForSetup: true))
+        {
+            throw new InvalidOperationException("Background browser could not be connected for setup.");
+        }
+
+        _context = _browser!.Contexts.FirstOrDefault();
+        if (_context is null)
+        {
+            throw new InvalidOperationException("Background browser context was not available for setup.");
+        }
+
+        _page = await EnsureChatGptPageAsync(_context);
+        if (_settings.OpenMicrophoneSettingsOnSetup)
+        {
+            await OpenMicrophoneSettingsPageAsync(_context);
+        }
+
+        await ShowBrowserWindowForSetupAsync(_page);
+        _setupWindowVisible = true;
+        _logger.Info("Background browser opened visibly for setup.");
+    }
+
     private async Task<IPage?> EnsureReadyPageAsync()
     {
         if (_page is { IsClosed: false } page && IsChatGptUrl(page.Url))
@@ -169,7 +196,7 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
             return page;
         }
 
-        if (!await EnsureConnectedAsync())
+        if (!await EnsureConnectedAsync(visibleForSetup: false))
         {
             return null;
         }
@@ -183,31 +210,12 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
 
         await GrantMicrophonePermissionAsync(_context);
 
-        _page = _context.Pages.FirstOrDefault(candidate => !candidate.IsClosed && IsChatGptUrl(candidate.Url));
-        if (_page is null)
-        {
-            _page = _context.Pages.FirstOrDefault(candidate => !candidate.IsClosed);
-        }
-
-        if (_page is null)
-        {
-            _page = await _context.NewPageAsync();
-        }
-
-        if (!IsChatGptUrl(_page.Url))
-        {
-            await _page.GotoAsync(_settings.ChatGptUrl, new PageGotoOptions
-            {
-                WaitUntil = WaitUntilState.DOMContentLoaded,
-                Timeout = 20000
-            });
-        }
-
+        _page = await EnsureChatGptPageAsync(_context);
         _logger.Info("Background ChatGPT tab found.");
         return _page;
     }
 
-    private async Task<bool> EnsureConnectedAsync()
+    private async Task<bool> EnsureConnectedAsync(bool visibleForSetup)
     {
         if (_browser?.IsConnected == true)
         {
@@ -223,7 +231,7 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
             return true;
         }
 
-        if (!await LaunchBrowserAsync())
+        if (!await LaunchBrowserAsync(visibleForSetup))
         {
             return false;
         }
@@ -261,14 +269,14 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
         }
     }
 
-    private async Task<bool> LaunchBrowserAsync()
+    private async Task<bool> LaunchBrowserAsync(bool visibleForSetup)
     {
-        if (!StartBrowserProcess(visibleForSetup: false))
+        if (!StartBrowserProcess(visibleForSetup))
         {
             return false;
         }
 
-        if (_settings.KeepBackgroundBrowserMinimized)
+        if (_settings.KeepBackgroundBrowserMinimized && !visibleForSetup)
         {
             _ = Task.Run(async () =>
             {
@@ -307,6 +315,11 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
             "--new-window",
             _settings.ChatGptUrl
         };
+
+        if (visibleForSetup && _settings.OpenMicrophoneSettingsOnSetup)
+        {
+            args.Add(GetMicrophoneSettingsUrl(executable));
+        }
 
         if (shouldMinimize)
         {
@@ -347,6 +360,105 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
         catch (Exception ex)
         {
             _logger.Error("Could not minimize background browser window.", ex);
+        }
+    }
+
+    private async Task<IPage> EnsureChatGptPageAsync(IBrowserContext context)
+    {
+        var page = context.Pages.FirstOrDefault(candidate => !candidate.IsClosed && IsChatGptUrl(candidate.Url));
+        if (page is null)
+        {
+            page = context.Pages.FirstOrDefault(candidate => !candidate.IsClosed && !IsBrowserSettingsUrl(candidate.Url));
+        }
+
+        if (page is null)
+        {
+            page = await context.NewPageAsync();
+        }
+
+        if (!IsChatGptUrl(page.Url))
+        {
+            await page.GotoAsync(_settings.ChatGptUrl, new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.DOMContentLoaded,
+                Timeout = 20000
+            });
+        }
+
+        return page;
+    }
+
+    private async Task OpenMicrophoneSettingsPageAsync(IBrowserContext context)
+    {
+        try
+        {
+            var url = GetMicrophoneSettingsUrl(ResolveBrowserExecutablePath());
+            if (context.Pages.Any(page => !page.IsClosed && page.Url.StartsWith(url, StringComparison.OrdinalIgnoreCase)))
+            {
+                _logger.Info("Browser microphone settings tab already open.");
+                return;
+            }
+
+            var page = await context.NewPageAsync();
+            await page.GotoAsync(url, new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.DOMContentLoaded,
+                Timeout = 8000
+            });
+            _logger.Info("Browser microphone settings tab opened for setup.");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not open browser microphone settings tab.", ex);
+        }
+    }
+
+    private async Task ShowBrowserWindowForSetupAsync(IPage page)
+    {
+        await SetBrowserWindowStateAsync(page, "normal");
+        await page.BringToFrontAsync();
+    }
+
+    private async Task MinimizeBrowserWindowAsync(IPage page)
+    {
+        if (!_settings.KeepBackgroundBrowserMinimized)
+        {
+            return;
+        }
+
+        await SetBrowserWindowStateAsync(page, "minimized");
+        _setupWindowVisible = false;
+        _logger.Info("Background browser window minimized after successful dictation start.");
+    }
+
+    private async Task SetBrowserWindowStateAsync(IPage page, string windowState)
+    {
+        try
+        {
+            var session = await page.Context.NewCDPSessionAsync(page);
+            var response = await session.SendAsync("Browser.getWindowForTarget");
+            if (response is not JsonElement responseElement ||
+                responseElement.ValueKind != JsonValueKind.Object ||
+                !responseElement.TryGetProperty("windowId", out var windowIdElement) ||
+                !windowIdElement.TryGetInt32(out var windowId))
+            {
+                _logger.Info($"Browser window state '{windowState}' skipped because CDP did not return a window id.");
+                return;
+            }
+
+            await session.SendAsync("Browser.setWindowBounds", new Dictionary<string, object>
+            {
+                ["windowId"] = windowId,
+                ["bounds"] = new Dictionary<string, object>
+                {
+                    ["windowState"] = windowState
+                }
+            });
+            _logger.Info($"Browser window state set through CDP. State={windowState}");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Could not set browser window state through CDP. State={windowState}", ex);
         }
     }
 
@@ -391,8 +503,13 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
                 const selectors = [
                   '#prompt-textarea',
                   '[data-testid="composer-input"]',
+                  '[contenteditable="true"][data-lexical-editor="true"]',
+                  'div[role="textbox"]',
+                  'div.ProseMirror',
                   'textarea[placeholder*="Message"]',
                   'textarea[placeholder*="Nachricht"]',
+                  'textarea[aria-label*="Message"]',
+                  'textarea[aria-label*="Nachricht"]',
                   'textarea',
                   'div[contenteditable="true"]'
                 ];
@@ -463,6 +580,9 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
               const selectors = [
                 '#prompt-textarea',
                 '[data-testid="composer-input"]',
+                '[contenteditable="true"][data-lexical-editor="true"]',
+                'div[role="textbox"]',
+                'div.ProseMirror',
                 'textarea',
                 'div[contenteditable="true"]'
               ];
@@ -495,6 +615,9 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
               const selectors = [
                 '#prompt-textarea',
                 '[data-testid="composer-input"]',
+                '[contenteditable="true"][data-lexical-editor="true"]',
+                'div[role="textbox"]',
+                'div.ProseMirror',
                 'textarea',
                 'div[contenteditable="true"]'
               ];
@@ -566,6 +689,20 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
     {
         return !string.IsNullOrWhiteSpace(url) &&
                url.Contains("chatgpt.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsBrowserSettingsUrl(string? url)
+    {
+        return !string.IsNullOrWhiteSpace(url) &&
+               (url.StartsWith("chrome://settings", StringComparison.OrdinalIgnoreCase) ||
+                url.StartsWith("edge://settings", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string GetMicrophoneSettingsUrl(string executable)
+    {
+        return Path.GetFileName(executable).Equals("msedge.exe", StringComparison.OrdinalIgnoreCase)
+            ? "edge://settings/content/microphone"
+            : "chrome://settings/content/microphone";
     }
 
     private static string ToPlaywrightHotkey(string hotkey)

@@ -28,6 +28,9 @@ internal sealed class AppSettings
     public int BackgroundBrowserDebugPort { get; set; } = 9227;
     public bool AllowForegroundFallback { get; set; } = false;
     public bool KeepBackgroundBrowserMinimized { get; set; } = true;
+    public bool OpenSetupOnBackgroundFailure { get; set; } = true;
+    public bool OpenMicrophoneSettingsOnSetup { get; set; } = true;
+    public bool MinimizeBackgroundBrowserAfterSuccessfulStart { get; set; } = true;
     public bool RestoreTargetAfterStart { get; set; } = true;
     public bool RestoreClipboard { get; set; } = true;
     public int BrowserChromeExclusionTopPx { get; set; } = 120;
