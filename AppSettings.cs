@@ -41,11 +41,11 @@ internal sealed class AppSettings
     public double MaxChatGptInputWindowWidthRatio { get; set; } = 0.92;
     public int RecordingStateTimeoutMs { get; set; } = 5000;
     public int DictationResultTimeoutMs { get; set; } = 30000;
-    public int DictationResultPollIntervalMs { get; set; } = 250;
-    public int DictationSettleDelayMs { get; set; } = 1500;
+    public int DictationResultPollIntervalMs { get; set; } = 100;
+    public int DictationSettleDelayMs { get; set; } = 0;
     public bool EnableChatGptInputDiagnostics { get; set; } = true;
-    public int PasteDelayMs { get; set; } = 100;
-    public int RestoreClipboardDelayMs { get; set; } = 300;
+    public int PasteDelayMs { get; set; } = 25;
+    public int RestoreClipboardDelayMs { get; set; } = 180;
     public bool BlockPasswordFields { get; set; } = true;
 
     [JsonIgnore]

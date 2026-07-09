@@ -26,10 +26,10 @@
   "maxChatGptInputWindowWidthRatio": 0.92,
   "recordingStateTimeoutMs": 5000,
   "dictationResultTimeoutMs": 30000,
-  "dictationResultPollIntervalMs": 250,
-  "dictationSettleDelayMs": 1500,
+  "dictationResultPollIntervalMs": 100,
+  "dictationSettleDelayMs": 0,
   "enableChatGptInputDiagnostics": true,
-  "pasteDelayMs": 100,
-  "restoreClipboardDelayMs": 300,
+  "pasteDelayMs": 25,
+  "restoreClipboardDelayMs": 180,
   "blockPasswordFields": true
 }

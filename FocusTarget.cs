@@ -7,5 +7,6 @@ internal sealed record FocusTarget(
     string WindowTitle,
     string WindowClass,
     AutomationElement? FocusedElement,
+    bool AvoidAutomationElementFocus,
     bool IsPasswordField,
     IDataObject? OriginalClipboard);

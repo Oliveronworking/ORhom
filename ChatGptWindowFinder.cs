@@ -96,12 +96,20 @@ internal static class ChatGptWindowFinder
             if (NativeMethods.IsIconic(hWnd))
             {
                 NativeMethods.ShowWindow(hWnd, NativeMethods.SwRestore);
-                Thread.Sleep(150);
+                Thread.Sleep(70);
             }
 
-            NativeMethods.SetForegroundWindow(hWnd);
-            Thread.Sleep(180);
-            return NativeMethods.GetForegroundWindow() == hWnd;
+            if (NativeMethods.GetForegroundWindow() != hWnd)
+            {
+                if (!NativeMethods.ForceForegroundWindow(hWnd, timeoutMs: 160))
+                {
+                    return false;
+                }
+
+                Thread.Sleep(35);
+            }
+
+            return true;
         }
         catch (Exception ex)
         {

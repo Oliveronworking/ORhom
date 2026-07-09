@@ -69,6 +69,8 @@ Idle -> Starting -> Recording -> Stopping -> ReadingText -> Pasting -> Idle
 
 Die Desktop-Anzeige spiegelt diese Zustände als `Diktierung startet`, `Hört zu`, `Aufnahme wird beendet`, `Text wird transkribiert` und `Text wird eingefügt`. Im Zustand `Idle` ist sie vollständig ausgeblendet.
 
+Beim Einfügen wird das ursprüngliche Zielfenster verifiziert aktiviert. In VS Code/Codex und anderen Chromium-/Electron-WebViews wird der interne `RootWebArea`-/`ProseMirror`-Fokus bewusst nicht überschrieben, damit Cursor und `activeElement` erhalten bleiben. `Ctrl+V` wird über Win32 `SendInput` versendet; nur ein bestätigter Dispatch wird als Erfolg protokolliert.
+
 ## Diagnose im Tray-Menü
 
 - **ChatGPT Profil öffnen** öffnet ChatGPT sichtbar mit Profile 3 für Anmeldung und Mikrofonfreigabe.
@@ -97,12 +99,14 @@ Die mitgelieferte `settings.json` enthält insbesondere:
   "recordingOverlayBottomOffsetPx": 72,
   "recordingStateTimeoutMs": 5000,
   "dictationResultTimeoutMs": 30000,
-  "dictationResultPollIntervalMs": 250,
-  "dictationSettleDelayMs": 1500
+  "dictationResultPollIntervalMs": 100,
+  "dictationSettleDelayMs": 0,
+  "pasteDelayMs": 25,
+  "restoreClipboardDelayMs": 180
 }
 ```
 
-`dictationResultTimeoutMs` gilt für das wiederholte frische Suchen und Lesen des ChatGPT-Composers. Ein einzelnes leeres Ergebnis beendet die Suche nicht.
+`dictationResultTimeoutMs` gilt für das wiederholte frische Suchen und Lesen des ChatGPT-Composers. Ein einzelnes leeres Ergebnis beendet die Suche nicht. Der feste Settle-Delay ist deaktiviert, weil die robuste Leseroutine selbst pollt und dadurch schneller reagieren kann.
 
 ## Logs
 

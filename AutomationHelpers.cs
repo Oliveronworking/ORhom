@@ -52,7 +52,7 @@ internal static class AutomationHelpers
         try
         {
             element.SetFocus();
-            Thread.Sleep(80);
+            Thread.Sleep(40);
             return true;
         }
         catch (Exception ex)
@@ -60,6 +60,77 @@ internal static class AutomationHelpers
             logger.Error("Could not focus target automation element.", ex);
             return false;
         }
+    }
+
+    public static bool ShouldPreserveWebViewFocus(AutomationElement? element)
+    {
+        if (element is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var current = element.Current;
+            return current.ControlType == ControlType.Document ||
+                   current.AutomationId.Equals("RootWebArea", StringComparison.OrdinalIgnoreCase) ||
+                   current.ClassName.Contains("ProseMirror", StringComparison.OrdinalIgnoreCase) ||
+                   current.ClassName.Contains("Chrome_RenderWidgetHost", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    public static SafeFocusMetadata GetSafeFocusMetadata(AutomationElement? element)
+    {
+        if (element is null)
+        {
+            return new SafeFocusMetadata("<null>", string.Empty, string.Empty);
+        }
+
+        try
+        {
+            var current = element.Current;
+            return new SafeFocusMetadata(
+                current.ControlType.ProgrammaticName ?? string.Empty,
+                current.ClassName ?? string.Empty,
+                current.AutomationId ?? string.Empty);
+        }
+        catch
+        {
+            return new SafeFocusMetadata("<stale>", string.Empty, string.Empty);
+        }
+    }
+
+    public static bool IsElementInWindow(AutomationElement? element, IntPtr windowHandle)
+    {
+        if (element is null || windowHandle == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        try
+        {
+            var current = element;
+            for (var depth = 0; depth < 80 && current is not null; depth++)
+            {
+                var nativeHandle = new IntPtr(current.Current.NativeWindowHandle);
+                if (nativeHandle == windowHandle)
+                {
+                    return true;
+                }
+
+                current = TreeWalker.RawViewWalker.GetParent(current);
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return false;
     }
 
     public static AutomationElement? FocusChatGptInput(IntPtr chatWindow, AppSettings settings, AppLogger logger)
@@ -189,7 +260,8 @@ internal static class AutomationHelpers
     public static async Task<ChatGptDictationReadResult> ReadChatGptTextRobustlyAsync(
         IntPtr chatWindow,
         AppSettings settings,
-        AppLogger logger)
+        AppLogger logger,
+        bool windowAlreadyPrepared = false)
     {
         var timeoutMs = Math.Max(settings.DictationResultTimeoutMs, 1000);
         var pollIntervalMs = Math.Clamp(settings.DictationResultPollIntervalMs, 100, 1000);
@@ -207,7 +279,8 @@ internal static class AutomationHelpers
                 continue;
             }
 
-            if (!ChatGptWindowFinder.PrepareForAutomation(chatWindow, settings, logger))
+            if (!(windowAlreadyPrepared && attempts == 1) &&
+                !ChatGptWindowFinder.PrepareForAutomation(chatWindow, settings, logger))
             {
                 logger.Info($"ChatGPT dictated text read attempt could not prepare window. Attempt={attempts}");
                 await Task.Delay(pollIntervalMs);
@@ -826,3 +899,5 @@ internal sealed record ChatGptDictationReadResult(
     string Method,
     int Attempts,
     AutomationElement? Input);
+
+internal sealed record SafeFocusMetadata(string ControlType, string ClassName, string AutomationId);

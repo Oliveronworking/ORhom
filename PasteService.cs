@@ -17,10 +17,17 @@ internal sealed class PasteService
             return false;
         }
 
+        var dispatched = false;
         try
         {
-            RestoreTargetFocus(target);
-            if (settings.BlockPasswordFields && AutomationHelpers.IsPasswordElement(AutomationHelpers.GetFocusedElement(_logger)))
+            if (!RestoreTargetFocus(target))
+            {
+                _logger.Info("Paste skipped because the original target focus could not be confirmed.");
+                return false;
+            }
+
+            var focusedBeforePaste = AutomationHelpers.GetFocusedElement(_logger);
+            if (settings.BlockPasswordFields && AutomationHelpers.IsPasswordElement(focusedBeforePaste))
             {
                 _logger.Info("Paste skipped because current target is a password field.");
                 return false;
@@ -28,17 +35,33 @@ internal sealed class PasteService
 
             Clipboard.SetText(text);
             Thread.Sleep(Math.Max(settings.PasteDelayMs, 0));
-            SendKeys.SendWait("^v");
-            _logger.Info($"Paste successful. TextLength={text.Length}");
+            if (NativeMethods.GetForegroundWindow() != target.WindowHandle)
+            {
+                _logger.Info("Paste skipped because the target lost foreground focus before shortcut dispatch.");
+                return false;
+            }
+
+            dispatched = NativeMethods.SendPasteShortcut();
+            var method = "SendInput";
+            if (!dispatched)
+            {
+                SendKeys.SendWait("^v");
+                dispatched = true;
+                method = "SendKeysFallback";
+            }
+
+            _logger.Info($"Paste shortcut dispatched. Success={dispatched} Method={method} ForegroundVerified=True PreserveWebViewFocus={target.AvoidAutomationElementFocus} TextLength={text.Length}");
             Thread.Sleep(Math.Max(settings.RestoreClipboardDelayMs, 0));
-            ClipboardHelper.Restore(target.OriginalClipboard, settings, _logger);
-            return true;
+            return dispatched;
         }
         catch (Exception ex)
         {
             _logger.Error("Paste failed.", ex);
-            ClipboardHelper.Restore(target.OriginalClipboard, settings, _logger);
             return false;
+        }
+        finally
+        {
+            ClipboardHelper.Restore(target.OriginalClipboard, settings, _logger);
         }
     }
 
@@ -50,16 +73,42 @@ internal sealed class PasteService
         }
     }
 
-    public void RestoreTargetFocus(FocusTarget target)
+    public bool RestoreTargetFocus(FocusTarget target)
     {
-        if (target.WindowHandle != IntPtr.Zero &&
-            NativeMethods.IsWindow(target.WindowHandle) &&
-            NativeMethods.GetForegroundWindow() != target.WindowHandle)
+        if (target.WindowHandle == IntPtr.Zero || !NativeMethods.IsWindow(target.WindowHandle))
         {
-            NativeMethods.SetForegroundWindow(target.WindowHandle);
-            Thread.Sleep(120);
+            _logger.Info("Target focus restore failed because the original window no longer exists.");
+            return false;
         }
 
-        _ = AutomationHelpers.TryFocusElement(target.FocusedElement, _logger);
+        if (!NativeMethods.ForceForegroundWindow(target.WindowHandle))
+        {
+            _logger.Info($"Target focus restore failed because foreground activation was not confirmed. TargetWindow=0x{target.WindowHandle.ToInt64():X} ActualForeground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
+            return false;
+        }
+
+        var elementFocusAttempted = false;
+        var elementFocusSucceeded = false;
+        if (!target.AvoidAutomationElementFocus && target.FocusedElement is not null)
+        {
+            elementFocusAttempted = true;
+            elementFocusSucceeded = AutomationHelpers.TryFocusElement(target.FocusedElement, _logger);
+        }
+        else if (target.AvoidAutomationElementFocus)
+        {
+            _logger.Info("UI Automation focus restore skipped for WebView RootWebArea so the internal active element and caret are preserved.");
+        }
+
+        var focused = AutomationHelpers.GetFocusedElement(_logger);
+        var focusedMetadata = AutomationHelpers.GetSafeFocusMetadata(focused);
+        var focusedInsideTarget = AutomationHelpers.IsElementInWindow(focused, target.WindowHandle);
+        var foregroundConfirmed = NativeMethods.GetForegroundWindow() == target.WindowHandle;
+        var focusConfirmed = foregroundConfirmed &&
+                             (target.AvoidAutomationElementFocus ||
+                              target.FocusedElement is null ||
+                              elementFocusSucceeded ||
+                              focusedInsideTarget);
+        _logger.Info($"Target focus restore completed. Success={focusConfirmed} ForegroundConfirmed={foregroundConfirmed} ElementFocusAttempted={elementFocusAttempted} ElementFocusSucceeded={elementFocusSucceeded} FocusedInsideTarget={focusedInsideTarget} FocusedControlType='{focusedMetadata.ControlType}' FocusedClass='{focusedMetadata.ClassName}' FocusedAutomationId='{focusedMetadata.AutomationId}'");
+        return focusConfirmed;
     }
 }

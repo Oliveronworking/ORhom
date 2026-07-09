@@ -13,13 +13,15 @@ internal sealed class FocusTracker
     {
         var window = NativeMethods.GetForegroundWindow();
         var element = AutomationHelpers.GetFocusedElement(_logger);
+        var avoidElementFocus = AutomationHelpers.ShouldPreserveWebViewFocus(element);
         var isPassword = settings.BlockPasswordFields && AutomationHelpers.IsPasswordElement(element);
         var clipboard = ClipboardHelper.Capture(_logger);
 
         var title = window == IntPtr.Zero ? string.Empty : NativeMethods.GetWindowTitle(window);
         var className = window == IntPtr.Zero ? string.Empty : NativeMethods.GetWindowClass(window);
-        _logger.Info($"Focus captured. WindowHandle=0x{window.ToInt64():X} Class='{className}' PasswordTarget={isPassword}");
+        var targetMetadata = AutomationHelpers.GetSafeFocusMetadata(element);
+        _logger.Info($"Focus captured. WindowHandle=0x{window.ToInt64():X} Class='{className}' TargetControlType='{targetMetadata.ControlType}' TargetClass='{targetMetadata.ClassName}' TargetAutomationId='{targetMetadata.AutomationId}' PreserveWebViewFocus={avoidElementFocus} PasswordTarget={isPassword}");
 
-        return new FocusTarget(window, title, className, element, isPassword, clipboard);
+        return new FocusTarget(window, title, className, element, avoidElementFocus, isPassword, clipboard);
     }
 }

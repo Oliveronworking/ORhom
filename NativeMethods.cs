@@ -24,6 +24,21 @@ internal static class NativeMethods
     public static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetActiveWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
@@ -59,8 +74,13 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint numberOfInputs, Input[] inputs, int sizeOfInputStructure);
+
     private const uint MouseEventLeftDown = 0x0002;
     private const uint MouseEventLeftUp = 0x0004;
+    private const uint InputKeyboard = 1;
+    private const uint KeyEventKeyUp = 0x0002;
     private const int GwlExStyle = -20;
     private const int WsExLayered = 0x00080000;
     private const uint LwaAlpha = 0x00000002;
@@ -104,7 +124,7 @@ internal static class NativeMethods
         }
 
         mouse_event(MouseEventLeftDown, 0, 0, 0, UIntPtr.Zero);
-        Thread.Sleep(35);
+        Thread.Sleep(20);
         mouse_event(MouseEventLeftUp, 0, 0, 0, UIntPtr.Zero);
         if (restoreCursor)
         {
@@ -112,6 +132,81 @@ internal static class NativeMethods
         }
 
         return true;
+    }
+
+    public static bool ForceForegroundWindow(IntPtr targetWindow, int timeoutMs = 250)
+    {
+        if (targetWindow == IntPtr.Zero || !IsWindow(targetWindow))
+        {
+            return false;
+        }
+
+        if (IsIconic(targetWindow))
+        {
+            _ = ShowWindow(targetWindow, SwRestore);
+        }
+
+        var foregroundWindow = GetForegroundWindow();
+        if (foregroundWindow == targetWindow)
+        {
+            return true;
+        }
+
+        var currentThread = GetCurrentThreadId();
+        var targetThread = GetWindowThreadProcessId(targetWindow, out _);
+        var foregroundThread = foregroundWindow == IntPtr.Zero
+            ? 0
+            : GetWindowThreadProcessId(foregroundWindow, out _);
+        var attachedTarget = targetThread != 0 && targetThread != currentThread &&
+                             AttachThreadInput(currentThread, targetThread, true);
+        var attachedForeground = foregroundThread != 0 &&
+                                 foregroundThread != currentThread &&
+                                 foregroundThread != targetThread &&
+                                 AttachThreadInput(currentThread, foregroundThread, true);
+
+        try
+        {
+            _ = BringWindowToTop(targetWindow);
+            _ = SetForegroundWindow(targetWindow);
+            _ = SetActiveWindow(targetWindow);
+        }
+        finally
+        {
+            if (attachedForeground)
+            {
+                _ = AttachThreadInput(currentThread, foregroundThread, false);
+            }
+
+            if (attachedTarget)
+            {
+                _ = AttachThreadInput(currentThread, targetThread, false);
+            }
+        }
+
+        var started = Environment.TickCount64;
+        while (Environment.TickCount64 - started < Math.Max(timeoutMs, 0))
+        {
+            if (GetForegroundWindow() == targetWindow)
+            {
+                return true;
+            }
+
+            Thread.Sleep(10);
+        }
+
+        return GetForegroundWindow() == targetWindow;
+    }
+
+    public static bool SendPasteShortcut()
+    {
+        var inputs = new[]
+        {
+            CreateKeyboardInput((ushort)Keys.ControlKey, keyUp: false),
+            CreateKeyboardInput((ushort)Keys.V, keyUp: false),
+            CreateKeyboardInput((ushort)Keys.V, keyUp: true),
+            CreateKeyboardInput((ushort)Keys.ControlKey, keyUp: true)
+        };
+        return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>()) == (uint)inputs.Length;
     }
 
     public static bool MarkWindow(IntPtr hWnd, string propertyName)
@@ -138,6 +233,22 @@ internal static class NativeMethods
         }
 
         return SetLayeredWindowAttributes(hWnd, 0, alpha, LwaAlpha);
+    }
+
+    private static Input CreateKeyboardInput(ushort virtualKey, bool keyUp)
+    {
+        return new Input
+        {
+            Type = InputKeyboard,
+            Data = new InputUnion
+            {
+                Keyboard = new KeyboardInput
+                {
+                    VirtualKey = virtualKey,
+                    Flags = keyUp ? KeyEventKeyUp : 0
+                }
+            }
+        };
     }
 }
 
@@ -169,4 +280,42 @@ internal struct NativePoint
 {
     public int X;
     public int Y;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct Input
+{
+    public uint Type;
+    public InputUnion Data;
+}
+
+[StructLayout(LayoutKind.Explicit)]
+internal struct InputUnion
+{
+    [FieldOffset(0)]
+    public KeyboardInput Keyboard;
+
+    [FieldOffset(0)]
+    public MouseInput Mouse;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct KeyboardInput
+{
+    public ushort VirtualKey;
+    public ushort ScanCode;
+    public uint Flags;
+    public uint Time;
+    public UIntPtr ExtraInfo;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct MouseInput
+{
+    public int X;
+    public int Y;
+    public uint MouseData;
+    public uint Flags;
+    public uint Time;
+    public UIntPtr ExtraInfo;
 }

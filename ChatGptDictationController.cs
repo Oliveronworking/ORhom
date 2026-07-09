@@ -84,7 +84,7 @@ internal sealed class ChatGptDictationController : IDisposable
             }
 
             var chatWindow = ready.ChatWindow;
-            var input = AutomationHelpers.FocusChatGptInput(chatWindow, _settings, _logger);
+            var input = ready.Input;
             if (!AutomationHelpers.IsSafeChatGptInput(input, chatWindow, _settings))
             {
                 return ChatGptStartResult.Fail(ChatGptFailure.InputNotFound, MessageFor(ChatGptFailure.InputNotFound));
@@ -186,7 +186,10 @@ internal sealed class ChatGptDictationController : IDisposable
                 return ChatGptStopResult.Fail(ChatGptFailure.StopFailed, MessageFor(ChatGptFailure.StopFailed));
             }
 
-            await Task.Delay(Math.Max(_settings.DictationSettleDelayMs, 0));
+            if (_settings.DictationSettleDelayMs > 0)
+            {
+                await Task.Delay(_settings.DictationSettleDelayMs);
+            }
             _recordingComposerRect = null;
             leavePreparedForRead = true;
             _logger.Info($"ChatGPT dictation stop confirmed. TriggerMethod={method} SettleDelayMs={Math.Max(_settings.DictationSettleDelayMs, 0)}");
@@ -212,7 +215,11 @@ internal sealed class ChatGptDictationController : IDisposable
         await _gate.WaitAsync();
         try
         {
-            var result = await AutomationHelpers.ReadChatGptTextRobustlyAsync(chatWindow, _settings, _logger);
+            var result = await AutomationHelpers.ReadChatGptTextRobustlyAsync(
+                chatWindow,
+                _settings,
+                _logger,
+                windowAlreadyPrepared: true);
             if (result.Text.Length > 0 && result.Input is not null)
             {
                 _ = AutomationHelpers.ClearTextSafely(result.Input, chatWindow, _settings, _logger);
@@ -385,19 +392,20 @@ internal sealed class ChatGptDictationController : IDisposable
             return ChatGptReadyResult.Fail(ChatGptFailure.WindowNotFound, MessageFor(ChatGptFailure.WindowNotFound));
         }
 
-        var loginStatus = ChatGptLoginDetector.Detect(chatWindow, _settings, _logger);
-        if (loginStatus != ChatGptLoginStatus.LoggedIn)
-        {
-            _logger.Info($"ChatGPT readiness rejected because login could not be confirmed. LoginStatus={loginStatus}");
-            return ChatGptReadyResult.Fail(ChatGptFailure.NotLoggedIn, MessageFor(ChatGptFailure.NotLoggedIn));
-        }
-
         var input = AutomationHelpers.FocusChatGptInput(chatWindow, _settings, _logger);
         if (!AutomationHelpers.IsSafeChatGptInput(input, chatWindow, _settings))
         {
+            var loginStatus = ChatGptLoginDetector.Detect(chatWindow, _settings, _logger);
+            if (loginStatus == ChatGptLoginStatus.LoggedOut)
+            {
+                _logger.Info("ChatGPT readiness rejected because a logged-out marker is visible.");
+                return ChatGptReadyResult.Fail(ChatGptFailure.NotLoggedIn, MessageFor(ChatGptFailure.NotLoggedIn));
+            }
+
             return ChatGptReadyResult.Fail(ChatGptFailure.InputNotFound, MessageFor(ChatGptFailure.InputNotFound));
         }
 
+        _logger.Info("ChatGPT readiness confirmed by the safe authenticated composer.");
         return ChatGptReadyResult.Success(chatWindow, input!);
     }
 
