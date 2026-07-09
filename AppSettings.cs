@@ -21,6 +21,8 @@ internal sealed class AppSettings
     public bool RestoreTargetAfterStart { get; set; } = true;
     public bool RestoreClipboard { get; set; } = true;
     public int BrowserChromeExclusionTopPx { get; set; } = 120;
+    public int MaxChatGptInputHeightPx { get; set; } = 260;
+    public double MaxChatGptInputWindowWidthRatio { get; set; } = 0.85;
     public int SettleDelayMs { get; set; } = 500;
     public int ReadTextTimeoutMs { get; set; } = 12000;
     public int PasteDelayMs { get; set; } = 100;

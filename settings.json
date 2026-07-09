@@ -7,6 +7,8 @@
   "restoreTargetAfterStart": true,
   "restoreClipboard": true,
   "browserChromeExclusionTopPx": 120,
+  "maxChatGptInputHeightPx": 260,
+  "maxChatGptInputWindowWidthRatio": 0.85,
   "settleDelayMs": 500,
   "readTextTimeoutMs": 12000,
   "pasteDelayMs": 100,

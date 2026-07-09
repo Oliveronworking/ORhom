@@ -146,7 +146,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
-        if (!TryStartOrStopChatGptDictation(chatWindow, out var chatInput))
+        if (!TryStartOrStopChatGptDictation(chatWindow, session.ChatInput, out var chatInput))
         {
             _pasteService.RestoreTargetFocus(session.Target);
             ShowMessage("ChatGPT-Eingabefeld nicht sicher fokussiert. Stopp-Shortcut wurde nicht gesendet.");
@@ -194,7 +194,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var session = _session;
         if (session is not null && NativeMethods.IsWindow(session.ChatWindow))
         {
-            _ = TryStartOrStopChatGptDictation(session.ChatWindow, out _);
+            _ = TryStartOrStopChatGptDictation(session.ChatWindow, session.ChatInput, out _);
             _pasteService.RestoreTargetFocus(session.Target);
             _pasteService.RestoreClipboard(session.Target, _settings);
         }
@@ -206,13 +206,22 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
     private bool TryStartOrStopChatGptDictation(IntPtr chatWindow, out System.Windows.Automation.AutomationElement? chatInput)
     {
+        return TryStartOrStopChatGptDictation(chatWindow, knownInput: null, out chatInput);
+    }
+
+    private bool TryStartOrStopChatGptDictation(
+        IntPtr chatWindow,
+        System.Windows.Automation.AutomationElement? knownInput,
+        out System.Windows.Automation.AutomationElement? chatInput)
+    {
         chatInput = null;
         if (!ChatGptWindowFinder.PrepareForAutomation(chatWindow, _logger))
         {
             return false;
         }
 
-        chatInput = AutomationHelpers.FocusChatGptInput(chatWindow, _settings, _logger);
+        chatInput = AutomationHelpers.FocusKnownChatGptInput(knownInput, chatWindow, _settings, _logger) ??
+                    AutomationHelpers.FocusChatGptInput(chatWindow, _settings, _logger);
         if (!AutomationHelpers.IsSafeChatGptInput(chatInput, chatWindow, _settings))
         {
             _logger.Info("ChatGPT dictation hotkey skipped because focused element is not safe.");

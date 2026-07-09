@@ -7,9 +7,7 @@ internal static class AutomationHelpers
     private static readonly ControlType[] InputControlTypes =
     [
         ControlType.Edit,
-        ControlType.Document,
-        ControlType.Custom,
-        ControlType.Pane
+        ControlType.Custom
     ];
 
     public static AutomationElement? GetFocusedElement(AppLogger logger)
@@ -100,6 +98,23 @@ internal static class AutomationHelpers
         return null;
     }
 
+    public static AutomationElement? FocusKnownChatGptInput(AutomationElement? element, IntPtr chatWindow, AppSettings settings, AppLogger logger)
+    {
+        if (!IsSafeChatGptInput(element, chatWindow, settings))
+        {
+            return null;
+        }
+
+        if (!TryFocusElement(element, logger))
+        {
+            return null;
+        }
+
+        var focused = GetFocusedElement(logger);
+        LogElement("Focused known ChatGPT input", focused, logger);
+        return IsSafeChatGptInput(focused, chatWindow, settings) ? focused : element;
+    }
+
     public static bool IsSafeChatGptInput(AutomationElement? element, IntPtr chatWindow, AppSettings settings)
     {
         if (element is null || chatWindow == IntPtr.Zero || !NativeMethods.GetWindowRect(chatWindow, out var windowRect))
@@ -111,6 +126,9 @@ internal static class AutomationHelpers
         {
             var current = element.Current;
             var rect = current.BoundingRectangle;
+            var className = current.ClassName ?? string.Empty;
+            var name = (current.Name ?? string.Empty).Trim();
+
             if (rect.Width < 80 || rect.Height < 18)
             {
                 return false;
@@ -121,8 +139,24 @@ internal static class AutomationHelpers
                 return false;
             }
 
-            var name = (current.Name ?? string.Empty).Trim();
             if (LooksLikeBrowserChrome(name))
+            {
+                return false;
+            }
+
+            if (rect.Height > settings.MaxChatGptInputHeightPx)
+            {
+                return false;
+            }
+
+            if (rect.Width > windowRect.Width * settings.MaxChatGptInputWindowWidthRatio)
+            {
+                return false;
+            }
+
+            if (current.ControlType != ControlType.Edit &&
+                !className.Contains("ProseMirror", StringComparison.OrdinalIgnoreCase) &&
+                !LooksLikeChatInputName(name))
             {
                 return false;
             }
@@ -325,13 +359,14 @@ internal static class AutomationHelpers
             }
 
             var name = current.Name ?? string.Empty;
-            if (name.Contains("message", StringComparison.OrdinalIgnoreCase) ||
-                name.Contains("prompt", StringComparison.OrdinalIgnoreCase) ||
-                name.Contains("frage", StringComparison.OrdinalIgnoreCase) ||
-                name.Contains("nachricht", StringComparison.OrdinalIgnoreCase) ||
-                name.Contains("ask", StringComparison.OrdinalIgnoreCase))
+            if (LooksLikeChatInputName(name))
             {
                 score += 5000;
+            }
+
+            if ((current.ClassName ?? string.Empty).Contains("ProseMirror", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 7000;
             }
 
             return score;
@@ -350,6 +385,16 @@ internal static class AutomationHelpers
                name.Contains("search", StringComparison.OrdinalIgnoreCase) ||
                name.Contains("url", StringComparison.OrdinalIgnoreCase) ||
                name.Contains("tab", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool LooksLikeChatInputName(string name)
+    {
+        return name.Contains("message", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("prompt", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("frage", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("nachricht", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("ask", StringComparison.OrdinalIgnoreCase) ||
+               name.Contains("chatten", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsPlaceholder(string text)
