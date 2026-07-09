@@ -55,7 +55,7 @@ Fehlt das Profil, startet die Diktierung nicht und die Tray-Meldung verweist auf
 5. F8 erneut drücken. Die App lässt dem letzten gesprochenen Wort noch einen kurzen Audiopuffer, bestätigt den Stop-Zustand und liest den Composer wiederholt über mehrere UI-Automation-Verfahren oder einen abgesicherten Zwischenablage-Fallback. Übernommen wird der Text erst, wenn er sich für die konfigurierte Stabilitätszeit nicht mehr verändert hat.
 6. Der Text wird am ursprünglichen Cursor eingefügt und die vorherige Zwischenablage wiederhergestellt.
 
-Der große Audio-/Sprachmodus-Button für Voice Conversations wird nicht als Diktierbutton akzeptiert. `Ctrl+Shift+D` wird nur als Fallback verwendet, wenn kein kleiner Diktier-/Mikrofonbutton gefunden wurde; auch danach muss die Oberfläche den Aufnahme- beziehungsweise Stop-Zustand bestätigen.
+Der große Audio-/Sprachmodus-Button für Voice Conversations wird nicht als Diktierbutton akzeptiert. Die App verwendet ausschließlich den kleinen Diktier-/Mikrofonbutton im ChatGPT-Composer und bestätigt danach den Aufnahme- beziehungsweise Stop-Zustand. Browser-Tastenkürzel werden bewusst nicht als Fallback gesendet, damit Chrome-Dialoge wie „Alle Tabs als Lesezeichen speichern“ nicht versehentlich geöffnet werden.
 
 Passwortfelder werden blockiert. Browser-Adressleiste, Lesezeichendialoge und URLs werden nicht als Diktat übernommen. Diktierte Inhalte werden nie geloggt.
 

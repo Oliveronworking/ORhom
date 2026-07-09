@@ -168,8 +168,7 @@ internal sealed class ChatGptDictationController : IDisposable
             var method = triggered ? "ComposerButton" : "None";
             if (dictationButton is null)
             {
-                triggered = TrySendShortcutFallback(chatWindow, input);
-                method = triggered ? "ShortcutFallback" : "None";
+                _logger.Info("ChatGPT composer dictation button was not found; browser shortcut fallback is disabled.");
             }
             else if (!triggered)
             {
@@ -251,10 +250,7 @@ internal sealed class ChatGptDictationController : IDisposable
             var method = triggered ? "ComposerStopButton" : "None";
             if (stopButton is null)
             {
-                triggered = AutomationHelpers.IsSafeChatGptInput(input, chatWindow, _settings)
-                    ? TrySendShortcutFallback(chatWindow, input)
-                    : TrySendConfirmedRecordingShortcutFallback();
-                method = triggered ? "ShortcutFallback" : "None";
+                _logger.Info("ChatGPT composer stop button was not found; browser shortcut fallback is disabled.");
             }
             else if (!triggered)
             {
@@ -523,22 +519,6 @@ internal sealed class ChatGptDictationController : IDisposable
         }
     }
 
-    private bool TrySendShortcutFallback(IntPtr chatWindow, AutomationElement? input)
-    {
-        var focusedInput = AutomationHelpers.FocusKnownChatGptInput(input, chatWindow, _settings, _logger) ??
-                           AutomationHelpers.FocusChatGptInput(chatWindow, _settings, _logger);
-        if (!AutomationHelpers.IsSafeChatGptInput(focusedInput, chatWindow, _settings) ||
-            AutomationHelpers.LooksLikeUnsafeHotkeyTarget(AutomationHelpers.GetFocusedElement(_logger)))
-        {
-            _logger.Info("ChatGPT dictation shortcut fallback skipped because no safe composer is focused.");
-            return false;
-        }
-
-        KeyboardHelpers.SendHotkey(_settings.ChatGptDictationHotkey);
-        _logger.Info($"ChatGPT dictation shortcut fallback sent: {_settings.ChatGptDictationHotkey}");
-        return true;
-    }
-
     private bool TryNavigateWindow(IntPtr chatWindow, string url)
     {
         try
@@ -570,20 +550,6 @@ internal sealed class ChatGptDictationController : IDisposable
             _logger.Error("ChatGPT background page navigation failed.", ex);
             return false;
         }
-    }
-
-    private bool TrySendConfirmedRecordingShortcutFallback()
-    {
-        var focused = AutomationHelpers.GetFocusedElement(_logger);
-        if (_recordingComposerRect is null || AutomationHelpers.LooksLikeUnsafeHotkeyTarget(focused))
-        {
-            _logger.Info("ChatGPT stop shortcut fallback skipped because the confirmed recording anchor is unavailable or focus is unsafe.");
-            return false;
-        }
-
-        KeyboardHelpers.SendHotkey(_settings.ChatGptDictationHotkey);
-        _logger.Info($"ChatGPT stop shortcut fallback sent after a previously confirmed recording: {_settings.ChatGptDictationHotkey}");
-        return true;
     }
 
     private AutomationElement? FindDictationStartButton(IntPtr chatWindow, System.Windows.Rect composerRect)

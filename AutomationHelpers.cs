@@ -742,14 +742,24 @@ internal static class AutomationHelpers
                 return "browser-chrome-name";
             }
 
+            if (LooksLikeKnownNonComposerMetadata(metadata))
+            {
+                return "known-non-composer";
+            }
+
             var explicitComposer = LooksLikeChatInputMetadata(metadata);
-            var maxHeight = explicitComposer ? settings.MaxChatGptInputHeightPx : Math.Min(settings.MaxChatGptInputHeightPx, 180);
+            if (!explicitComposer)
+            {
+                return "not-chatgpt-composer";
+            }
+
+            var maxHeight = settings.MaxChatGptInputHeightPx;
             if (rect.Height > maxHeight)
             {
                 return "too-tall";
             }
 
-            var maxWidthRatio = explicitComposer ? settings.MaxChatGptInputWindowWidthRatio : Math.Min(settings.MaxChatGptInputWindowWidthRatio, 0.85);
+            var maxWidthRatio = settings.MaxChatGptInputWindowWidthRatio;
             if (rect.Width > windowRect.Width * maxWidthRatio)
             {
                 return "too-wide";
@@ -763,29 +773,12 @@ internal static class AutomationHelpers
                 return "not-readable-or-focusable";
             }
 
-            if (!explicitComposer && !LooksLikeLikelyPageTextInput(current, rect, windowRect))
-            {
-                return "not-chatgpt-composer";
-            }
-
             return null;
         }
         catch
         {
             return "stale-or-uninspectable";
         }
-    }
-
-    private static bool LooksLikeLikelyPageTextInput(AutomationElement.AutomationElementInformation current, System.Windows.Rect rect, Rect windowRect)
-    {
-        if (current.ControlType != ControlType.Edit)
-        {
-            return false;
-        }
-
-        var windowHeight = Math.Max(windowRect.Height, 1);
-        var verticalPosition = (rect.Top - windowRect.Top) / windowHeight;
-        return verticalPosition > 0.35 && rect.Height <= 160 && current.IsKeyboardFocusable;
     }
 
     private static string GetInputMetadata(AutomationElement.AutomationElementInformation current)
@@ -828,6 +821,7 @@ internal static class AutomationHelpers
             var metadata = GetInputMetadata(current);
             return LooksLikeBrowserChrome(name) ||
                    metadata.Contains("omnibox", StringComparison.OrdinalIgnoreCase) ||
+                   LooksLikeKnownNonComposerMetadata(metadata) ||
                    LooksLikeUnsafeBrowserDialog(name, className) ||
                    IsPasswordElement(element);
         }
@@ -874,6 +868,16 @@ internal static class AutomationHelpers
                metadata.Contains("enter prompt", StringComparison.OrdinalIgnoreCase) ||
                metadata.Contains("sprich mit chatgpt", StringComparison.OrdinalIgnoreCase) ||
                metadata.Contains("ChatGPT message composer", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool LooksLikeKnownNonComposerMetadata(string metadata)
+    {
+        return metadata.Contains("smart-search-input", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("search chats", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("search chat history", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("chats durchsuchen", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("chatverlauf durchsuchen", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("command palette", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsPlaceholder(string text)
