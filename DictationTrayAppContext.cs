@@ -15,8 +15,11 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private readonly PasteService _pasteService;
     private readonly AppSettings _settings;
     private readonly ChromeProfileLauncher _chromeProfileLauncher;
+    private readonly ChromeMicrophoneConfigurator _microphoneConfigurator;
+    private readonly AudioInputDeviceService _audioInputDevices;
     private readonly ChatGptDictationController _dictationController;
     private readonly RecordingOverlayForm _recordingOverlay;
+    private readonly SettingsForm _settingsForm;
     private AppStatus _status = AppStatus.Idle;
     private RecordingSession? _session;
     private IntPtr _overlayTargetWindow;
@@ -27,12 +30,21 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _logger = new AppLogger(Path.Combine(baseDirectory, "logs"));
         _settings = AppSettings.Load(Path.Combine(baseDirectory, "settings.json"), _logger);
         _chromeProfileLauncher = new ChromeProfileLauncher(_settings, _logger);
+        _microphoneConfigurator = new ChromeMicrophoneConfigurator(_chromeProfileLauncher, _logger);
+        _audioInputDevices = new AudioInputDeviceService(_logger);
         _dictationController = new ChatGptDictationController(_settings, _logger, _chromeProfileLauncher);
-        _recordingOverlay = new RecordingOverlayForm(_settings.RecordingOverlayBottomOffsetPx);
+        _recordingOverlay = new RecordingOverlayForm(_settings.RecordingOverlayBottomOffsetPx, _settings.ToggleHotkey);
         _focusTracker = new FocusTracker(_logger);
         _pasteService = new PasteService(_logger);
         _logger.Info("Application started.");
         var initialProfileValidation = _chromeProfileLauncher.ValidateConfiguredProfile();
+
+        _hotkeyWindow = new HotkeyWindow(_settings, _logger);
+        _hotkeyWindow.TogglePressed += (_, _) => _ = ToggleAsync();
+        _hotkeyWindow.EscapePressed += (_, _) => _ = AbortRecordingAsync();
+        _hotkeyWindow.CreateControl();
+        _settingsForm = new SettingsForm(_settings, _audioInputDevices, ApplySettingsAsync);
+        _settingsForm.VisibleChanged += (_, _) => _hotkeyWindow.SetToggleEnabled(!_settingsForm.Visible);
 
         _statusItem = new ToolStripMenuItem("Status: Idle") { Enabled = false };
         var menu = new ContextMenuStrip();
@@ -44,7 +56,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         {
             Enabled = _settings.OpenChatGptProfileVisibleForSetup
         });
-        menu.Items.Add(new ToolStripMenuItem("Chrome-Mikrofon auswählen", null, (_, _) => OpenChromeMicrophoneSettings()));
+        menu.Items.Add(new ToolStripMenuItem("Mikrofon & Hotkey einstellen", null, (_, _) => OpenSettings()));
         menu.Items.Add(new ToolStripMenuItem("Chrome-Profil prüfen", null, (_, _) => CheckChromeProfile()));
         menu.Items.Add(new ToolStripMenuItem("ChatGPT Diagnose speichern", null, (_, _) => _ = WriteChatGptDiagnosticsAsync())
         {
@@ -52,7 +64,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         });
         menu.Items.Add(new ToolStripMenuItem("Chrome-Profilordner öffnen", null, (_, _) => OpenChromeProfileDirectory()));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add(new ToolStripMenuItem("Einstellungen öffnen", null, (_, _) => OpenPath(_settings.SettingsPath)));
+        menu.Items.Add(new ToolStripMenuItem("OpenAI Flow öffnen", null, (_, _) => OpenSettings()));
+        menu.Items.Add(new ToolStripMenuItem("Konfigurationsdatei öffnen", null, (_, _) => OpenPath(_settings.SettingsPath)));
         menu.Items.Add(new ToolStripMenuItem("Logs öffnen", null, (_, _) => OpenPath(_logger.LogPath)));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Beenden", null, Exit));
@@ -64,11 +77,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             Text = "OpenAI Flow Dictation - Idle",
             ContextMenuStrip = menu
         };
-
-        _hotkeyWindow = new HotkeyWindow(_settings, _logger);
-        _hotkeyWindow.TogglePressed += (_, _) => _ = ToggleAsync();
-        _hotkeyWindow.EscapePressed += (_, _) => _ = AbortRecordingAsync();
-        _hotkeyWindow.CreateControl();
+        _notifyIcon.DoubleClick += (_, _) => OpenSettings();
 
         if (!initialProfileValidation.IsValid)
         {
@@ -77,9 +86,14 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                 ShowConfiguredProfileUnavailable();
             }
         }
-        else
+        else if (_settings.SetupCompleted)
         {
             QueueChatGptStartupPreparation();
+        }
+
+        if (!_settings.SetupCompleted)
+        {
+            _settingsForm.ShowAndActivate();
         }
     }
 
@@ -89,6 +103,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         {
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
+            _settingsForm.ClosePermanently();
+            _settingsForm.Dispose();
             _hotkeyWindow.Dispose();
             _recordingOverlay.Dispose();
             _dictationController.Dispose();
@@ -285,16 +301,55 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         ShowConfiguredProfileUnavailable();
     }
 
-    private void OpenChromeMicrophoneSettings()
+    private async Task<SettingsApplyResult> ApplySettingsAsync(string microphoneName, string hotkey)
     {
-        if (!_chromeProfileLauncher.TryOpenMicrophoneSettings(out var failureReason))
+        if (_status != AppStatus.Idle)
         {
-            _logger.Info($"Chrome microphone settings could not be opened. Reason={failureReason}");
-            ShowMessage("Chrome-Mikrofoneinstellungen konnten nicht geöffnet werden. Bitte Profile 3 prüfen.");
+            return SettingsApplyResult.Fail("Bitte zuerst die laufende Aufnahme beenden.");
+        }
+
+        var activeMicrophones = _audioInputDevices.GetActiveMicrophones();
+        if (!activeMicrophones.Contains(microphoneName, StringComparer.OrdinalIgnoreCase))
+        {
+            return SettingsApplyResult.Fail("Das ausgewählte Mikrofon ist nicht mehr verbunden.");
+        }
+
+        var microphoneResult = await _microphoneConfigurator.ApplyAsync(microphoneName);
+        if (!microphoneResult.Ok)
+        {
+            return SettingsApplyResult.Fail(microphoneResult.Message);
+        }
+
+        var pageReset = await _dictationController.ResetChatGptPageAsync(_settingsForm.Handle);
+        if (!pageReset.Ok)
+        {
+            return SettingsApplyResult.Fail("Mikrofon gespeichert, aber ChatGPT konnte nicht vorbereitet werden. Bitte ChatGPT Profil öffnen und Anmeldung prüfen.");
+        }
+
+        if (!_hotkeyWindow.TryUpdateToggleHotkey(hotkey, out var hotkeyFailure))
+        {
+            return SettingsApplyResult.Fail(hotkeyFailure);
+        }
+
+        _settings.PreferredMicrophoneName = microphoneName;
+        _settings.ToggleHotkey = hotkey;
+        _settings.SetupCompleted = true;
+        _settings.Save(_logger);
+        _recordingOverlay.SetToggleHotkey(hotkey);
+        _logger.Info($"Settings applied from UI. MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}'.");
+        ShowMessage($"OpenAI Flow läuft jetzt mit {hotkey} im Hintergrund.");
+        return SettingsApplyResult.Success(microphoneName, hotkey);
+    }
+
+    private void OpenSettings()
+    {
+        if (_status != AppStatus.Idle)
+        {
+            ShowMessage("Bitte zuerst die laufende Aufnahme beenden.");
             return;
         }
 
-        ShowMessage("In Chrome das gewünschte Mikrofon auswählen und das Einstellungsfenster danach schließen.");
+        _settingsForm.ShowAndActivate();
     }
 
     private async Task WriteChatGptDiagnosticsAsync()

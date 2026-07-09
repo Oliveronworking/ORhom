@@ -104,7 +104,13 @@ internal sealed class ChromeProfileLauncher
         }
     }
 
-    public bool TryOpenMicrophoneSettings(out string failureReason)
+    public bool TryOpenMicrophoneSettings(out string failureReason) =>
+        TryOpenMicrophoneSettings(startMinimized: false, "chrome://settings/content/microphone", out failureReason);
+
+    public bool TryOpenMicrophoneSettingsHidden(out string failureReason) =>
+        TryOpenMicrophoneSettings(startMinimized: false, "about:blank", out failureReason);
+
+    private bool TryOpenMicrophoneSettings(bool startMinimized, string targetUrl, out string failureReason)
     {
         var validation = ValidateConfiguredProfile();
         if (!validation.IsValid)
@@ -123,12 +129,16 @@ internal sealed class ChromeProfileLauncher
             startInfo.ArgumentList.Add($"--user-data-dir={_settings.ChromeUserDataDir}");
             startInfo.ArgumentList.Add($"--profile-directory={_settings.ChromeProfileDirectory}");
             startInfo.ArgumentList.Add("--new-window");
+            if (startMinimized)
+            {
+                startInfo.ArgumentList.Add("--start-minimized");
+            }
             startInfo.ArgumentList.Add("--no-first-run");
             startInfo.ArgumentList.Add("--no-default-browser-check");
-            startInfo.ArgumentList.Add("chrome://settings/content/microphone");
+            startInfo.ArgumentList.Add(targetUrl);
 
             _ = Process.Start(startInfo);
-            _logger.Info($"Chrome microphone settings opened for configured profile. ProfileDirectory='{_settings.ChromeProfileDirectory}'.");
+            _logger.Info($"Chrome microphone settings opened for configured profile. ProfileDirectory='{_settings.ChromeProfileDirectory}' StartMinimized={startMinimized}.");
             failureReason = string.Empty;
             return true;
         }

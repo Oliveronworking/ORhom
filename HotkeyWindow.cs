@@ -8,21 +8,82 @@ internal sealed class HotkeyWindow : Form
     private const int EscapeHotkeyId = 3;
     private readonly AppLogger _logger;
     private bool _escapeRegistered;
+    private string _toggleHotkey;
+    private bool _toggleRegistered;
 
     public HotkeyWindow(AppSettings settings, AppLogger logger)
     {
         _logger = logger;
+        _toggleHotkey = settings.ToggleHotkey;
         ShowInTaskbar = false;
         FormBorderStyle = FormBorderStyle.FixedToolWindow;
         WindowState = FormWindowState.Minimized;
         Opacity = 0;
         Load += (_, _) => Visible = false;
 
-        RegisterHotkey(ToggleHotkeyId, settings.ToggleHotkey);
+        _toggleRegistered = RegisterHotkey(ToggleHotkeyId, _toggleHotkey);
     }
 
     public event EventHandler? TogglePressed;
     public event EventHandler? EscapePressed;
+
+    public void SetToggleEnabled(bool enabled)
+    {
+        if (enabled == _toggleRegistered)
+        {
+            return;
+        }
+
+        if (enabled)
+        {
+            _toggleRegistered = RegisterHotkey(ToggleHotkeyId, _toggleHotkey);
+        }
+        else
+        {
+            _ = NativeMethods.UnregisterHotKey(Handle, ToggleHotkeyId);
+            _toggleRegistered = false;
+            _logger.Info("Toggle hotkey temporarily suspended while settings are open.");
+        }
+    }
+
+    public bool TryUpdateToggleHotkey(string hotkey, out string failureReason)
+    {
+        hotkey = hotkey.Trim();
+        if (hotkey.Equals(_toggleHotkey, StringComparison.OrdinalIgnoreCase))
+        {
+            failureReason = string.Empty;
+            return true;
+        }
+
+        var shouldRemainRegistered = _toggleRegistered;
+        if (_toggleRegistered)
+        {
+            _ = NativeMethods.UnregisterHotKey(Handle, ToggleHotkeyId);
+            _toggleRegistered = false;
+        }
+
+        if (RegisterHotkey(ToggleHotkeyId, hotkey))
+        {
+            _toggleHotkey = hotkey;
+            if (shouldRemainRegistered)
+            {
+                _toggleRegistered = true;
+            }
+            else
+            {
+                _ = NativeMethods.UnregisterHotKey(Handle, ToggleHotkeyId);
+            }
+            failureReason = string.Empty;
+            return true;
+        }
+
+        if (shouldRemainRegistered)
+        {
+            _toggleRegistered = RegisterHotkey(ToggleHotkeyId, _toggleHotkey);
+        }
+        failureReason = $"Die Tastenkombination {hotkey} wird bereits verwendet oder ist ungültig.";
+        return false;
+    }
 
     public void SetEscapeEnabled(bool enabled)
     {

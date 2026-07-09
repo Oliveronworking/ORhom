@@ -10,12 +10,14 @@ internal sealed class RecordingOverlayForm : Form
 
     private readonly System.Windows.Forms.Timer _animationTimer;
     private readonly int _bottomOffsetPx;
+    private string _toggleHotkey;
     private AppStatus _status = AppStatus.Idle;
     private int _animationFrame;
 
-    public RecordingOverlayForm(int bottomOffsetPx)
+    public RecordingOverlayForm(int bottomOffsetPx, string toggleHotkey)
     {
         _bottomOffsetPx = Math.Max(bottomOffsetPx, 20);
+        _toggleHotkey = toggleHotkey;
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Color.FromArgb(24, 24, 27);
         ClientSize = new Size(248, 56);
@@ -34,6 +36,12 @@ internal sealed class RecordingOverlayForm : Form
     }
 
     protected override bool ShowWithoutActivation => true;
+
+    public void SetToggleHotkey(string hotkey)
+    {
+        _toggleHotkey = hotkey;
+        Invalidate();
+    }
 
     protected override CreateParams CreateParams
     {
@@ -143,7 +151,7 @@ internal sealed class RecordingOverlayForm : Form
         return _status switch
         {
             AppStatus.Starting => ("Diktierung startet", "Einen Moment …"),
-            AppStatus.Recording => ("Hört zu …", "F8 zum Stoppen  ·  Esc Abbruch"),
+            AppStatus.Recording => ("Hört zu …", $"{_toggleHotkey} zum Stoppen  ·  Esc Abbruch"),
             AppStatus.Stopping => ("Aufnahme wird beendet", "ChatGPT verarbeitet …"),
             AppStatus.ReadingText => ("Text wird transkribiert", "Bitte kurz warten …"),
             AppStatus.Pasting => ("Text wird eingefügt", "Fertig"),

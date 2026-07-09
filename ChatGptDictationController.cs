@@ -58,6 +58,56 @@ internal sealed class ChatGptDictationController : IDisposable
 
     public ChromeProfileValidationResult ValidateConfiguredProfile() => _profileLauncher.ValidateConfiguredProfile();
 
+    public async Task<ChatGptReadyResult> ResetChatGptPageAsync(IntPtr excludedWindow)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            var validation = _profileLauncher.ValidateConfiguredProfile();
+            if (!validation.IsValid)
+            {
+                return ChatGptReadyResult.Fail(ChatGptFailure.ProfileNotFound, MessageFor(ChatGptFailure.ProfileNotFound));
+            }
+
+            var chatWindow = KnownChatWindow;
+            if (chatWindow == IntPtr.Zero)
+            {
+                chatWindow = await LaunchConfiguredWindowCoreAsync(excludedWindow);
+            }
+
+            if (chatWindow == IntPtr.Zero ||
+                !ChatGptWindowFinder.PrepareForAutomation(chatWindow, _settings, _logger) ||
+                !TryNavigateWindow(chatWindow, _settings.ChatGptUrl))
+            {
+                return ChatGptReadyResult.Fail(ChatGptFailure.WindowNotFound, MessageFor(ChatGptFailure.WindowNotFound));
+            }
+
+            var deadline = Environment.TickCount64 + 12000;
+            while (Environment.TickCount64 < deadline)
+            {
+                await Task.Delay(250);
+                var input = AutomationHelpers.FindChatGptInput(chatWindow, _settings, _logger);
+                if (AutomationHelpers.IsSafeChatGptInput(input, chatWindow, _settings))
+                {
+                    _logger.Info("ChatGPT background page reset completed and composer is ready.");
+                    return ChatGptReadyResult.Success(chatWindow, input!);
+                }
+            }
+
+            return ChatGptReadyResult.Fail(ChatGptFailure.InputNotFound, MessageFor(ChatGptFailure.InputNotFound));
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("ChatGPT background page reset failed.", ex);
+            return ChatGptReadyResult.Fail(ChatGptFailure.WindowNotFound, MessageFor(ChatGptFailure.WindowNotFound));
+        }
+        finally
+        {
+            HideBackgroundWindow();
+            _gate.Release();
+        }
+    }
+
     public async Task<ChatGptReadyResult> EnsureChatGptReadyAsync(IntPtr excludedWindow)
     {
         await _gate.WaitAsync();
@@ -122,7 +172,25 @@ internal sealed class ChatGptDictationController : IDisposable
                 _logger.Info("ChatGPT composer dictation button was found but could not be invoked; shortcut fallback was not sent.");
             }
 
-            if (!triggered || !await PollForRecordingStateAsync(chatWindow, composerRect, RecordingUiState.Active))
+            var recordingActive = triggered &&
+                                  await PollForRecordingStateAsync(chatWindow, composerRect, RecordingUiState.Active);
+            if (triggered && !recordingActive)
+            {
+                _logger.Info("ChatGPT dictation start was not confirmed on the first attempt; retrying the composer control once.");
+                _ = ChatGptWindowFinder.PrepareForAutomation(chatWindow, _settings, _logger);
+                input = AutomationHelpers.FindChatGptInput(chatWindow, _settings, _logger) ?? input;
+                var retryRect = TryGetBoundingRectangle(input) ?? composerRect;
+                var retryButton = FindDictationStartButton(chatWindow, retryRect);
+                var retryTriggered = retryButton is not null && TryInvokeButton(retryButton);
+                if (retryTriggered)
+                {
+                    method = "ComposerButtonRetry";
+                    composerRect = retryRect;
+                    recordingActive = await PollForRecordingStateAsync(chatWindow, composerRect, RecordingUiState.Active);
+                }
+            }
+
+            if (!recordingActive)
             {
                 _logger.Info($"ChatGPT dictation start was not confirmed. TriggerMethod={method}");
                 LogUiState(chatWindow, "start-failed");
@@ -459,6 +527,39 @@ internal sealed class ChatGptDictationController : IDisposable
         return true;
     }
 
+    private bool TryNavigateWindow(IntPtr chatWindow, string url)
+    {
+        try
+        {
+            var root = AutomationElement.FromHandle(chatWindow);
+            var omnibox = root.FindFirst(
+                TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "view_2001"));
+            omnibox ??= root.FindAll(
+                    TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))
+                .Cast<AutomationElement>()
+                .FirstOrDefault(element => element.Current.ClassName.Contains("Omnibox", StringComparison.OrdinalIgnoreCase));
+            if (omnibox is null ||
+                !omnibox.TryGetCurrentPattern(ValuePattern.Pattern, out var valueObject) ||
+                valueObject is not ValuePattern valuePattern)
+            {
+                return false;
+            }
+
+            valuePattern.SetValue(url);
+            omnibox.SetFocus();
+            SendKeys.SendWait("{ENTER}");
+            _logger.Info("ChatGPT background page navigation requested.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("ChatGPT background page navigation failed.", ex);
+            return false;
+        }
+    }
+
     private bool TrySendConfirmedRecordingShortcutFallback()
     {
         var focused = AutomationHelpers.GetFocusedElement(_logger);
@@ -780,7 +881,7 @@ internal sealed class ChatGptDictationController : IDisposable
             ChatGptFailure.WindowNotFound => "ChatGPT-Profil nicht gefunden.",
             ChatGptFailure.NotLoggedIn => "ChatGPT ist nicht angemeldet.",
             ChatGptFailure.InputNotFound => "ChatGPT-Eingabefeld nicht gefunden.",
-            ChatGptFailure.StartFailed => "Diktierung konnte nicht gestartet werden. Bitte Mikrofonberechtigung/Login prüfen.",
+            ChatGptFailure.StartFailed => "Aufnahme konnte nicht starten. Bitte Mikrofon in OpenAI Flow neu speichern, ChatGPT-Mikrofonzugriff erlauben und andere Aufnahme-Apps testweise schließen.",
             ChatGptFailure.StopFailed => "Diktierung konnte nicht gestoppt werden.",
             ChatGptFailure.NoText => "Nach dem Stoppen wurde kein Text transkribiert.",
             ChatGptFailure.PasteFailed => "Text wurde gelesen, aber konnte nicht ins Ziel eingefügt werden.",

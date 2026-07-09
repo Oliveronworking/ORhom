@@ -1,5 +1,7 @@
 {
   "toggleHotkey": "F8",
+  "preferredMicrophoneName": "Mikrofon (Logi C525 HD WebCam)",
+  "setupCompleted": false,
   "chatGptDictationHotkey": "Ctrl+Shift+D",
   "chatGptUrl": "https://chatgpt.com",
   "chatGptWindowTitleContains": [ "ChatGPT", "chatgpt.com" ],

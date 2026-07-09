@@ -15,6 +15,8 @@ internal sealed class AppSettings
     };
 
     public string ToggleHotkey { get; set; } = "F8";
+    public string PreferredMicrophoneName { get; set; } = "Mikrofon (Logi C525 HD WebCam)";
+    public bool SetupCompleted { get; set; } = false;
     public string ChatGptDictationHotkey { get; set; } = "Ctrl+Shift+D";
     public string ChatGptUrl { get; set; } = "https://chatgpt.com";
     public string[] ChatGptWindowTitleContains { get; set; } = ["ChatGPT", "chatgpt.com"];

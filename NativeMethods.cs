@@ -6,6 +6,7 @@ namespace ChatGptDictationBridge;
 internal static class NativeMethods
 {
     public const int WmHotkey = 0x0312;
+    public const int WmClose = 0x0010;
     public const int SwMinimize = 6;
     public const int SwRestore = 9;
 
@@ -46,6 +47,9 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll")]
     public static extern bool IsIconic(IntPtr hWnd);

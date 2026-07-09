@@ -15,7 +15,7 @@ dotnet build -c Release
 Start-Process "bin\Release\net8.0-windows\ChatGptDictationBridge.exe"
 ```
 
-Es gibt kein Hauptfenster. Status, Diagnose und Beenden befinden sich im Infobereich der Taskleiste.
+Beim ersten Start öffnet sich die OpenAI-Flow-Einrichtung. Dort werden Mikrofon und globale Tastenkombination gewählt. Das X und **Im Hintergrund schließen** blenden nur die Oberfläche aus; Diktierung, Status, Diagnose und Beenden bleiben über den Infobereich der Taskleiste erreichbar. Ein Doppelklick auf das Tray-Symbol öffnet die Einstellungen wieder.
 
 OpenAIFlow hält genau ein eigenes ChatGPT-Fenster dauerhaft im Hintergrund. Es wird minimiert gestartet, über App-Neustarts hinweg wiedererkannt und nur nahezu transparent für die kurzen UI-Automationsschritte aktiviert. Beim normalen F8-Ablauf erscheint deshalb kein Chrome-Fenster auf dem Desktop. Sichtbar geöffnet wird es ausschließlich über den bewusst gewählten Tray-Menüpunkt **ChatGPT Profil öffnen**.
 
@@ -37,11 +37,11 @@ Gast-, Inkognito- und temporäre Profile sind deaktiviert. Die App weicht nicht 
 
 Zur Ersteinrichtung:
 
-1. Im Tray-Menü **ChatGPT Profil öffnen** wählen.
-2. In dem geöffneten Profile-3-Fenster einmal bei ChatGPT anmelden.
-3. Im Tray-Menü **Chrome-Mikrofon auswählen** öffnen und den gewünschten Eingang einstellen. Auf diesem Rechner ist das **Mikrofon (Logi C525 HD WebCam)**.
-4. Den Mikrofonzugriff für `https://chatgpt.com` erlauben.
-5. In ein beliebiges Zieltextfeld klicken und F8 testen.
+1. In der OpenAI-Flow-Einrichtung das gewünschte Mikrofon auswählen.
+2. In das Tastenkombinationsfeld klicken und zum Beispiel `F8` drücken.
+3. **Speichern und im Hintergrund starten** wählen. OpenAI Flow setzt den Eingang im unsichtbaren Profile-3-Browser und bereitet die ChatGPT-Seite frisch vor.
+4. Falls ChatGPT noch nicht angemeldet ist: Im Tray-Menü **ChatGPT Profil öffnen** wählen, anmelden und den Mikrofonzugriff für `https://chatgpt.com` erlauben.
+5. In ein beliebiges Zieltextfeld klicken und die gewählte Tastenkombination testen.
 
 Fehlt das Profil, startet die Diktierung nicht und die Tray-Meldung verweist auf `settings.json`.
 
@@ -75,7 +75,7 @@ Beim Einfügen wird das ursprüngliche Zielfenster verifiziert aktiviert. In VS 
 ## Diagnose im Tray-Menü
 
 - **ChatGPT Profil öffnen** öffnet ChatGPT sichtbar mit Profile 3 für Anmeldung und Mikrofonfreigabe.
-- **Chrome-Mikrofon auswählen** öffnet direkt die Mikrofon-Auswahl von Profile 3. Dadurch kann Chrome denselben Eingang wie eine andere Diktier-App verwenden, statt unbemerkt dem Windows-Standardgerät zu folgen.
+- **Mikrofon & Hotkey einstellen** öffnet die OpenAI-Flow-Oberfläche. Die Auswahl wird automatisch in Profile 3 übernommen; ein separates Chrome-Einstellungsfenster ist nicht nötig.
 - **Chrome-Profil prüfen** validiert `chrome.exe`, User-Data-Ordner, `Profile 3` und dessen `Preferences`-Datei.
 - **ChatGPT Diagnose speichern** protokolliert Profilstatus, Fenster, Login-Eindruck, sicher redigierte Composer-Kandidaten, Diktierbutton-Kandidaten und erkannten Aufnahmezustand.
 - **Chrome-Profilordner öffnen** öffnet den validierten Ordner `Profile 3`.
@@ -89,6 +89,8 @@ Die mitgelieferte `settings.json` enthält insbesondere:
 ```json
 {
   "browserProfileMode": "ExistingChromeProfile",
+  "preferredMicrophoneName": "Mikrofon (Logi C525 HD WebCam)",
+  "setupCompleted": false,
   "chromeExecutablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "chromeUserDataDir": "C:\\Users\\Admin\\AppData\\Local\\Google\\Chrome\\User Data",
   "chromeProfileDirectory": "Profile 3",
