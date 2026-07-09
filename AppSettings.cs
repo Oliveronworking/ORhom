@@ -52,6 +52,8 @@ internal sealed class AppSettings
     public int DictationSettleDelayMs { get; set; } = 0;
     public int DictationTextStableMs { get; set; } = 1100;
     public int DictationStopGracePeriodMs { get; set; } = 250;
+    public bool EnableAudioDucking { get; set; } = true;
+    public int AudioDuckingVolumePercent { get; set; } = 10;
     public bool EnableChatGptInputDiagnostics { get; set; } = true;
     public int PasteDelayMs { get; set; } = 25;
     public int RestoreClipboardDelayMs { get; set; } = 180;

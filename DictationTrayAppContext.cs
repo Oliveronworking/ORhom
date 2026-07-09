@@ -19,6 +19,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private readonly ChromeMicrophoneConfigurator _microphoneConfigurator;
     private readonly AudioInputDeviceService _audioInputDevices;
     private readonly ChatGptDictationController _dictationController;
+    private readonly AudioDuckingService _audioDucking;
+    private readonly System.Windows.Forms.Timer _audioDuckingTimer;
     private readonly RecordingOverlayForm _recordingOverlay;
     private readonly SettingsForm _settingsForm;
     private AppStatus _status = AppStatus.Idle;
@@ -36,6 +38,9 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _microphoneConfigurator = new ChromeMicrophoneConfigurator(_chromeProfileLauncher, _logger);
         _audioInputDevices = new AudioInputDeviceService(_logger);
         _dictationController = new ChatGptDictationController(_settings, _logger, _chromeProfileLauncher);
+        _audioDucking = new AudioDuckingService(_settings, _logger);
+        _audioDuckingTimer = new System.Windows.Forms.Timer { Interval = 500 };
+        _audioDuckingTimer.Tick += (_, _) => _audioDucking.Refresh();
         _recordingOverlay = new RecordingOverlayForm(_settings.RecordingOverlayBottomOffsetPx, _settings.ToggleHotkey);
         _focusTracker = new FocusTracker(_logger);
         _pasteService = new PasteService(_logger);
@@ -120,6 +125,9 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _settingsForm.Dispose();
             _hotkeyWindow.Dispose();
             _recordingOverlay.Dispose();
+            _audioDuckingTimer.Stop();
+            _audioDuckingTimer.Dispose();
+            _audioDucking.Dispose();
             _dictationController.Dispose();
             _operationLock.Dispose();
             _applicationIcon.Dispose();
@@ -145,6 +153,12 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             {
                 await FinishWebDictationAsync();
             }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Unexpected dictation operation failure.", ex);
+            ResetToIdle();
+            ShowMessage("Beim Diktieren ist ein unerwarteter Fehler aufgetreten.");
         }
         finally
         {
@@ -186,6 +200,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
 
         _session = new RecordingSession(target, startResult.ChatWindow, startResult.Input);
+        _audioDucking.Begin();
+        _audioDuckingTimer.Start();
         _hotkeyWindow.SetEscapeEnabled(true);
         SetStatus(AppStatus.Recording);
         _logger.Info($"Recording session started. TargetClass='{target.WindowClass}' ChatWindow=0x{startResult.ChatWindow.ToInt64():X}");
@@ -259,6 +275,12 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             RestoreTargetAndClipboard(session.Target);
             ShowMessage("Aufnahme abgebrochen.");
             ResetToIdle();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Unexpected dictation abort failure.", ex);
+            ResetToIdle();
+            ShowMessage("Die Aufnahme wurde beendet; beim Abbruch ist ein Fehler aufgetreten.");
         }
         finally
         {
@@ -548,6 +570,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
     private void ResetToIdle()
     {
+        _audioDuckingTimer.Stop();
+        _audioDucking.Restore();
         _session = null;
         _hotkeyWindow.SetEscapeEnabled(false);
         SetStatus(AppStatus.Idle);

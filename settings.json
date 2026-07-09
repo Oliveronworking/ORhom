@@ -33,6 +33,8 @@
   "dictationSettleDelayMs": 0,
   "dictationTextStableMs": 1100,
   "dictationStopGracePeriodMs": 250,
+  "enableAudioDucking": true,
+  "audioDuckingVolumePercent": 10,
   "enableChatGptInputDiagnostics": true,
   "pasteDelayMs": 25,
   "restoreClipboardDelayMs": 180,

@@ -110,12 +110,16 @@ Die persönliche `settings.json` liegt unter `%LOCALAPPDATA%\OpenAIFlow\settings
   "dictationSettleDelayMs": 0,
   "dictationTextStableMs": 1100,
   "dictationStopGracePeriodMs": 250,
+  "enableAudioDucking": true,
+  "audioDuckingVolumePercent": 10,
   "pasteDelayMs": 25,
   "restoreClipboardDelayMs": 180
 }
 ```
 
 `dictationStopConfirmationTimeoutMs` gibt ChatGPT genügend Zeit, nach dem ausgelösten Stop eindeutig in den beendeten Zustand zu wechseln; eine kurze zusätzliche Randprüfung verhindert den zuvor beobachteten Fehlalarm am Timeout. `dictationResultTimeoutMs` gilt für das wiederholte frische Suchen und Lesen des ChatGPT-Composers. Ein einzelnes leeres Ergebnis beendet die Suche nicht. `dictationTextStableMs` verhindert, dass ein frühes Teiltranskript eingefügt wird; die Wartezeit beginnt bei jeder Textänderung neu. `dictationStopGracePeriodMs` schützt das letzte gesprochene Wort vor einem zu harten Aufnahmeende. Der alte feste Settle-Delay bleibt deaktiviert, damit ein fertiges Ergebnis ohne unnötige Mehrsekundenpause übernommen wird.
+
+Mit `enableAudioDucking` werden alle anderen laufenden Windows-Wiedergabesitzungen während einer bestätigten Aufnahme automatisch leiser. `audioDuckingVolumePercent` ist der verbleibende Anteil ihres jeweiligen Ausgangspegels (Standard: 10 %). Nach Stop, Abbruch, Fehler oder Programmende stellt OpenAI Flow jeden zuvor gespeicherten Pegel wieder her; auch während der Aufnahme neu gestartete Audio-Streams werden erfasst.
 
 ## Logs
 
