@@ -107,12 +107,16 @@ Die mitgelieferte `settings.json` enthält insbesondere:
   "dictationSettleDelayMs": 0,
   "dictationTextStableMs": 1100,
   "dictationStopGracePeriodMs": 250,
+  "enableAudioDucking": true,
+  "audioDuckingVolumePercent": 10,
   "pasteDelayMs": 25,
   "restoreClipboardDelayMs": 180
 }
 ```
 
 `dictationResultTimeoutMs` gilt für das wiederholte frische Suchen und Lesen des ChatGPT-Composers. Ein einzelnes leeres Ergebnis beendet die Suche nicht. `dictationTextStableMs` verhindert, dass ein frühes Teiltranskript eingefügt wird; die Wartezeit beginnt bei jeder Textänderung neu. `dictationStopGracePeriodMs` schützt das letzte gesprochene Wort vor einem zu harten Aufnahmeende. Der alte feste Settle-Delay bleibt deaktiviert, damit ein fertiges Ergebnis ohne unnötige Mehrsekundenpause übernommen wird.
+
+Mit `enableAudioDucking` werden andere laufende Windows-Wiedergabesitzungen erst nach einem bestätigten Aufnahmestart leiser. `audioDuckingVolumePercent` legt ihren verbleibenden Anteil am jeweiligen Ausgangspegel fest (Standard: 10 %). Sobald die Aufnahme beendet oder abgebrochen wird, ein Fehler zurück auf Idle führt oder die App geschlossen wird, werden die zuvor gespeicherten Pegel wiederhergestellt.
 
 ## Logs
 
