@@ -6,14 +6,22 @@
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>ChatGptDictationBridge</AssemblyName>
+    <AssemblyName>OpenAIFlow</AssemblyName>
     <RootNamespace>ChatGptDictationBridge</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyTitle>OpenAI Flow Dictation</AssemblyTitle>
+    <Product>OpenAI Flow Dictation</Product>
+    <Description>Systemweite Windows-Diktierhilfe mit ChatGPT.</Description>
+    <Version>1.0.0</Version>
+    <InformationalVersion>1.0.0</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Authors>OpenAI Flow</Authors>
   </PropertyGroup>
 
   <ItemGroup>
     <None Update="settings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </None>
   </ItemGroup>
 

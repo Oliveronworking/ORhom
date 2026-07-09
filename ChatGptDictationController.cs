@@ -4,6 +4,10 @@ namespace ChatGptDictationBridge;
 
 internal sealed class ChatGptDictationController : IDisposable
 {
+    private const int MinimumStopConfirmationTimeoutMs = 8000;
+    private const int MaximumStopConfirmationTimeoutMs = 15000;
+    private const int StopConfirmationTailGraceMs = 750;
+
     private static readonly string[] DictationStartMarkers =
     [
         "microphone", "mikrofon", "dictate", "diktieren", "diktat starten",
@@ -236,7 +240,7 @@ internal sealed class ChatGptDictationController : IDisposable
             }
 
             var input = AutomationHelpers.FindChatGptInput(chatWindow, _settings, _logger);
-            var composerRect = _recordingComposerRect ?? TryGetBoundingRectangle(input);
+            var composerRect = TryGetBoundingRectangle(input) ?? _recordingComposerRect;
             if (composerRect is null)
             {
                 return ChatGptStopResult.Fail(ChatGptFailure.InputNotFound, MessageFor(ChatGptFailure.InputNotFound));
@@ -257,9 +261,17 @@ internal sealed class ChatGptDictationController : IDisposable
                 _logger.Info("ChatGPT dictation stop button was found but could not be invoked; shortcut fallback was not sent.");
             }
 
-            if (!triggered || !await PollForRecordingStateAsync(chatWindow, composerRect.Value, RecordingUiState.Inactive))
+            if (!triggered)
             {
                 _logger.Info($"ChatGPT dictation stop was not confirmed. TriggerMethod={method}");
+                LogUiState(chatWindow, "stop-failed");
+                return ChatGptStopResult.Fail(ChatGptFailure.StopFailed, MessageFor(ChatGptFailure.StopFailed));
+            }
+
+            var stopState = await PollForStopRecordingStateAsync(chatWindow, composerRect.Value);
+            if (stopState != RecordingUiState.Inactive)
+            {
+                _logger.Info($"ChatGPT dictation stop was not confirmed. TriggerMethod={method} FinalState={stopState}");
                 LogUiState(chatWindow, "stop-failed");
                 return ChatGptStopResult.Fail(ChatGptFailure.StopFailed, MessageFor(ChatGptFailure.StopFailed));
             }
@@ -268,7 +280,6 @@ internal sealed class ChatGptDictationController : IDisposable
             {
                 await Task.Delay(_settings.DictationSettleDelayMs);
             }
-            _recordingComposerRect = null;
             leavePreparedForRead = true;
             _logger.Info($"ChatGPT dictation stop confirmed. TriggerMethod={method} SettleDelayMs={Math.Max(_settings.DictationSettleDelayMs, 0)}");
             return ChatGptStopResult.Success();
@@ -280,6 +291,7 @@ internal sealed class ChatGptDictationController : IDisposable
         }
         finally
         {
+            _recordingComposerRect = null;
             if (!leavePreparedForRead)
             {
                 HideBackgroundWindow();
@@ -654,6 +666,70 @@ internal sealed class ChatGptDictationController : IDisposable
         }
 
         return false;
+    }
+
+    private async Task<RecordingUiState> PollForStopRecordingStateAsync(
+        IntPtr chatWindow,
+        System.Windows.Rect fallbackComposerRect)
+    {
+        var timeoutMs = Math.Clamp(
+            _settings.DictationStopConfirmationTimeoutMs,
+            MinimumStopConfirmationTimeoutMs,
+            MaximumStopConfirmationTimeoutMs);
+        var pollMs = Math.Clamp(_settings.DictationResultPollIntervalMs, 100, 500);
+        var currentComposerRect = fallbackComposerRect;
+
+        RecordingUiState ReadCurrentState()
+        {
+            var currentInput = AutomationHelpers.FindChatGptInput(chatWindow, _settings, _logger);
+            currentComposerRect = TryGetBoundingRectangle(currentInput) ?? currentComposerRect;
+            return DetectRecordingState(chatWindow, currentComposerRect);
+        }
+
+        var startedAt = Environment.TickCount64;
+        var lastState = RecordingUiState.Unknown;
+        var consecutiveInactive = 0;
+        while (Environment.TickCount64 - startedAt < timeoutMs)
+        {
+            lastState = ReadCurrentState();
+            consecutiveInactive = lastState == RecordingUiState.Inactive ? consecutiveInactive + 1 : 0;
+            if (consecutiveInactive >= 2)
+            {
+                return RecordingUiState.Inactive;
+            }
+
+            await Task.Delay(pollMs);
+        }
+
+        _logger.Info($"ChatGPT stop confirmation entered tail grace. TimeoutMs={timeoutMs} LastState={lastState}");
+        var tailStartedAt = Environment.TickCount64;
+        do
+        {
+            lastState = ReadCurrentState();
+            consecutiveInactive = lastState == RecordingUiState.Inactive ? consecutiveInactive + 1 : 0;
+            if (consecutiveInactive >= 2)
+            {
+                return RecordingUiState.Inactive;
+            }
+
+            await Task.Delay(pollMs);
+        }
+        while (Environment.TickCount64 - tailStartedAt < StopConfirmationTailGraceMs);
+
+        lastState = ReadCurrentState();
+        consecutiveInactive = lastState == RecordingUiState.Inactive ? consecutiveInactive + 1 : 0;
+        if (consecutiveInactive == 1)
+        {
+            await Task.Delay(pollMs);
+            lastState = ReadCurrentState();
+            consecutiveInactive = lastState == RecordingUiState.Inactive ? 2 : 0;
+        }
+
+        return consecutiveInactive >= 2
+            ? RecordingUiState.Inactive
+            : lastState == RecordingUiState.Active
+                ? RecordingUiState.Active
+                : RecordingUiState.Unknown;
     }
 
     private RecordingUiState DetectRecordingState(IntPtr chatWindow, System.Windows.Rect composerRect)

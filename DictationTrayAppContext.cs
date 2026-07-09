@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.IO;
 using System.Windows.Automation;
 
 namespace ChatGptDictationBridge;
@@ -10,6 +9,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private readonly HotkeyWindow _hotkeyWindow;
     private readonly NotifyIcon _notifyIcon;
     private readonly ToolStripMenuItem _statusItem;
+    private readonly ToolStripMenuItem _microphoneMenu;
     private readonly SemaphoreSlim _operationLock = new(1, 1);
     private readonly FocusTracker _focusTracker;
     private readonly PasteService _pasteService;
@@ -26,9 +26,10 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
     public DictationTrayAppContext()
     {
-        var baseDirectory = AppContext.BaseDirectory;
-        _logger = new AppLogger(Path.Combine(baseDirectory, "logs"));
-        _settings = AppSettings.Load(Path.Combine(baseDirectory, "settings.json"), _logger);
+        var paths = AppPaths.Create();
+        _logger = new AppLogger(paths.LogDirectory);
+        paths.MigrateLegacySettingsIfNeeded(_logger);
+        _settings = AppSettings.Load(paths.SettingsPath, _logger);
         _chromeProfileLauncher = new ChromeProfileLauncher(_settings, _logger);
         _microphoneConfigurator = new ChromeMicrophoneConfigurator(_chromeProfileLauncher, _logger);
         _audioInputDevices = new AudioInputDeviceService(_logger);
@@ -44,9 +45,11 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _hotkeyWindow.EscapePressed += (_, _) => _ = AbortRecordingAsync();
         _hotkeyWindow.CreateControl();
         _settingsForm = new SettingsForm(_settings, _audioInputDevices, ApplySettingsAsync);
-        _settingsForm.VisibleChanged += (_, _) => _hotkeyWindow.SetToggleEnabled(!_settingsForm.Visible);
+        _settingsForm.VisibleChanged += OnSettingsVisibilityChanged;
 
-        _statusItem = new ToolStripMenuItem("Status: Idle") { Enabled = false };
+        _statusItem = new ToolStripMenuItem("Status: Bereit") { Enabled = false };
+        _microphoneMenu = new ToolStripMenuItem("Mikrofon auswählen");
+        _microphoneMenu.DropDownOpening += (_, _) => RefreshMicrophoneMenu();
         var menu = new ContextMenuStrip();
         menu.Items.Add(_statusItem);
         menu.Items.Add(new ToolStripSeparator());
@@ -56,6 +59,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         {
             Enabled = _settings.OpenChatGptProfileVisibleForSetup
         });
+        menu.Items.Add(_microphoneMenu);
         menu.Items.Add(new ToolStripMenuItem("Mikrofon & Hotkey einstellen", null, (_, _) => OpenSettings()));
         menu.Items.Add(new ToolStripMenuItem("Chrome-Profil prüfen", null, (_, _) => CheckChromeProfile()));
         menu.Items.Add(new ToolStripMenuItem("ChatGPT Diagnose speichern", null, (_, _) => _ = WriteChatGptDiagnosticsAsync())
@@ -74,10 +78,16 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         {
             Icon = SystemIcons.Application,
             Visible = true,
-            Text = "OpenAI Flow Dictation - Idle",
+            Text = "OpenAI Flow - Bereit",
             ContextMenuStrip = menu
         };
         _notifyIcon.DoubleClick += (_, _) => OpenSettings();
+
+        if (!_hotkeyWindow.ToggleHotkeyAvailable)
+        {
+            ShowMessage($"Die Tastenkombination {_settings.ToggleHotkey} ist bereits belegt. Bitte eine andere auswählen.");
+            _settingsForm.ShowAndActivate();
+        }
 
         if (!initialProfileValidation.IsValid)
         {
@@ -140,6 +150,17 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
     private async Task BeginWebDictationAsync()
     {
+        if (!string.IsNullOrWhiteSpace(_settings.PreferredMicrophoneName))
+        {
+            var activeMicrophones = _audioInputDevices.GetActiveMicrophones();
+            if (!activeMicrophones.Contains(_settings.PreferredMicrophoneName, StringComparer.OrdinalIgnoreCase))
+            {
+                ShowMessage("Das ausgewählte Mikrofon ist nicht verbunden. Bitte im Tray ein verfügbares Mikrofon wählen.");
+                ResetToIdle();
+                return;
+            }
+        }
+
         var target = _focusTracker.Capture(_settings);
         _overlayTargetWindow = target.WindowHandle;
         if (target.IsPasswordField)
@@ -303,6 +324,23 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
     private async Task<SettingsApplyResult> ApplySettingsAsync(string microphoneName, string hotkey)
     {
+        if (!await _operationLock.WaitAsync(0))
+        {
+            return SettingsApplyResult.Fail("Bitte warten, bis der aktuelle Vorgang abgeschlossen ist.");
+        }
+
+        try
+        {
+            return await ApplySettingsCoreAsync(microphoneName, hotkey);
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    private async Task<SettingsApplyResult> ApplySettingsCoreAsync(string microphoneName, string hotkey)
+    {
         if (_status != AppStatus.Idle)
         {
             return SettingsApplyResult.Fail("Bitte zuerst die laufende Aufnahme beenden.");
@@ -314,10 +352,26 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return SettingsApplyResult.Fail("Das ausgewählte Mikrofon ist nicht mehr verbunden.");
         }
 
+        if (!_hotkeyWindow.TryValidateToggleHotkey(hotkey, out var hotkeyValidationFailure))
+        {
+            return SettingsApplyResult.Fail(hotkeyValidationFailure);
+        }
+
         var microphoneResult = await _microphoneConfigurator.ApplyAsync(microphoneName);
         if (!microphoneResult.Ok)
         {
             return SettingsApplyResult.Fail(microphoneResult.Message);
+        }
+
+        var previousMicrophone = _settings.PreferredMicrophoneName;
+        var previousHotkey = _settings.ToggleHotkey;
+        var previousSetupCompleted = _settings.SetupCompleted;
+        _settings.PreferredMicrophoneName = microphoneName;
+        if (!_settings.Save(_logger))
+        {
+            _settings.PreferredMicrophoneName = previousMicrophone;
+            await TryRestoreChromeMicrophoneAsync(previousMicrophone);
+            return SettingsApplyResult.Fail("Das Mikrofon wurde umgestellt, aber die Auswahl konnte nicht gespeichert werden.");
         }
 
         var pageReset = await _dictationController.ResetChatGptPageAsync(_settingsForm.Handle);
@@ -328,17 +382,122 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
         if (!_hotkeyWindow.TryUpdateToggleHotkey(hotkey, out var hotkeyFailure))
         {
-            return SettingsApplyResult.Fail(hotkeyFailure);
+            return SettingsApplyResult.Fail($"Mikrofon gespeichert. {hotkeyFailure}");
         }
 
-        _settings.PreferredMicrophoneName = microphoneName;
         _settings.ToggleHotkey = hotkey;
         _settings.SetupCompleted = true;
-        _settings.Save(_logger);
+        if (!_settings.Save(_logger))
+        {
+            _settings.ToggleHotkey = previousHotkey;
+            _settings.SetupCompleted = previousSetupCompleted;
+            _ = _hotkeyWindow.TryUpdateToggleHotkey(previousHotkey, out _);
+            return SettingsApplyResult.Fail("Mikrofon gespeichert, aber die Tastenkombination konnte nicht gespeichert werden.");
+        }
+
         _recordingOverlay.SetToggleHotkey(hotkey);
         _logger.Info($"Settings applied from UI. MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}'.");
         ShowMessage($"OpenAI Flow läuft jetzt mit {hotkey} im Hintergrund.");
         return SettingsApplyResult.Success(microphoneName, hotkey);
+    }
+
+    private async Task SwitchMicrophoneAsync(string microphoneName)
+    {
+        if (!await _operationLock.WaitAsync(0))
+        {
+            ShowMessage("Bitte warten, bis der aktuelle Vorgang abgeschlossen ist.");
+            return;
+        }
+
+        try
+        {
+            if (_status != AppStatus.Idle)
+            {
+                ShowMessage("Das Mikrofon kann während einer Aufnahme nicht gewechselt werden.");
+                return;
+            }
+
+            var activeMicrophones = _audioInputDevices.GetActiveMicrophones();
+            if (!activeMicrophones.Contains(microphoneName, StringComparer.OrdinalIgnoreCase))
+            {
+                ShowMessage("Das ausgewählte Mikrofon ist nicht mehr verbunden.");
+                return;
+            }
+
+            ShowMessage($"Mikrofon wird auf {microphoneName} umgestellt …");
+            var microphoneResult = await _microphoneConfigurator.ApplyAsync(microphoneName);
+            if (!microphoneResult.Ok)
+            {
+                ShowMessage(microphoneResult.Message);
+                return;
+            }
+
+            var previousMicrophone = _settings.PreferredMicrophoneName;
+            _settings.PreferredMicrophoneName = microphoneName;
+            if (!_settings.Save(_logger))
+            {
+                _settings.PreferredMicrophoneName = previousMicrophone;
+                await TryRestoreChromeMicrophoneAsync(previousMicrophone);
+                ShowMessage("Das Mikrofon wurde umgestellt, aber die Auswahl konnte nicht gespeichert werden.");
+                return;
+            }
+
+            var pageReset = await _dictationController.ResetChatGptPageAsync(IntPtr.Zero);
+            if (!pageReset.Ok)
+            {
+                ShowMessage("Mikrofon gespeichert, aber ChatGPT konnte nicht neu vorbereitet werden.");
+                return;
+            }
+
+            _logger.Info($"Microphone switched from tray. MicrophoneName='{microphoneName}'.");
+            ShowMessage($"Aktives Mikrofon: {microphoneName}");
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    private async Task TryRestoreChromeMicrophoneAsync(string microphoneName)
+    {
+        if (string.IsNullOrWhiteSpace(microphoneName) ||
+            !_audioInputDevices.GetActiveMicrophones().Contains(microphoneName, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var rollback = await _microphoneConfigurator.ApplyAsync(microphoneName);
+        _logger.Info($"Chrome microphone rollback completed. Success={rollback.Ok}");
+    }
+
+    private void RefreshMicrophoneMenu()
+    {
+        _microphoneMenu.DropDownItems.Clear();
+        var microphones = _audioInputDevices.GetActiveMicrophones();
+        if (microphones.Count == 0)
+        {
+            _microphoneMenu.DropDownItems.Add(new ToolStripMenuItem("Kein aktives Mikrofon erkannt") { Enabled = false });
+            return;
+        }
+
+        foreach (var microphone in microphones)
+        {
+            var item = new ToolStripMenuItem(microphone)
+            {
+                Checked = microphone.Equals(_settings.PreferredMicrophoneName, StringComparison.OrdinalIgnoreCase)
+            };
+            item.Click += (_, _) => _ = SwitchMicrophoneAsync(microphone);
+            _microphoneMenu.DropDownItems.Add(item);
+        }
+    }
+
+    private void OnSettingsVisibilityChanged(object? sender, EventArgs e)
+    {
+        _hotkeyWindow.SetToggleEnabled(!_settingsForm.Visible);
+        if (!_settingsForm.Visible && !_hotkeyWindow.ToggleHotkeyAvailable)
+        {
+            ShowMessage($"Die Tastenkombination {_settings.ToggleHotkey} ist nicht verfügbar. Bitte eine andere auswählen.");
+        }
     }
 
     private void OpenSettings()
@@ -394,8 +553,17 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private void SetStatus(AppStatus status)
     {
         _status = status;
-        _statusItem.Text = $"Status: {status}";
-        _notifyIcon.Text = $"OpenAI Flow Dictation - {status}";
+        var statusText = status switch
+        {
+            AppStatus.Starting => "Startet",
+            AppStatus.Recording => "Hört zu",
+            AppStatus.Stopping => "Beendet Aufnahme",
+            AppStatus.ReadingText => "Transkribiert",
+            AppStatus.Pasting => "Fügt Text ein",
+            _ => "Bereit"
+        };
+        _statusItem.Text = $"Status: {statusText}";
+        _notifyIcon.Text = $"OpenAI Flow - {statusText}";
         if (_settings.ShowRecordingOverlay)
         {
             if (status == AppStatus.Idle)

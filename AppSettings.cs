@@ -15,14 +15,18 @@ internal sealed class AppSettings
     };
 
     public string ToggleHotkey { get; set; } = "F8";
-    public string PreferredMicrophoneName { get; set; } = "Mikrofon (Logi C525 HD WebCam)";
+    public string PreferredMicrophoneName { get; set; } = string.Empty;
     public bool SetupCompleted { get; set; } = false;
     public string ChatGptDictationHotkey { get; set; } = "Ctrl+Shift+D";
     public string ChatGptUrl { get; set; } = "https://chatgpt.com";
     public string[] ChatGptWindowTitleContains { get; set; } = ["ChatGPT", "chatgpt.com"];
     public string BrowserProfileMode { get; set; } = "ExistingChromeProfile";
-    public string ChromeExecutablePath { get; set; } = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
-    public string ChromeUserDataDir { get; set; } = @"C:\Users\Admin\AppData\Local\Google\Chrome\User Data";
+    public string ChromeExecutablePath { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+        "Google", "Chrome", "Application", "chrome.exe");
+    public string ChromeUserDataDir { get; set; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Google", "Chrome", "User Data");
     public string ChromeProfileDirectory { get; set; } = "Profile 3";
     public bool RequireConfiguredChromeProfile { get; set; } = true;
     public bool AllowGuestProfile { get; set; } = false;
@@ -42,6 +46,7 @@ internal sealed class AppSettings
     public int MaxChatGptInputHeightPx { get; set; } = 420;
     public double MaxChatGptInputWindowWidthRatio { get; set; } = 0.92;
     public int RecordingStateTimeoutMs { get; set; } = 5000;
+    public int DictationStopConfirmationTimeoutMs { get; set; } = 9000;
     public int DictationResultTimeoutMs { get; set; } = 30000;
     public int DictationResultPollIntervalMs { get; set; } = 100;
     public int DictationSettleDelayMs { get; set; } = 0;
@@ -62,7 +67,7 @@ internal sealed class AppSettings
             if (!File.Exists(path))
             {
                 var defaults = new AppSettings { SettingsPath = path };
-                defaults.Save(logger);
+                _ = defaults.Save(logger);
                 return defaults;
             }
 
@@ -78,16 +83,18 @@ internal sealed class AppSettings
         }
     }
 
-    public void Save(AppLogger logger)
+    public bool Save(AppLogger logger)
     {
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath) ?? AppContext.BaseDirectory);
             File.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, JsonOptions));
+            return true;
         }
         catch (Exception ex)
         {
             logger.Error("Settings could not be saved.", ex);
+            return false;
         }
     }
 }

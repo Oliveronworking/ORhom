@@ -4,18 +4,19 @@ OpenAIFlow ist eine Windows-Tray-App für browserbasierte ChatGPT-Diktierung. F8
 
 Die App benötigt keinen OpenAI-API-Key. Sie verwendet ausschließlich das bereits vorhandene und bei ChatGPT angemeldete Chrome-Profil `Profile 3`.
 
-## Voraussetzungen und Build
+## Installation und Start ohne VS Code
 
-- Windows mit .NET 8 SDK
-- Google Chrome unter `C:\Program Files\Google\Chrome\Application\chrome.exe`
-- das Chrome-Profil `C:\Users\Admin\AppData\Local\Google\Chrome\User Data\Profile 3`
+Die installierte Ausgabe ist eine eigenständige `win-x64`-Windows-EXE. Weder VS Code noch ein separat gestartetes `dotnet`-Fenster müssen im Hintergrund laufen. Der Installer veröffentlicht die App, legt sie unter `%LOCALAPPDATA%\Programs\OpenAIFlow` ab und erstellt auf dem Desktop **OpenAI Flow Dictation**.
 
 ```powershell
-dotnet build -c Release
-Start-Process "bin\Release\net8.0-windows\ChatGptDictationBridge.exe"
+powershell -ExecutionPolicy Bypass -File .\scripts\Install-OpenAIFlow.ps1
 ```
 
-Beim ersten Start öffnet sich die OpenAI-Flow-Einrichtung. Dort werden Mikrofon und globale Tastenkombination gewählt. Das X und **Im Hintergrund schließen** blenden nur die Oberfläche aus; Diktierung, Status, Diagnose und Beenden bleiben über den Infobereich der Taskleiste erreichbar. Ein Doppelklick auf das Tray-Symbol öffnet die Einstellungen wieder.
+Danach genügt ein Doppelklick auf die Desktop-Verknüpfung. Die App läuft im Infobereich der Taskleiste weiter, wenn das Einstellungsfenster geschlossen wird. Ein zweiter Start öffnet keine zweite Instanz.
+
+Vorausgesetzt werden Windows x64, Google Chrome und das konfigurierte Chrome-Profil `Profile 3`. Nur zum erneuten Erstellen der EXE aus dem Quellcode wird das .NET 8 SDK benötigt.
+
+Beim ersten Start öffnet sich die OpenAI-Flow-Einrichtung. Dort werden Mikrofon und globale Tastenkombination gewählt. Das X und **Im Hintergrund schließen** blenden nur die Oberfläche aus; Diktierung, Status, Diagnose und Beenden bleiben über den Infobereich der Taskleiste erreichbar. Ein Doppelklick auf das Tray-Symbol öffnet die Einstellungen wieder. Die Mikrofonliste aktualisiert sich beim Öffnen und bei Geräteänderungen automatisch.
 
 OpenAIFlow hält genau ein eigenes ChatGPT-Fenster dauerhaft im Hintergrund. Es wird minimiert gestartet, über App-Neustarts hinweg wiedererkannt und nur nahezu transparent für die kurzen UI-Automationsschritte aktiviert. Beim normalen F8-Ablauf erscheint deshalb kein Chrome-Fenster auf dem Desktop. Sichtbar geöffnet wird es ausschließlich über den bewusst gewählten Tray-Menüpunkt **ChatGPT Profil öffnen**.
 
@@ -75,6 +76,7 @@ Beim Einfügen wird das ursprüngliche Zielfenster verifiziert aktiviert. In VS 
 ## Diagnose im Tray-Menü
 
 - **ChatGPT Profil öffnen** öffnet ChatGPT sichtbar mit Profile 3 für Anmeldung und Mikrofonfreigabe.
+- **Mikrofon auswählen** listet alle aktuell aktiven Eingänge auf und erlaubt den schnellen Wechsel zwischen beispielsweise Headset und Webcam. Das ausgewählte Gerät ist markiert.
 - **Mikrofon & Hotkey einstellen** öffnet die OpenAI-Flow-Oberfläche. Die Auswahl wird automatisch in Profile 3 übernommen; ein separates Chrome-Einstellungsfenster ist nicht nötig.
 - **Chrome-Profil prüfen** validiert `chrome.exe`, User-Data-Ordner, `Profile 3` und dessen `Preferences`-Datei.
 - **ChatGPT Diagnose speichern** protokolliert Profilstatus, Fenster, Login-Eindruck, sicher redigierte Composer-Kandidaten, Diktierbutton-Kandidaten und erkannten Aufnahmezustand.
@@ -84,7 +86,7 @@ Die Diagnose protokolliert keine ChatGPT-Inhalte, Cookies, Tokens oder diktierte
 
 ## Relevante Einstellungen
 
-Die mitgelieferte `settings.json` enthält insbesondere:
+Die persönliche `settings.json` liegt unter `%LOCALAPPDATA%\OpenAIFlow\settings.json` und enthält insbesondere:
 
 ```json
 {
@@ -102,6 +104,7 @@ Die mitgelieferte `settings.json` enthält insbesondere:
   "showRecordingOverlay": true,
   "recordingOverlayBottomOffsetPx": 72,
   "recordingStateTimeoutMs": 5000,
+  "dictationStopConfirmationTimeoutMs": 9000,
   "dictationResultTimeoutMs": 30000,
   "dictationResultPollIntervalMs": 100,
   "dictationSettleDelayMs": 0,
@@ -112,14 +115,14 @@ Die mitgelieferte `settings.json` enthält insbesondere:
 }
 ```
 
-`dictationResultTimeoutMs` gilt für das wiederholte frische Suchen und Lesen des ChatGPT-Composers. Ein einzelnes leeres Ergebnis beendet die Suche nicht. `dictationTextStableMs` verhindert, dass ein frühes Teiltranskript eingefügt wird; die Wartezeit beginnt bei jeder Textänderung neu. `dictationStopGracePeriodMs` schützt das letzte gesprochene Wort vor einem zu harten Aufnahmeende. Der alte feste Settle-Delay bleibt deaktiviert, damit ein fertiges Ergebnis ohne unnötige Mehrsekundenpause übernommen wird.
+`dictationStopConfirmationTimeoutMs` gibt ChatGPT genügend Zeit, nach dem ausgelösten Stop eindeutig in den beendeten Zustand zu wechseln; eine kurze zusätzliche Randprüfung verhindert den zuvor beobachteten Fehlalarm am Timeout. `dictationResultTimeoutMs` gilt für das wiederholte frische Suchen und Lesen des ChatGPT-Composers. Ein einzelnes leeres Ergebnis beendet die Suche nicht. `dictationTextStableMs` verhindert, dass ein frühes Teiltranskript eingefügt wird; die Wartezeit beginnt bei jeder Textänderung neu. `dictationStopGracePeriodMs` schützt das letzte gesprochene Wort vor einem zu harten Aufnahmeende. Der alte feste Settle-Delay bleibt deaktiviert, damit ein fertiges Ergebnis ohne unnötige Mehrsekundenpause übernommen wird.
 
 ## Logs
 
-Die Release-Logs liegen hier:
+Die technischen Logs liegen hier:
 
 ```text
-bin\Release\net8.0-windows\logs\app.log
+%LOCALAPPDATA%\OpenAIFlow\logs\app.log
 ```
 
 Bei Problemen zuerst **Chrome-Profil prüfen** und danach **ChatGPT Diagnose speichern** ausführen. Im Log stehen nur technische Zustände wie Profilvalidierung, Kandidatentypen, Aufnahmeerkennung, Textlänge und Einfügeerfolg.

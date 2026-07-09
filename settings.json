@@ -27,6 +27,7 @@
   "maxChatGptInputHeightPx": 420,
   "maxChatGptInputWindowWidthRatio": 0.92,
   "recordingStateTimeoutMs": 5000,
+  "dictationStopConfirmationTimeoutMs": 9000,
   "dictationResultTimeoutMs": 30000,
   "dictationResultPollIntervalMs": 100,
   "dictationSettleDelayMs": 0,
