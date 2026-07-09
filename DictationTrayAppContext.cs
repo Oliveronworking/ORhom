@@ -16,8 +16,10 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private readonly AppSettings _settings;
     private readonly ChromeProfileLauncher _chromeProfileLauncher;
     private readonly ChatGptDictationController _dictationController;
+    private readonly RecordingOverlayForm _recordingOverlay;
     private AppStatus _status = AppStatus.Idle;
     private RecordingSession? _session;
+    private IntPtr _overlayTargetWindow;
 
     public DictationTrayAppContext()
     {
@@ -26,6 +28,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _settings = AppSettings.Load(Path.Combine(baseDirectory, "settings.json"), _logger);
         _chromeProfileLauncher = new ChromeProfileLauncher(_settings, _logger);
         _dictationController = new ChatGptDictationController(_settings, _logger, _chromeProfileLauncher);
+        _recordingOverlay = new RecordingOverlayForm(_settings.RecordingOverlayBottomOffsetPx);
         _focusTracker = new FocusTracker(_logger);
         _pasteService = new PasteService(_logger);
         _logger.Info("Application started.");
@@ -86,6 +89,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
             _hotkeyWindow.Dispose();
+            _recordingOverlay.Dispose();
             _dictationController.Dispose();
             _operationLock.Dispose();
         }
@@ -120,6 +124,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private async Task BeginWebDictationAsync()
     {
         var target = _focusTracker.Capture(_settings);
+        _overlayTargetWindow = target.WindowHandle;
         if (target.IsPasswordField)
         {
             _logger.Info("Recording blocked because target is a password field.");
@@ -180,7 +185,6 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
-        _ = AutomationHelpers.ClearTextSafely(readResult.Input, session.ChatWindow, _settings, _logger);
         SetStatus(AppStatus.Pasting);
         var pasteSucceeded = _pasteService.PasteIntoTarget(text, session.Target, _settings);
         _logger.Info($"Dictation paste completed. Success={pasteSucceeded} TextLength={text.Length}");
@@ -236,17 +240,11 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         try
         {
             var foregroundBeforeLaunch = NativeMethods.GetForegroundWindow();
-            var result = await _dictationController.OpenConfiguredProfileAsync(IntPtr.Zero);
+            var result = await _dictationController.PrepareBackgroundWindowAsync(IntPtr.Zero);
             if (!result.Ok)
             {
                 _logger.Info($"ChatGPT startup preparation failed. Failure={result.Failure}");
                 return;
-            }
-
-            if (_settings.MinimizeChatGptAfterStartup)
-            {
-                NativeMethods.ShowWindow(result.ChatWindow, NativeMethods.SwMinimize);
-                _logger.Info("Configured ChatGPT window minimized after startup preparation.");
             }
 
             if (foregroundBeforeLaunch != IntPtr.Zero && NativeMethods.IsWindow(foregroundBeforeLaunch))
@@ -269,7 +267,6 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
-        _ = ChatGptWindowFinder.PrepareForAutomation(result.ChatWindow, _logger);
         ShowMessage("ChatGPT wurde im konfigurierten Chrome-Profil Profile 3 geöffnet.");
     }
 
@@ -323,6 +320,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _session = null;
         _hotkeyWindow.SetEscapeEnabled(false);
         SetStatus(AppStatus.Idle);
+        _overlayTargetWindow = IntPtr.Zero;
     }
 
     private void SetStatus(AppStatus status)
@@ -330,6 +328,17 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _status = status;
         _statusItem.Text = $"Status: {status}";
         _notifyIcon.Text = $"OpenAI Flow Dictation - {status}";
+        if (_settings.ShowRecordingOverlay)
+        {
+            if (status == AppStatus.Idle)
+            {
+                _recordingOverlay.HideOverlay();
+            }
+            else
+            {
+                _recordingOverlay.ShowStatus(status, _overlayTargetWindow);
+            }
+        }
         _logger.Info($"Status changed: {status}");
     }
 

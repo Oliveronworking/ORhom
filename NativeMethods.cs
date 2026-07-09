@@ -61,6 +61,24 @@ internal static class NativeMethods
 
     private const uint MouseEventLeftDown = 0x0002;
     private const uint MouseEventLeftUp = 0x0004;
+    private const int GwlExStyle = -20;
+    private const int WsExLayered = 0x00080000;
+    private const uint LwaAlpha = 0x00000002;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool SetProp(IntPtr hWnd, string lpString, IntPtr hData);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr GetProp(IntPtr hWnd, string lpString);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetLayeredWindowAttributes(IntPtr hWnd, uint crKey, byte bAlpha, uint dwFlags);
 
     public static string GetWindowTitle(IntPtr hWnd)
     {
@@ -94,6 +112,32 @@ internal static class NativeMethods
         }
 
         return true;
+    }
+
+    public static bool MarkWindow(IntPtr hWnd, string propertyName)
+    {
+        return hWnd != IntPtr.Zero && SetProp(hWnd, propertyName, new IntPtr(1));
+    }
+
+    public static bool HasWindowMark(IntPtr hWnd, string propertyName)
+    {
+        return hWnd != IntPtr.Zero && GetProp(hWnd, propertyName) != IntPtr.Zero;
+    }
+
+    public static bool SetWindowOpacity(IntPtr hWnd, byte alpha)
+    {
+        if (hWnd == IntPtr.Zero || !IsWindow(hWnd))
+        {
+            return false;
+        }
+
+        var extendedStyle = GetWindowLong(hWnd, GwlExStyle);
+        if ((extendedStyle & WsExLayered) == 0)
+        {
+            _ = SetWindowLong(hWnd, GwlExStyle, extendedStyle | WsExLayered);
+        }
+
+        return SetLayeredWindowAttributes(hWnd, 0, alpha, LwaAlpha);
     }
 }
 

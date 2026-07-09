@@ -207,7 +207,7 @@ internal static class AutomationHelpers
                 continue;
             }
 
-            if (!ChatGptWindowFinder.PrepareForAutomation(chatWindow, logger))
+            if (!ChatGptWindowFinder.PrepareForAutomation(chatWindow, settings, logger))
             {
                 logger.Info($"ChatGPT dictated text read attempt could not prepare window. Attempt={attempts}");
                 await Task.Delay(pollIntervalMs);

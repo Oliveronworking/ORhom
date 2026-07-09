@@ -86,6 +86,7 @@ internal sealed class ChromeProfileLauncher
             startInfo.ArgumentList.Add($"--user-data-dir={_settings.ChromeUserDataDir}");
             startInfo.ArgumentList.Add($"--profile-directory={_settings.ChromeProfileDirectory}");
             startInfo.ArgumentList.Add("--new-window");
+            startInfo.ArgumentList.Add("--start-minimized");
             startInfo.ArgumentList.Add("--no-first-run");
             startInfo.ArgumentList.Add("--no-default-browser-check");
             startInfo.ArgumentList.Add(_settings.ChatGptUrl);

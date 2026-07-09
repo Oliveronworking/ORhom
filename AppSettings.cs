@@ -31,6 +31,9 @@ internal sealed class AppSettings
     public bool LaunchChatGptIfMissing { get; set; } = true;
     public bool PrepareChatGptOnStartup { get; set; } = true;
     public bool MinimizeChatGptAfterStartup { get; set; } = true;
+    public bool KeepChatGptWindowHidden { get; set; } = true;
+    public bool ShowRecordingOverlay { get; set; } = true;
+    public int RecordingOverlayBottomOffsetPx { get; set; } = 72;
     public bool RestoreTargetAfterStart { get; set; } = true;
     public bool RestoreClipboard { get; set; } = true;
     public int BrowserChromeExclusionTopPx { get; set; } = 110;

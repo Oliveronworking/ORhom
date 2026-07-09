@@ -17,6 +17,8 @@ Start-Process "bin\Release\net8.0-windows\ChatGptDictationBridge.exe"
 
 Es gibt kein Hauptfenster. Status, Diagnose und Beenden befinden sich im Infobereich der Taskleiste.
 
+OpenAIFlow hält genau ein eigenes ChatGPT-Fenster dauerhaft im Hintergrund. Es wird minimiert gestartet, über App-Neustarts hinweg wiedererkannt und nur nahezu transparent für die kurzen UI-Automationsschritte aktiviert. Beim normalen F8-Ablauf erscheint deshalb kein Chrome-Fenster auf dem Desktop. Sichtbar geöffnet wird es ausschließlich über den bewusst gewählten Tray-Menüpunkt **ChatGPT Profil öffnen**.
+
 ## Chrome Profile 3 einrichten
 
 OpenAIFlow startet Chrome immer mit diesen beiden vorhandenen Profilparametern:
@@ -46,8 +48,8 @@ Fehlt das Profil, startet die Diktierung nicht und die Tray-Meldung verweist auf
 
 1. Den Cursor in das gewünschte Zieltextfeld setzen.
 2. F8 drücken. OpenAIFlow merkt sich Fenster, Eingabefeld und Zwischenablage.
-3. Die App öffnet oder verwendet ChatGPT in Profile 3, prüft Login und Composer, klickt bevorzugt den kleinen Diktierbutton und bestätigt den Aufnahmezustand.
-4. Sprechen.
+3. Die App verwendet ihr einziges unsichtbares ChatGPT-Hintergrundfenster in Profile 3, prüft Login und Composer, klickt bevorzugt den kleinen Diktierbutton und bestätigt den Aufnahmezustand.
+4. Sprechen. Unten mittig zeigt eine fokusfreie Desktop-Pille **Hört zu …** sowie **F8 zum Stoppen · Esc Abbruch**. Die Anzeige ist klickdurchlässig und verändert weder Fokus noch Cursor.
 5. F8 erneut drücken. Die App bestätigt den Stop-Zustand, wartet bis zu 30 Sekunden auf die Transkription und liest den Composer über mehrere UI-Automation-Verfahren oder einen abgesicherten Zwischenablage-Fallback.
 6. Der Text wird am ursprünglichen Cursor eingefügt und die vorherige Zwischenablage wiederhergestellt.
 
@@ -64,6 +66,8 @@ Idle -> Starting -> Recording -> Stopping -> ReadingText -> Pasting -> Idle
 ```
 
 `Recording` wird erst gesetzt, wenn ChatGPT den Aufnahmezustand sichtbar bestätigt. Nach einem Fehler werden Fokus, Zwischenablage und Status bereinigt. Die Tray-Meldungen unterscheiden Profil-, Login-, Composer-, Start-, Stop-, Transkriptions- und Einfügefehler.
+
+Die Desktop-Anzeige spiegelt diese Zustände als `Diktierung startet`, `Hört zu`, `Aufnahme wird beendet`, `Text wird transkribiert` und `Text wird eingefügt`. Im Zustand `Idle` ist sie vollständig ausgeblendet.
 
 ## Diagnose im Tray-Menü
 
@@ -88,6 +92,9 @@ Die mitgelieferte `settings.json` enthält insbesondere:
   "allowGuestProfile": false,
   "allowIncognitoProfile": false,
   "allowTemporaryProfile": false,
+  "keepChatGptWindowHidden": true,
+  "showRecordingOverlay": true,
+  "recordingOverlayBottomOffsetPx": 72,
   "recordingStateTimeoutMs": 5000,
   "dictationResultTimeoutMs": 30000,
   "dictationResultPollIntervalMs": 250,
