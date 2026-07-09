@@ -13,17 +13,22 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private readonly FocusTracker _focusTracker;
     private readonly PasteService _pasteService;
     private readonly AppSettings _settings;
+    private readonly ChromeProfileLauncher _chromeProfileLauncher;
+    private readonly SemaphoreSlim _profileLaunchLock = new(1, 1);
     private AppStatus _status = AppStatus.Idle;
     private RecordingSession? _session;
+    private IntPtr _configuredProfileChatWindow;
 
     public DictationTrayAppContext()
     {
         var baseDirectory = AppContext.BaseDirectory;
         _logger = new AppLogger(Path.Combine(baseDirectory, "logs"));
         _settings = AppSettings.Load(Path.Combine(baseDirectory, "settings.json"), _logger);
+        _chromeProfileLauncher = new ChromeProfileLauncher(_settings, _logger);
         _focusTracker = new FocusTracker(_logger);
         _pasteService = new PasteService(_logger);
         _logger.Info("Application started.");
+        var initialProfileValidation = _chromeProfileLauncher.ValidateConfiguredProfile();
 
         _statusItem = new ToolStripMenuItem("Status: Idle") { Enabled = false };
 
@@ -31,6 +36,13 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         menu.Items.Add(_statusItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Aufnahme abbrechen", null, (_, _) => _ = AbortRecordingAsync()));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(new ToolStripMenuItem("ChatGPT Profil öffnen", null, (_, _) => _ = OpenChatGptProfileAsync())
+        {
+            Enabled = _settings.OpenChatGptProfileVisibleForSetup
+        });
+        menu.Items.Add(new ToolStripMenuItem("Chrome-Profil prüfen", null, (_, _) => CheckChromeProfile()));
+        menu.Items.Add(new ToolStripMenuItem("Chrome-Profilordner öffnen", null, (_, _) => OpenChromeProfileDirectory()));
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Einstellungen oeffnen", null, (_, _) => OpenPath(_settings.SettingsPath)));
         menu.Items.Add(new ToolStripMenuItem("ChatGPT UI Diagnose speichern", null, (_, _) => WriteChatGptDiagnostics())
@@ -54,7 +66,17 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _hotkeyWindow.EscapePressed += (_, _) => _ = AbortRecordingAsync();
         _hotkeyWindow.CreateControl();
 
-        QueueChatGptStartupPreparation();
+        if (!initialProfileValidation.IsValid)
+        {
+            if (_settings.WarnIfConfiguredChromeProfileUnavailable)
+            {
+                ShowConfiguredProfileUnavailable();
+            }
+        }
+        else
+        {
+            QueueChatGptStartupPreparation();
+        }
     }
 
     protected override void Dispose(bool disposing)
@@ -65,6 +87,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _notifyIcon.Dispose();
             _hotkeyWindow.Dispose();
             _operationLock.Dispose();
+            _profileLaunchLock.Dispose();
         }
 
         base.Dispose(disposing);
@@ -105,13 +128,26 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
-        var chatWindow = _settings.LaunchChatGptOnHotkey
-            ? await ChatGptWindowFinder.FindOrLaunchAsync(_settings, _logger, target.WindowHandle)
-            : ChatGptWindowFinder.Find(_settings, _logger, target.WindowHandle);
+        if (!IsConfiguredChromeProfileAvailable())
+        {
+            _pasteService.RestoreClipboard(target, _settings);
+            ShowConfiguredProfileUnavailable();
+            SetTemporaryError();
+            return;
+        }
+
+        var chatWindow = await EnsureConfiguredChatGptWindowAsync(target.WindowHandle);
         if (chatWindow == IntPtr.Zero)
         {
-            QueueChatGptStartupPreparation();
-            ShowMessage("ChatGPT wird im Hintergrund vorbereitet. Bitte gleich nochmal F8 druecken.");
+            ShowMessage("ChatGPT konnte nicht im konfigurierten Chrome-Profil geöffnet werden.");
+            SetTemporaryError();
+            return;
+        }
+
+        if (ChatGptLoginDetector.Detect(chatWindow, _settings, _logger) == ChatGptLoginStatus.LoggedOut)
+        {
+            _pasteService.RestoreClipboard(target, _settings);
+            ShowChatGptLoginRequired();
             SetTemporaryError();
             return;
         }
@@ -138,7 +174,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
     private void QueueChatGptStartupPreparation()
     {
-        if (!_settings.PrepareChatGptOnStartup || !_settings.LaunchChatGptIfMissing)
+        if (!_settings.PrepareChatGptOnStartup || !_settings.LaunchChatGptIfMissing || !IsConfiguredChromeProfileAvailable())
         {
             return;
         }
@@ -153,16 +189,10 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         try
         {
             var foregroundBeforeLaunch = NativeMethods.GetForegroundWindow();
-            if (ChatGptWindowFinder.Find(_settings, _logger) != IntPtr.Zero)
-            {
-                _logger.Info("ChatGPT startup preparation skipped because a ChatGPT window is already open.");
-                return;
-            }
-
-            var chatWindow = await ChatGptWindowFinder.FindOrLaunchAsync(_settings, _logger, excludedWindow: IntPtr.Zero);
+            var chatWindow = await EnsureConfiguredChatGptWindowAsync(excludedWindow: IntPtr.Zero);
             if (chatWindow == IntPtr.Zero)
             {
-                _logger.Info("ChatGPT startup preparation did not find a ChatGPT window after launch.");
+                _logger.Info("ChatGPT startup preparation did not find the configured Chrome profile window after launch.");
                 return;
             }
 
@@ -193,14 +223,22 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
 
         SetStatus(AppStatus.Pasting);
-        var chatWindow = NativeMethods.IsWindow(session.ChatWindow)
-            ? session.ChatWindow
-            : ChatGptWindowFinder.Find(_settings, _logger, session.Target.WindowHandle);
+        var chatWindow = NativeMethods.IsWindow(session.ChatWindow) ? session.ChatWindow : IntPtr.Zero;
         if (chatWindow == IntPtr.Zero)
         {
             _pasteService.RestoreTargetFocus(session.Target);
-            ShowMessage("ChatGPT-Fenster nicht mehr gefunden.");
+            _pasteService.RestoreClipboard(session.Target, _settings);
+            ShowMessage("ChatGPT-Fenster aus dem konfigurierten Chrome-Profil nicht mehr gefunden.");
             SetTemporaryError();
+            return;
+        }
+
+        if (ChatGptLoginDetector.Detect(chatWindow, _settings, _logger) == ChatGptLoginStatus.LoggedOut)
+        {
+            _pasteService.RestoreTargetFocus(session.Target);
+            _pasteService.RestoreClipboard(session.Target, _settings);
+            ShowChatGptLoginRequired();
+            ResetToIdle();
             return;
         }
 
@@ -232,7 +270,9 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
 
         _ = AutomationHelpers.ClearTextSafely(readResult.Input ?? chatInput, chatWindow, _settings, _logger);
-        if (!_pasteService.PasteIntoTarget(text, session.Target, _settings))
+        var pasteSucceeded = _pasteService.PasteIntoTarget(text, session.Target, _settings);
+        _logger.Info($"Foreground dictation paste finished. Success={pasteSucceeded}");
+        if (!pasteSucceeded)
         {
             ShowMessage("Text konnte nicht eingefuegt werden.");
         }
@@ -340,6 +380,115 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _notifyIcon.ShowBalloonTip(2500);
     }
 
+    private bool IsConfiguredChromeProfileAvailable()
+    {
+        return _chromeProfileLauncher.ValidateConfiguredProfile().IsValid;
+    }
+
+    private async Task<IntPtr> EnsureConfiguredChatGptWindowAsync(IntPtr excludedWindow)
+    {
+        if (!IsConfiguredChromeProfileAvailable())
+        {
+            return IntPtr.Zero;
+        }
+
+        if (_configuredProfileChatWindow != IntPtr.Zero &&
+            _configuredProfileChatWindow != excludedWindow &&
+            NativeMethods.IsWindow(_configuredProfileChatWindow))
+        {
+            return _configuredProfileChatWindow;
+        }
+
+        if (!_settings.LaunchChatGptIfMissing)
+        {
+            _logger.Info("Configured Chrome profile window is unavailable and LaunchChatGptIfMissing is disabled.");
+            return IntPtr.Zero;
+        }
+
+        await _profileLaunchLock.WaitAsync();
+        try
+        {
+            if (_configuredProfileChatWindow != IntPtr.Zero &&
+                _configuredProfileChatWindow != excludedWindow &&
+                NativeMethods.IsWindow(_configuredProfileChatWindow))
+            {
+                return _configuredProfileChatWindow;
+            }
+
+            var chatWindow = await ChatGptWindowFinder.LaunchConfiguredProfileAsync(
+                _settings,
+                _logger,
+                _chromeProfileLauncher,
+                excludedWindow);
+            if (chatWindow != IntPtr.Zero)
+            {
+                _configuredProfileChatWindow = chatWindow;
+                _logger.Info($"Configured Chrome profile ChatGPT window recorded. Handle=0x{chatWindow.ToInt64():X}");
+            }
+
+            return chatWindow;
+        }
+        finally
+        {
+            _profileLaunchLock.Release();
+        }
+    }
+
+    private async Task OpenChatGptProfileAsync()
+    {
+        if (!IsConfiguredChromeProfileAvailable())
+        {
+            ShowConfiguredProfileUnavailable();
+            return;
+        }
+
+        _configuredProfileChatWindow = IntPtr.Zero;
+        var chatWindow = await EnsureConfiguredChatGptWindowAsync(IntPtr.Zero);
+        if (chatWindow == IntPtr.Zero)
+        {
+            ShowMessage("ChatGPT konnte nicht im konfigurierten Chrome-Profil geöffnet werden.");
+            return;
+        }
+
+        ShowMessage("ChatGPT wird sichtbar im konfigurierten Chrome-Profil geöffnet.");
+    }
+
+    private void CheckChromeProfile()
+    {
+        var validation = _chromeProfileLauncher.ValidateConfiguredProfile();
+        if (validation.IsValid)
+        {
+            _logger.Info("Chrome profile check completed successfully.");
+            ShowMessage("Konfiguriertes Chrome-Profil wurde gefunden.");
+            return;
+        }
+
+        _logger.Info($"Chrome profile check failed. Reason={validation.FailureReason}");
+        ShowConfiguredProfileUnavailable();
+    }
+
+    private void OpenChromeProfileDirectory()
+    {
+        var validation = _chromeProfileLauncher.ValidateConfiguredProfile();
+        if (!validation.IsValid)
+        {
+            ShowConfiguredProfileUnavailable();
+            return;
+        }
+
+        OpenPath(validation.ProfileDirectoryPath);
+    }
+
+    private void ShowConfiguredProfileUnavailable()
+    {
+        ShowMessage("Konfiguriertes Chrome-Profil nicht gefunden. Bitte settings.json prüfen.");
+    }
+
+    private void ShowChatGptLoginRequired()
+    {
+        ShowMessage("ChatGPT ist im konfigurierten Chrome-Profil nicht angemeldet. Bitte 'ChatGPT Profil öffnen' verwenden.");
+    }
+
     private void OpenPath(string path)
     {
         try
@@ -363,10 +512,9 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                 return;
             }
 
-            var excludedWindow = _session?.Target.WindowHandle ?? IntPtr.Zero;
             var chatWindow = _session is { } session && NativeMethods.IsWindow(session.ChatWindow)
                 ? session.ChatWindow
-                : ChatGptWindowFinder.Find(_settings, _logger, excludedWindow);
+                : NativeMethods.IsWindow(_configuredProfileChatWindow) ? _configuredProfileChatWindow : IntPtr.Zero;
             AutomationHelpers.WriteChatGptInputDiagnostics(chatWindow, _settings, _logger);
             ShowMessage("ChatGPT UI Diagnose wurde ins Log geschrieben.");
         }

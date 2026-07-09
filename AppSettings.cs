@@ -17,6 +17,16 @@ internal sealed class AppSettings
     public string ChatGptDictationHotkey { get; set; } = "Ctrl+Shift+D";
     public string ChatGptUrl { get; set; } = "https://chatgpt.com";
     public string[] ChatGptWindowTitleContains { get; set; } = ["ChatGPT", "chatgpt.com"];
+    public string BrowserProfileMode { get; set; } = "ExistingChromeProfile";
+    public string ChromeExecutablePath { get; set; } = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
+    public string ChromeUserDataDir { get; set; } = @"C:\Users\Admin\AppData\Local\Google\Chrome\User Data";
+    public string ChromeProfileDirectory { get; set; } = "Profile 3";
+    public bool RequireConfiguredChromeProfile { get; set; } = true;
+    public bool AllowGuestProfile { get; set; } = false;
+    public bool AllowIncognitoProfile { get; set; } = false;
+    public bool AllowTemporaryProfile { get; set; } = false;
+    public bool OpenChatGptProfileVisibleForSetup { get; set; } = true;
+    public bool WarnIfConfiguredChromeProfileUnavailable { get; set; } = true;
     public bool LaunchChatGptIfMissing { get; set; } = true;
     public bool LaunchChatGptOnHotkey { get; set; } = false;
     public bool PrepareChatGptOnStartup { get; set; } = true;

@@ -345,7 +345,7 @@ internal static class AutomationHelpers
         {
             var current = element.Current;
             var rect = current.BoundingRectangle;
-            logger.Info($"{label}: ControlType='{current.ControlType.ProgrammaticName}' Name='{current.Name}' Class='{current.ClassName}' Rect={rect.Left:0},{rect.Top:0},{rect.Width:0},{rect.Height:0}");
+            logger.Info($"{label}: ControlType='{current.ControlType.ProgrammaticName}' NameLength={(current.Name ?? string.Empty).Length} Class='{current.ClassName}' Rect={rect.Left:0},{rect.Top:0},{rect.Width:0},{rect.Height:0}");
         }
         catch (Exception ex)
         {
@@ -362,7 +362,7 @@ internal static class AutomationHelpers
             return;
         }
 
-        logger.Info($"ChatGPT UI diagnostics: WindowHandle=0x{chatWindow.ToInt64():X} Title='{NativeMethods.GetWindowTitle(chatWindow)}' Class='{NativeMethods.GetWindowClass(chatWindow)}'");
+        logger.Info($"ChatGPT UI diagnostics: WindowHandle=0x{chatWindow.ToInt64():X} Class='{NativeMethods.GetWindowClass(chatWindow)}'");
 
         try
         {
@@ -390,7 +390,7 @@ internal static class AutomationHelpers
                     var rect = current.BoundingRectangle;
                     var reason = GetChatGptInputSafetyRejectionReason(element, chatWindow, settings);
                     var status = reason is null ? "safe" : $"rejected:{reason}";
-                    logger.Info($"ChatGPT UI candidate #{index + 1}: Status={status} ControlType='{current.ControlType.ProgrammaticName}' Name='{current.Name}' Class='{current.ClassName}' AutomationId='{current.AutomationId}' Rect={rect.Left:0},{rect.Top:0},{rect.Width:0},{rect.Height:0}");
+                    logger.Info($"ChatGPT UI candidate #{index + 1}: Status={status} ControlType='{current.ControlType.ProgrammaticName}' NameLength={(current.Name ?? string.Empty).Length} Class='{current.ClassName}' AutomationId='{current.AutomationId}' Rect={rect.Left:0},{rect.Top:0},{rect.Width:0},{rect.Height:0}");
                 }
                 catch (Exception ex)
                 {

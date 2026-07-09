@@ -1,61 +1,16 @@
-using System.Diagnostics;
-
 namespace ChatGptDictationBridge;
 
 internal static class ChatGptWindowFinder
 {
-    public static IntPtr Find(AppSettings settings, AppLogger logger, IntPtr excludedWindow = default)
+    public static async Task<IntPtr> LaunchConfiguredProfileAsync(
+        AppSettings settings,
+        AppLogger logger,
+        ChromeProfileLauncher profileLauncher,
+        IntPtr excludedWindow)
     {
-        var matches = new List<IntPtr>();
-        NativeMethods.EnumWindows((hWnd, _) =>
+        if (!profileLauncher.TryOpenChatGptProfile(out var failureReason))
         {
-            if (excludedWindow != IntPtr.Zero && hWnd == excludedWindow)
-            {
-                return true;
-            }
-
-            if (!NativeMethods.IsWindowVisible(hWnd))
-            {
-                return true;
-            }
-
-            var title = NativeMethods.GetWindowTitle(hWnd);
-            if (string.IsNullOrWhiteSpace(title))
-            {
-                return true;
-            }
-
-            if (settings.ChatGptWindowTitleContains.Any(part => title.Contains(part, StringComparison.OrdinalIgnoreCase)))
-            {
-                matches.Add(hWnd);
-            }
-
-            return true;
-        }, IntPtr.Zero);
-
-        var selected = matches.FirstOrDefault();
-        logger.Info(selected == IntPtr.Zero
-            ? "ChatGPT window not found."
-            : $"ChatGPT window found. Handle=0x{selected.ToInt64():X} Title='{NativeMethods.GetWindowTitle(selected)}' Class='{NativeMethods.GetWindowClass(selected)}'");
-        return selected;
-    }
-
-    public static async Task<IntPtr> FindOrLaunchAsync(AppSettings settings, AppLogger logger, IntPtr excludedWindow)
-    {
-        var chatWindow = Find(settings, logger, excludedWindow);
-        if (chatWindow != IntPtr.Zero || !settings.LaunchChatGptIfMissing)
-        {
-            return chatWindow;
-        }
-
-        try
-        {
-            Process.Start(new ProcessStartInfo(settings.ChatGptUrl) { UseShellExecute = true });
-            logger.Info("ChatGPT URL launched because no ChatGPT window was found.");
-        }
-        catch (Exception ex)
-        {
-            logger.Error("Could not launch ChatGPT URL.", ex);
+            logger.Info($"Configured Chrome profile was not launched. Reason={failureReason}");
             return IntPtr.Zero;
         }
 
@@ -63,14 +18,28 @@ internal static class ChatGptWindowFinder
         while (Environment.TickCount64 - start < 8000)
         {
             await Task.Delay(300);
-            chatWindow = Find(settings, logger, excludedWindow);
-            if (chatWindow != IntPtr.Zero)
+            var foregroundWindow = NativeMethods.GetForegroundWindow();
+            if (IsChatGptWindow(foregroundWindow, settings, excludedWindow))
             {
-                return chatWindow;
+                logger.Info($"Configured Chrome profile ChatGPT window selected from foreground. Handle=0x{foregroundWindow.ToInt64():X}");
+                return foregroundWindow;
             }
+
         }
 
+        logger.Info("Configured Chrome profile launch did not expose a foreground ChatGPT window; no other ChatGPT window was selected as a fallback.");
         return IntPtr.Zero;
+    }
+
+    private static bool IsChatGptWindow(IntPtr hWnd, AppSettings settings, IntPtr excludedWindow)
+    {
+        if (hWnd == IntPtr.Zero || hWnd == excludedWindow || !NativeMethods.IsWindowVisible(hWnd))
+        {
+            return false;
+        }
+
+        var title = NativeMethods.GetWindowTitle(hWnd);
+        return settings.ChatGptWindowTitleContains.Any(part => title.Contains(part, StringComparison.OrdinalIgnoreCase));
     }
 
     public static bool PrepareForAutomation(IntPtr hWnd, AppLogger logger)
