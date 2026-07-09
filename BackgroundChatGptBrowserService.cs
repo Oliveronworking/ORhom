@@ -47,6 +47,11 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
                 return BackgroundDictationResult.Failure("ChatGPT-Eingabefeld nicht gefunden. Bitte im separaten Profil anmelden und Mikrofon erlauben.");
             }
 
+            if (_settings.ClearBackgroundPromptBeforeStart)
+            {
+                await ClearPromptAsync(page);
+            }
+
             await SendDictationHotkeyAsync(page);
             if (_setupWindowVisible && _settings.MinimizeBackgroundBrowserAfterSuccessfulStart)
             {
@@ -82,7 +87,7 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
             _logger.Info("Background dictation stop triggered.");
 
             await Task.Delay(Math.Max(_settings.SettleDelayMs, 0));
-            var text = await WaitForPromptTextAsync(page);
+            var text = await WaitForStablePromptTextAsync(page);
             _logger.Info($"Background ChatGPT input text read. Length={text.Length}");
 
             if (text.Length > 0)
@@ -315,6 +320,11 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
             "--new-window",
             _settings.ChatGptUrl
         };
+
+        if (!string.IsNullOrWhiteSpace(_settings.BackgroundBrowserLanguage))
+        {
+            args.Insert(args.Count - 2, $"--lang={_settings.BackgroundBrowserLanguage}");
+        }
 
         if (visibleForSetup && _settings.OpenMicrophoneSettingsOnSetup)
         {
@@ -554,22 +564,37 @@ internal sealed class BackgroundChatGptBrowserService : IDisposable
         await page.Keyboard.PressAsync(ToPlaywrightHotkey(_settings.ChatGptDictationHotkey));
     }
 
-    private async Task<string> WaitForPromptTextAsync(IPage page)
+    private async Task<string> WaitForStablePromptTextAsync(IPage page)
     {
         var timeoutMs = Math.Max(_settings.ReadTextTimeoutMs, 1000);
+        var stableMs = Math.Clamp(_settings.BackgroundReadStableMs, 250, timeoutMs);
         var start = Environment.TickCount64;
+        var lastText = string.Empty;
+        var lastChangedAt = start;
+        var sawText = false;
+
         while (Environment.TickCount64 - start < timeoutMs)
         {
             var text = (await ReadPromptTextAsync(page)).Trim();
-            if (text.Length > 0)
+            if (!string.Equals(text, lastText, StringComparison.Ordinal))
             {
-                return text;
+                lastText = text;
+                lastChangedAt = Environment.TickCount64;
+                sawText = text.Length > 0;
+                _logger.Info($"Background ChatGPT prompt text changed. Length={text.Length}");
+            }
+
+            if (sawText && Environment.TickCount64 - lastChangedAt >= stableMs)
+            {
+                _logger.Info($"Background ChatGPT prompt text stabilized. Length={lastText.Length} StableMs={stableMs}");
+                return lastText;
             }
 
             await Task.Delay(250);
         }
 
-        return string.Empty;
+        _logger.Info($"Background ChatGPT prompt text wait timed out. LastLength={lastText.Length}");
+        return lastText;
     }
 
     private static Task<string> ReadPromptTextAsync(IPage page)

@@ -52,16 +52,19 @@ Wenn `useBackgroundChatGptBrowser=false` gesetzt ist, nutzt die App wieder die a
   "backgroundBrowserExecutablePath": "",
   "backgroundBrowserUserDataDir": "%LOCALAPPDATA%\\OpenAIFlow\\ChatGptProfile",
   "backgroundBrowserDebugPort": 9227,
+  "backgroundBrowserLanguage": "de-DE",
   "allowForegroundFallback": false,
   "keepBackgroundBrowserMinimized": true,
   "openSetupOnBackgroundFailure": true,
   "openMicrophoneSettingsOnSetup": true,
-  "minimizeBackgroundBrowserAfterSuccessfulStart": true,
+  "minimizeBackgroundBrowserAfterSuccessfulStart": false,
   "restoreTargetAfterStart": true,
   "restoreClipboard": true,
   "browserChromeExclusionTopPx": 120,
   "settleDelayMs": 500,
   "readTextTimeoutMs": 12000,
+  "backgroundReadStableMs": 2500,
+  "clearBackgroundPromptBeforeStart": true,
   "pasteDelayMs": 100,
   "restoreClipboardDelayMs": 300,
   "blockPasswordFields": true
@@ -74,11 +77,14 @@ Neue Hintergrund-Settings:
 - `backgroundBrowserExecutablePath`: optionaler Pfad zu `chrome.exe` oder `msedge.exe`; leer bedeutet automatische Suche.
 - `backgroundBrowserUserDataDir`: dauerhaftes Profil fuer Login und Mikrofonfreigabe.
 - `backgroundBrowserDebugPort`: lokaler CDP-Port des Hintergrundbrowsers.
+- `backgroundBrowserLanguage`: Sprache/Locale fuer den separaten Browser, standardmaessig `de-DE`.
 - `allowForegroundFallback`: erlaubt die alte sichtbare UIAutomation nur, wenn bewusst auf `true` gesetzt.
 - `keepBackgroundBrowserMinimized`: startet und haelt den separaten Browser minimiert.
 - `openSetupOnBackgroundFailure`: oeffnet bei fehlendem ChatGPT-Eingabefeld automatisch das sichtbare Setup-Fenster.
 - `openMicrophoneSettingsOnSetup`: oeffnet beim Setup zusaetzlich die Browser-Mikrofonseite des separaten Profils.
-- `minimizeBackgroundBrowserAfterSuccessfulStart`: minimiert das Setup-Fenster wieder, sobald Diktat erfolgreich gestartet wurde.
+- `minimizeBackgroundBrowserAfterSuccessfulStart`: minimiert das Setup-Fenster wieder, sobald Diktat erfolgreich gestartet wurde. Standardmaessig aus, damit Mikrofon und laufende Transkription beim Einrichten sichtbar bleiben.
+- `backgroundReadStableMs`: wartet nach Stop, bis der erkannte Text fuer diese Zeit unveraendert bleibt.
+- `clearBackgroundPromptBeforeStart`: leert den separaten ChatGPT-Prompt vor Start, damit keine alten Reste eingefuegt werden.
 
 Wenn ChatGPT im Hintergrund nicht vorbereitet werden kann oder das Eingabefeld nicht gefunden wird, pruefe zuerst:
 

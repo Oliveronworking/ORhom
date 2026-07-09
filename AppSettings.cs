@@ -26,11 +26,12 @@ internal sealed class AppSettings
     public string BackgroundBrowserExecutablePath { get; set; } = string.Empty;
     public string BackgroundBrowserUserDataDir { get; set; } = "%LOCALAPPDATA%\\OpenAIFlow\\ChatGptProfile";
     public int BackgroundBrowserDebugPort { get; set; } = 9227;
+    public string BackgroundBrowserLanguage { get; set; } = "de-DE";
     public bool AllowForegroundFallback { get; set; } = false;
     public bool KeepBackgroundBrowserMinimized { get; set; } = true;
     public bool OpenSetupOnBackgroundFailure { get; set; } = true;
     public bool OpenMicrophoneSettingsOnSetup { get; set; } = true;
-    public bool MinimizeBackgroundBrowserAfterSuccessfulStart { get; set; } = true;
+    public bool MinimizeBackgroundBrowserAfterSuccessfulStart { get; set; } = false;
     public bool RestoreTargetAfterStart { get; set; } = true;
     public bool RestoreClipboard { get; set; } = true;
     public int BrowserChromeExclusionTopPx { get; set; } = 120;
@@ -38,6 +39,8 @@ internal sealed class AppSettings
     public double MaxChatGptInputWindowWidthRatio { get; set; } = 0.85;
     public int SettleDelayMs { get; set; } = 500;
     public int ReadTextTimeoutMs { get; set; } = 12000;
+    public int BackgroundReadStableMs { get; set; } = 2500;
+    public bool ClearBackgroundPromptBeforeStart { get; set; } = true;
     public int PasteDelayMs { get; set; } = 100;
     public int RestoreClipboardDelayMs { get; set; } = 300;
     public bool BlockPasswordFields { get; set; } = true;
