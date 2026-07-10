@@ -97,3 +97,134 @@ public sealed class HybridPushToTalkPolicyTests
         Assert.Equal(expected, HybridPushToTalkPolicy.ShouldStopOnRelease(enabled, heldForMs, thresholdMs));
     }
 }
+
+public sealed class StopTransitionTimeoutPolicyTests
+{
+    [Fact]
+    public void DefaultStopTransitionTimeoutUsesThirtySecondTranscriptionTimeout()
+    {
+        Assert.Equal(30_000, StopTransitionTimeoutPolicy.ResolveTimeoutMs());
+    }
+
+    [Theory]
+    [InlineData(5_000, 30_000, 30_000)]
+    [InlineData(5_000, 45_000, 45_000)]
+    [InlineData(60_000, 30_000, 60_000)]
+    public void StopTransitionTimeoutIsNeverShorterThanEitherRequiredTimeout(
+        int recordingStateTimeoutMs,
+        int transcriptionTimeoutMs,
+        int expected)
+    {
+        Assert.Equal(
+            expected,
+            StopTransitionTimeoutPolicy.ResolveTimeoutMs(
+                recordingStateTimeoutMs,
+                transcriptionTimeoutMs));
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(-1, -1)]
+    public void InvalidTimeoutsFallBackToSafeDefaults(
+        int recordingStateTimeoutMs,
+        int transcriptionTimeoutMs)
+    {
+        Assert.Equal(
+            StopTransitionTimeoutPolicy.DefaultTranscriptionTimeoutMs,
+            StopTransitionTimeoutPolicy.ResolveTimeoutMs(
+                recordingStateTimeoutMs,
+                transcriptionTimeoutMs));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void InvalidReaderTimeoutUsesTheSameSafeDefault(int transcriptionTimeoutMs)
+    {
+        Assert.Equal(
+            StopTransitionTimeoutPolicy.DefaultTranscriptionTimeoutMs,
+            StopTransitionTimeoutPolicy.ResolveTranscriptionTimeoutMs(
+                transcriptionTimeoutMs));
+    }
+
+    [Fact]
+    public void ExcessiveTimeoutsAreClampedToTwoMinutes()
+    {
+        Assert.Equal(
+            StopTransitionTimeoutPolicy.MaximumTimeoutMs,
+            StopTransitionTimeoutPolicy.ResolveTimeoutMs(
+                int.MaxValue,
+                int.MaxValue));
+        Assert.Equal(
+            StopTransitionTimeoutPolicy.MaximumTimeoutMs,
+            StopTransitionTimeoutPolicy.ResolveTranscriptionTimeoutMs(
+                int.MaxValue));
+    }
+}
+
+public sealed class RecoveryTextPolicyTests
+{
+    [Fact]
+    public void StableSafeRecoveryTextCanUseNormalPastePath()
+    {
+        Assert.True(RecoveryTextPolicy.CanUseNormalPastePath(
+            "Das ist ein vollständig transkribierter Text.",
+            isStable: true,
+            completedWithoutDestructiveCleanup: true));
+    }
+
+    [Fact]
+    public void LongStableUnicodeRecoveryTextCanUseNormalPastePath()
+    {
+        var text = string.Concat(Enumerable.Repeat(
+            "Grüße aus Wien – déjà-vu, 東京 und ein Emoji 🧠. ",
+            32));
+
+        Assert.True(text.Length > 1_000);
+        Assert.True(RecoveryTextPolicy.CanUseNormalPastePath(
+            text,
+            isStable: true,
+            completedWithoutDestructiveCleanup: true));
+    }
+
+    [Fact]
+    public void UnstableRecoveryTextCannotUseNormalPastePath()
+    {
+        Assert.False(RecoveryTextPolicy.CanUseNormalPastePath(
+            "Noch nicht stabiler Zwischenstand",
+            isStable: false,
+            completedWithoutDestructiveCleanup: true));
+    }
+
+    [Fact]
+    public void DestructiveOrUnconfirmedCleanupCannotUseNormalPastePath()
+    {
+        Assert.False(RecoveryTextPolicy.CanUseNormalPastePath(
+            "Vollständiger stabiler Text",
+            isStable: true,
+            completedWithoutDestructiveCleanup: false));
+    }
+
+    [Theory]
+    [InlineData("https://example.com")]
+    [InlineData(" http://example.com/recovered ")]
+    public void UnsafeRecoveryTextCannotUseNormalPastePath(string text)
+    {
+        Assert.False(RecoveryTextPolicy.CanUseNormalPastePath(
+            text,
+            isStable: true,
+            completedWithoutDestructiveCleanup: true));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   \t\r\n")]
+    public void EmptyRecoveryTextCannotUseNormalPastePath(string? text)
+    {
+        Assert.False(RecoveryTextPolicy.CanUseNormalPastePath(
+            text,
+            isStable: true,
+            completedWithoutDestructiveCleanup: true));
+    }
+}

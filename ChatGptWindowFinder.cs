@@ -118,6 +118,36 @@ internal static class ChatGptWindowFinder
         }
     }
 
+    public static bool PrepareForBackgroundAutomation(IntPtr hWnd, AppSettings settings, AppLogger logger)
+    {
+        if (hWnd == IntPtr.Zero || !NativeMethods.IsWindow(hWnd))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (settings.KeepChatGptWindowHidden &&
+                !NativeMethods.SetWindowOpacity(hWnd, HiddenAutomationOpacity))
+            {
+                logger.Info("ChatGPT background window opacity could not be reduced before non-activating automation.");
+            }
+
+            if (NativeMethods.IsIconic(hWnd) || !NativeMethods.IsWindowVisible(hWnd))
+            {
+                _ = NativeMethods.ShowWindow(hWnd, NativeMethods.SwShowNoActivate);
+                Thread.Sleep(70);
+            }
+
+            return NativeMethods.IsWindowVisible(hWnd) && !NativeMethods.IsIconic(hWnd);
+        }
+        catch (Exception ex)
+        {
+            logger.Error("Could not prepare hidden ChatGPT window without activation.", ex);
+            return false;
+        }
+    }
+
     public static void MinimizeBackgroundWindow(IntPtr hWnd, AppSettings settings, AppLogger logger)
     {
         if (hWnd == IntPtr.Zero || !NativeMethods.IsWindow(hWnd))

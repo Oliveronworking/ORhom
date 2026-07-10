@@ -83,3 +83,45 @@ internal static class HybridPushToTalkPolicy
         return enabled && heldForMs >= Math.Clamp(thresholdMs, 200, 1500);
     }
 }
+
+internal static class StopTransitionTimeoutPolicy
+{
+    public const int DefaultRecordingStateTimeoutMs = 5_000;
+    public const int DefaultTranscriptionTimeoutMs = 30_000;
+    public const int MaximumTimeoutMs = 120_000;
+
+    public static int ResolveTimeoutMs(
+        int recordingStateTimeoutMs = DefaultRecordingStateTimeoutMs,
+        int transcriptionTimeoutMs = DefaultTranscriptionTimeoutMs)
+    {
+        var effectiveRecordingStateTimeoutMs = recordingStateTimeoutMs > 0
+            ? Math.Min(recordingStateTimeoutMs, MaximumTimeoutMs)
+            : DefaultRecordingStateTimeoutMs;
+        var effectiveTranscriptionTimeoutMs = ResolveTranscriptionTimeoutMs(
+            transcriptionTimeoutMs);
+
+        return Math.Max(effectiveRecordingStateTimeoutMs, effectiveTranscriptionTimeoutMs);
+    }
+
+    public static int ResolveTranscriptionTimeoutMs(
+        int transcriptionTimeoutMs = DefaultTranscriptionTimeoutMs)
+    {
+        return transcriptionTimeoutMs > 0
+            ? Math.Min(transcriptionTimeoutMs, MaximumTimeoutMs)
+            : DefaultTranscriptionTimeoutMs;
+    }
+}
+
+internal static class RecoveryTextPolicy
+{
+    public static bool CanUseNormalPastePath(
+        string? text,
+        bool isStable,
+        bool completedWithoutDestructiveCleanup)
+    {
+        return completedWithoutDestructiveCleanup &&
+               isStable &&
+               !string.IsNullOrWhiteSpace(text) &&
+               !AutomationHelpers.IsUnsafeCapturedText(text);
+    }
+}
