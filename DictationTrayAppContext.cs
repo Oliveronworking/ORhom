@@ -277,60 +277,93 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
 
         SetStatus(AppStatus.Stopping);
-        var stopResult = await _dictationController.StopDictationAsync(session.ChatWindow);
+        void RestoreFocus() => RestoreTargetFocus(session.Target);
+
+        var stopResult = await _dictationController.StopDictationAsync(
+            session.ChatWindow,
+            RestoreFocus);
         StopAudioDucking();
+        ChatGptDictationReadResult? readResult = null;
+        var terminationConfirmed = stopResult.IsTerminationConfirmed;
+        var recoveryCompletedWithoutDestructiveCleanup =
+            stopResult.IsTerminationConfirmed && stopResult.CanRecoverText;
+
         if (!stopResult.Ok)
         {
             SetStatus(AppStatus.ReadingText);
-            var textWasRecovered = false;
-            var recoveryClipboardRestoreFailed = false;
-            var terminationConfirmed = stopResult.IsTerminationConfirmed;
             try
             {
                 if (stopResult.CanRecoverText)
                 {
-                    var recovery = await TryRecoverTextToHistoryAsync(
+                    readResult = await _dictationController.ReadDictatedTextAsync(
                         session.ChatWindow,
-                        DictationHistoryOutcomes.FailureRecovered,
-                        stopResult.RequiresDeferredCleanup ? 2500 : null);
-                    textWasRecovered = recovery.TextRecovered;
-                    recoveryClipboardRestoreFailed = recovery.ClipboardRestoreFailed;
+                        restoreTargetFocus: RestoreFocus);
+                    _logger.Info($"Dictation recovery read completed. Attempts={readResult.Attempts} Method={readResult.Method} TextLength={readResult.Text.Trim().Length} Stable={readResult.IsStable} ClipboardRestoreFailed={readResult.ClipboardRestoreFailed}");
                 }
             }
             finally
             {
                 if (stopResult.RequiresDeferredCleanup)
                 {
-                    terminationConfirmed = await _dictationController.CompleteDeferredStopCleanupAsync(
+                    var cleanup = await _dictationController.CompleteDeferredStopCleanupAsync(
                         session.ChatWindow);
+                    terminationConfirmed = cleanup.IsTerminationConfirmed;
+                    recoveryCompletedWithoutDestructiveCleanup =
+                        cleanup == RecordingFailureCleanupResult.Recoverable;
                 }
             }
 
-            if (!textWasRecovered)
+            var recoveredText = readResult?.Text.Trim() ?? string.Empty;
+            var hasSafeRecoveredText = recoveredText.Length > 0 &&
+                                       !AutomationHelpers.IsUnsafeCapturedText(recoveredText);
+            if (RecoveryTextPolicy.CanUseNormalPastePath(
+                    recoveredText,
+                    readResult?.IsStable == true,
+                    recoveryCompletedWithoutDestructiveCleanup))
             {
-                _history.Add(string.Empty, DictationHistoryOutcomes.StopFailed);
+                _logger.Info($"Stop transition recovered as a normal completion. TextLength={recoveredText.Length}");
+                PasteCompletedDictation(
+                    session,
+                    recoveredText,
+                    readResult!.ClipboardRestoreFailed);
+                return;
             }
 
             RestoreTargetFocus(session.Target);
             if (!terminationConfirmed)
             {
+                _history.Add(
+                    hasSafeRecoveredText ? recoveredText : string.Empty,
+                    hasSafeRecoveredText
+                        ? DictationHistoryOutcomes.FailureRecovered
+                        : DictationHistoryOutcomes.StopFailed);
                 _hotkeyWindow.SetEscapeEnabled(true);
                 SetStatus(AppStatus.Recording);
-                ShowMessage("Das Mikrofon konnte nicht sicher beendet werden. Bitte F8 erneut drücken oder das ChatGPT-Fenster schließen.");
+                ShowMessage(hasSafeRecoveredText
+                    ? "Das Mikrofon konnte nicht sicher beendet werden. Der bisherige Text liegt im Verlauf. Bitte F8 erneut drücken oder das ChatGPT-Fenster schließen."
+                    : "Das Mikrofon konnte nicht sicher beendet werden. Bitte F8 erneut drücken oder das ChatGPT-Fenster schließen.");
                 return;
             }
 
-            ShowMessage(recoveryClipboardRestoreFailed
+            _history.Add(
+                hasSafeRecoveredText ? recoveredText : string.Empty,
+                hasSafeRecoveredText
+                    ? DictationHistoryOutcomes.FailureRecovered
+                    : DictationHistoryOutcomes.StopFailed);
+            ShowMessage(readResult?.ClipboardRestoreFailed == true
                 ? "Die Aufnahme wurde beendet, aber die vorherige Zwischenablage konnte bei der Textrettung nicht wiederhergestellt werden."
-                : textWasRecovered
-                    ? "Die Aufnahme konnte nicht sauber beendet werden, aber der Text wurde im Verlauf gerettet."
+                : hasSafeRecoveredText
+                    ? "Die Transkription wurde nicht sicher fertig. Der letzte Textstand liegt im Verlauf."
                     : stopResult.Message);
             ResetToIdle();
             return;
         }
 
         SetStatus(AppStatus.ReadingText);
-        var readResult = await _dictationController.ReadDictatedTextAsync(session.ChatWindow, session.ChatInput);
+        readResult = await _dictationController.ReadDictatedTextAsync(
+            session.ChatWindow,
+            session.ChatInput,
+            restoreTargetFocus: RestoreFocus);
         var text = readResult.Text.Trim();
         _logger.Info($"Dictation read completed. Attempts={readResult.Attempts} Method={readResult.Method} TextLength={text.Length} Stable={readResult.IsStable} ClipboardRestoreFailed={readResult.ClipboardRestoreFailed}");
         if (text.Length == 0 || AutomationHelpers.IsUnsafeCapturedText(text) || !readResult.IsStable)
@@ -351,6 +384,14 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
+        PasteCompletedDictation(session, text, readResult.ClipboardRestoreFailed);
+    }
+
+    private void PasteCompletedDictation(
+        RecordingSession session,
+        string text,
+        bool readClipboardRestoreFailed)
+    {
         SetStatus(AppStatus.Pasting);
         var historyEntryId = _history.Add(text, DictationHistoryOutcomes.Transcribed);
         var pasteResult = _pasteService.PasteIntoTarget(text, session.Target, _settings);
@@ -363,7 +404,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             var copied = pasteResult.TextIsOnClipboard ||
                          (pasteResult.AllowClipboardFallback && ClipboardHelper.TrySetText(text, _logger));
             ShowMessage(pasteResult.ClipboardRestoreOutcome == ClipboardRestoreOutcome.Failed ||
-                        readResult.ClipboardRestoreFailed
+                        readClipboardRestoreFailed
                 ? copied
                     ? "Text konnte nicht eingefügt werden und die vorherige Zwischenablage nicht wiederhergestellt werden. Das Diktat liegt im Verlauf und aktuell auch im Clipboard."
                     : "Text konnte nicht eingefügt werden; außerdem ließ sich die vorherige Zwischenablage nicht wiederherstellen. Das Diktat liegt sicher im Verlauf."
@@ -372,7 +413,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                     : "Text konnte nicht eingefügt werden. Er wurde im Diktierverlauf gesichert.");
         }
         else if (pasteResult.ClipboardRestoreOutcome == ClipboardRestoreOutcome.Failed ||
-                 readResult.ClipboardRestoreFailed)
+                 readClipboardRestoreFailed)
         {
             ShowMessage("Text wurde eingefügt, aber die vorherige Zwischenablage konnte nicht wiederhergestellt werden.");
         }
@@ -397,7 +438,11 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
             _logger.Info("Recording abort requested.");
             SetStatus(AppStatus.Stopping);
-            var stopResult = await _dictationController.StopDictationAsync(session.ChatWindow);
+            void RestoreFocus() => RestoreTargetFocus(session.Target);
+
+            var stopResult = await _dictationController.StopDictationAsync(
+                session.ChatWindow,
+                RestoreFocus);
             StopAudioDucking();
             var textWasRecovered = false;
             var recoveryClipboardRestoreFailed = false;
@@ -407,7 +452,10 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                 if (stopResult.Ok)
                 {
                     SetStatus(AppStatus.ReadingText);
-                    var readResult = await _dictationController.ReadDictatedTextAsync(session.ChatWindow, session.ChatInput);
+                    var readResult = await _dictationController.ReadDictatedTextAsync(
+                        session.ChatWindow,
+                        session.ChatInput,
+                        restoreTargetFocus: RestoreFocus);
                     recoveryClipboardRestoreFailed = readResult.ClipboardRestoreFailed;
                     var text = readResult.Text.Trim();
                     if (text.Length > 0 && !AutomationHelpers.IsUnsafeCapturedText(text))
@@ -426,7 +474,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                     var recovery = await TryRecoverTextToHistoryAsync(
                         session.ChatWindow,
                         DictationHistoryOutcomes.CancelledRecovered,
-                        stopResult.RequiresDeferredCleanup ? 2500 : null);
+                        stopResult.RequiresDeferredCleanup ? 2500 : null,
+                        RestoreFocus);
                     textWasRecovered = recovery.TextRecovered;
                     recoveryClipboardRestoreFailed = recovery.ClipboardRestoreFailed;
                     if (!textWasRecovered)
@@ -443,8 +492,9 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             {
                 if (stopResult.RequiresDeferredCleanup)
                 {
-                    terminationConfirmed = await _dictationController.CompleteDeferredStopCleanupAsync(
+                    var cleanup = await _dictationController.CompleteDeferredStopCleanupAsync(
                         session.ChatWindow);
+                    terminationConfirmed = cleanup.IsTerminationConfirmed;
                 }
             }
 
@@ -589,11 +639,13 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private async Task<DictationRecoveryResult> TryRecoverTextToHistoryAsync(
         IntPtr chatWindow,
         string outcome,
-        int? timeoutOverrideMs = null)
+        int? timeoutOverrideMs = null,
+        Action? restoreTargetFocus = null)
     {
         var readResult = await _dictationController.ReadDictatedTextAsync(
             chatWindow,
-            timeoutOverrideMs: timeoutOverrideMs);
+            timeoutOverrideMs: timeoutOverrideMs,
+            restoreTargetFocus: restoreTargetFocus);
         var text = readResult.Text.Trim();
         _logger.Info($"Dictation recovery read completed. Attempts={readResult.Attempts} Method={readResult.Method} TextLength={text.Length}");
         if (text.Length == 0 || AutomationHelpers.IsUnsafeCapturedText(text))

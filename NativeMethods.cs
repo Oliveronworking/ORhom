@@ -7,6 +7,7 @@ internal static class NativeMethods
 {
     public const int WmHotkey = 0x0312;
     public const int WmClose = 0x0010;
+    public const int SwShowNoActivate = 4;
     public const int SwMinimize = 6;
     public const int SwRestore = 9;
 
