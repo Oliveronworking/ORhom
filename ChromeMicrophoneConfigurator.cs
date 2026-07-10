@@ -109,7 +109,11 @@ internal sealed class ChromeMicrophoneConfigurator
     {
         try
         {
-            _ = NativeMethods.ForceForegroundWindow(window, timeoutMs: 300);
+            if (!NativeMethods.ForceForegroundWindow(window, timeoutMs: 300))
+            {
+                return false;
+            }
+
             var root = AutomationElement.FromHandle(window);
             var omnibox = root.FindFirst(
                 TreeScope.Descendants,
@@ -128,6 +132,15 @@ internal sealed class ChromeMicrophoneConfigurator
 
             valuePattern.SetValue("chrome://settings/content/microphone");
             omnibox.SetFocus();
+            Thread.Sleep(40);
+
+            var focusedElement = AutomationElement.FocusedElement;
+            if (NativeMethods.GetForegroundWindow() != window ||
+                !AutomationHelpers.AreSameElement(omnibox, focusedElement))
+            {
+                return false;
+            }
+
             SendKeys.SendWait("{ENTER}");
             return true;
         }

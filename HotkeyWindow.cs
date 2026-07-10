@@ -7,7 +7,10 @@ internal sealed class HotkeyWindow : Form
     private const int ToggleHotkeyId = 1;
     private const int EscapeHotkeyId = 3;
     private readonly AppLogger _logger;
+    private CancellationTokenSource? _releaseMonitorCancellation;
+    private int _releaseMonitorGeneration;
     private bool _escapeRegistered;
+    private Keys _toggleKey;
     private string _toggleHotkey;
     private bool _toggleRegistered;
 
@@ -22,9 +25,14 @@ internal sealed class HotkeyWindow : Form
         Load += (_, _) => Visible = false;
 
         _toggleRegistered = RegisterHotkey(ToggleHotkeyId, _toggleHotkey);
+        if (_toggleRegistered)
+        {
+            (_, _toggleKey) = ParseHotkey(_toggleHotkey);
+        }
     }
 
     public event EventHandler? TogglePressed;
+    public event EventHandler<HotkeyReleasedEventArgs>? ToggleReleased;
     public event EventHandler? EscapePressed;
 
     public void SetToggleEnabled(bool enabled)
@@ -37,9 +45,14 @@ internal sealed class HotkeyWindow : Form
         if (enabled)
         {
             _toggleRegistered = RegisterHotkey(ToggleHotkeyId, _toggleHotkey);
+            if (_toggleRegistered)
+            {
+                (_, _toggleKey) = ParseHotkey(_toggleHotkey);
+            }
         }
         else
         {
+            CancelReleaseMonitor();
             _ = NativeMethods.UnregisterHotKey(Handle, ToggleHotkeyId);
             _toggleRegistered = false;
             _logger.Info("Toggle hotkey temporarily suspended while settings are open.");
@@ -65,6 +78,7 @@ internal sealed class HotkeyWindow : Form
         if (RegisterHotkey(ToggleHotkeyId, hotkey))
         {
             _toggleHotkey = hotkey;
+            (_, _toggleKey) = ParseHotkey(hotkey);
             if (shouldRemainRegistered)
             {
                 _toggleRegistered = true;
@@ -80,6 +94,10 @@ internal sealed class HotkeyWindow : Form
         if (shouldRemainRegistered)
         {
             _toggleRegistered = RegisterHotkey(ToggleHotkeyId, _toggleHotkey);
+            if (_toggleRegistered)
+            {
+                (_, _toggleKey) = ParseHotkey(_toggleHotkey);
+            }
         }
         failureReason = $"Die Tastenkombination {hotkey} wird bereits verwendet oder ist ungültig.";
         return false;
@@ -110,6 +128,7 @@ internal sealed class HotkeyWindow : Form
             var id = m.WParam.ToInt32();
             if (id == ToggleHotkeyId)
             {
+                StartReleaseMonitor();
                 TogglePressed?.Invoke(this, EventArgs.Empty);
             }
             else if (id == EscapeHotkeyId)
@@ -125,9 +144,83 @@ internal sealed class HotkeyWindow : Form
 
     protected override void Dispose(bool disposing)
     {
+        CancelReleaseMonitor();
         NativeMethods.UnregisterHotKey(Handle, ToggleHotkeyId);
         NativeMethods.UnregisterHotKey(Handle, EscapeHotkeyId);
         base.Dispose(disposing);
+    }
+
+    private void StartReleaseMonitor()
+    {
+        CancelReleaseMonitor();
+        if (!NativeMethods.IsKeyDown(_toggleKey))
+        {
+            return;
+        }
+
+        var cancellation = new CancellationTokenSource();
+        _releaseMonitorCancellation = cancellation;
+        var generation = Interlocked.Increment(ref _releaseMonitorGeneration);
+        var key = _toggleKey;
+        var pressedAt = Environment.TickCount64;
+        _ = MonitorReleaseAsync(key, pressedAt, generation, cancellation.Token);
+    }
+
+    private async Task MonitorReleaseAsync(
+        Keys key,
+        long pressedAt,
+        int generation,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Run(async () =>
+            {
+                while (NativeMethods.IsKeyDown(key))
+                {
+                    await Task.Delay(10, cancellationToken).ConfigureAwait(false);
+                }
+            }, cancellationToken).ConfigureAwait(false);
+
+            if (cancellationToken.IsCancellationRequested ||
+                generation != Volatile.Read(ref _releaseMonitorGeneration))
+            {
+                return;
+            }
+
+            var heldForMs = Math.Max(Environment.TickCount64 - pressedAt, 0);
+            if (!IsDisposed && IsHandleCreated)
+            {
+                BeginInvoke((Action)(() =>
+                {
+                    if (generation == Volatile.Read(ref _releaseMonitorGeneration))
+                    {
+                        ToggleReleased?.Invoke(this, new HotkeyReleasedEventArgs(heldForMs));
+                    }
+                }));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Registration changes and shutdown intentionally cancel the monitor.
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Hotkey release monitoring failed.", ex);
+        }
+    }
+
+    private void CancelReleaseMonitor()
+    {
+        Interlocked.Increment(ref _releaseMonitorGeneration);
+        var cancellation = Interlocked.Exchange(ref _releaseMonitorCancellation, null);
+        if (cancellation is null)
+        {
+            return;
+        }
+
+        cancellation.Cancel();
+        cancellation.Dispose();
     }
 
     private bool RegisterHotkey(int id, string hotkey)
@@ -189,4 +282,14 @@ internal sealed class HotkeyWindow : Form
 
         return (modifiers, key);
     }
+}
+
+internal sealed class HotkeyReleasedEventArgs : EventArgs
+{
+    public HotkeyReleasedEventArgs(long heldForMs)
+    {
+        HeldForMs = heldForMs;
+    }
+
+    public long HeldForMs { get; }
 }

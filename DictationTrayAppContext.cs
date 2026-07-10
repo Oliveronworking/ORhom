@@ -28,6 +28,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private AppStatus _status = AppStatus.Idle;
     private RecordingSession? _session;
     private IntPtr _overlayTargetWindow;
+    private bool _queuedStopRequested;
+    private bool _exitInProgress;
 
     public DictationTrayAppContext()
     {
@@ -55,6 +57,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
         _hotkeyWindow = new HotkeyWindow(_settings, _logger);
         _hotkeyWindow.TogglePressed += (_, _) => _ = ToggleAsync();
+        _hotkeyWindow.ToggleReleased += OnToggleReleased;
         _hotkeyWindow.EscapePressed += (_, _) => _ = AbortRecordingAsync();
         _hotkeyWindow.CreateControl();
         _settingsForm = new SettingsForm(_settings, _audioInputDevices, ApplySettingsAsync);
@@ -140,6 +143,16 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     {
         if (!await _operationLock.WaitAsync(0))
         {
+            if (_status == AppStatus.Starting)
+            {
+                _queuedStopRequested = true;
+                _logger.Info("Toggle hotkey queued a stop while dictation is starting.");
+                _ = StopAfterQueuedRequestAsync();
+                return;
+            }
+
+            _logger.Info($"Toggle hotkey ignored while an operation is already running. Status={_status}");
+            ShowMessage("Das aktuelle Diktat wird noch verarbeitet.");
             return;
         }
 
@@ -147,10 +160,12 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         {
             if (_status == AppStatus.Idle)
             {
+                _queuedStopRequested = false;
                 await BeginWebDictationAsync();
             }
             else if (_status == AppStatus.Recording)
             {
+                _queuedStopRequested = false;
                 await FinishWebDictationAsync();
             }
         }
@@ -160,8 +175,51 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
     }
 
+    private void OnToggleReleased(object? sender, HotkeyReleasedEventArgs e)
+    {
+        if (!HybridPushToTalkPolicy.ShouldStopOnRelease(
+                _settings.EnableHybridPushToTalk,
+                e.HeldForMs,
+                _settings.PushToTalkHoldThresholdMs))
+        {
+            return;
+        }
+
+        _queuedStopRequested = true;
+        _logger.Info($"Push-to-talk release detected. HeldForMs={e.HeldForMs}");
+        _ = StopAfterQueuedRequestAsync();
+    }
+
+    private async Task StopAfterQueuedRequestAsync()
+    {
+        await _operationLock.WaitAsync();
+        try
+        {
+            if (!_queuedStopRequested || _status != AppStatus.Recording)
+            {
+                _queuedStopRequested = false;
+                return;
+            }
+
+            _queuedStopRequested = false;
+            await FinishWebDictationAsync();
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
     private async Task BeginWebDictationAsync()
     {
+        var activeMicrophones = _audioInputDevices.GetActiveMicrophones();
+        if (!activeMicrophones.Contains(_settings.PreferredMicrophoneName, StringComparer.OrdinalIgnoreCase))
+        {
+            _logger.Info("Recording blocked because the configured microphone is not active.");
+            ShowMessage($"Das eingestellte Mikrofon „{_settings.PreferredMicrophoneName}“ ist nicht verbunden oder nicht aktiv.");
+            return;
+        }
+
         var target = _focusTracker.Capture(_settings);
         _overlayTargetWindow = target.WindowHandle;
         if (target.IsPasswordField)
@@ -176,7 +234,21 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var startResult = await _dictationController.StartDictationAsync(target.WindowHandle);
         if (!startResult.Ok)
         {
-            RestoreTargetAndClipboard(target);
+            RestoreTargetFocus(target);
+            if (!startResult.IsTerminationConfirmed &&
+                startResult.ChatWindow != IntPtr.Zero &&
+                NativeMethods.IsWindow(startResult.ChatWindow))
+            {
+                _session = new RecordingSession(
+                    target,
+                    startResult.ChatWindow,
+                    startResult.Input);
+                _hotkeyWindow.SetEscapeEnabled(true);
+                SetStatus(AppStatus.Recording);
+                ShowMessage("Die Aufnahme konnte nicht bestätigt oder sicher beendet werden. Bitte F8 erneut drücken oder das ChatGPT-Fenster schließen.");
+                return;
+            }
+
             ShowMessage(startResult.Message);
             ResetToIdle();
             return;
@@ -206,48 +278,103 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
         SetStatus(AppStatus.Stopping);
         var stopResult = await _dictationController.StopDictationAsync(session.ChatWindow);
+        StopAudioDucking();
         if (!stopResult.Ok)
         {
             SetStatus(AppStatus.ReadingText);
-            var textWasRecovered = await TryRecoverTextToHistoryAsync(
-                session.ChatWindow,
-                DictationHistoryOutcomes.FailureRecovered);
+            var textWasRecovered = false;
+            var recoveryClipboardRestoreFailed = false;
+            var terminationConfirmed = stopResult.IsTerminationConfirmed;
+            try
+            {
+                if (stopResult.CanRecoverText)
+                {
+                    var recovery = await TryRecoverTextToHistoryAsync(
+                        session.ChatWindow,
+                        DictationHistoryOutcomes.FailureRecovered,
+                        stopResult.RequiresDeferredCleanup ? 2500 : null);
+                    textWasRecovered = recovery.TextRecovered;
+                    recoveryClipboardRestoreFailed = recovery.ClipboardRestoreFailed;
+                }
+            }
+            finally
+            {
+                if (stopResult.RequiresDeferredCleanup)
+                {
+                    terminationConfirmed = await _dictationController.CompleteDeferredStopCleanupAsync(
+                        session.ChatWindow);
+                }
+            }
+
             if (!textWasRecovered)
             {
                 _history.Add(string.Empty, DictationHistoryOutcomes.StopFailed);
             }
 
-            RestoreTargetAndClipboard(session.Target);
-            ShowMessage(textWasRecovered
-                ? "Die Aufnahme konnte nicht sauber beendet werden, aber der Text wurde im Verlauf gerettet."
-                : stopResult.Message);
+            RestoreTargetFocus(session.Target);
+            if (!terminationConfirmed)
+            {
+                _hotkeyWindow.SetEscapeEnabled(true);
+                SetStatus(AppStatus.Recording);
+                ShowMessage("Das Mikrofon konnte nicht sicher beendet werden. Bitte F8 erneut drücken oder das ChatGPT-Fenster schließen.");
+                return;
+            }
+
+            ShowMessage(recoveryClipboardRestoreFailed
+                ? "Die Aufnahme wurde beendet, aber die vorherige Zwischenablage konnte bei der Textrettung nicht wiederhergestellt werden."
+                : textWasRecovered
+                    ? "Die Aufnahme konnte nicht sauber beendet werden, aber der Text wurde im Verlauf gerettet."
+                    : stopResult.Message);
             ResetToIdle();
             return;
         }
 
         SetStatus(AppStatus.ReadingText);
-        var readResult = await _dictationController.ReadDictatedTextAsync(session.ChatWindow);
+        var readResult = await _dictationController.ReadDictatedTextAsync(session.ChatWindow, session.ChatInput);
         var text = readResult.Text.Trim();
-        _logger.Info($"Dictation read completed. Attempts={readResult.Attempts} Method={readResult.Method} TextLength={text.Length}");
-        if (text.Length == 0 || AutomationHelpers.IsUnsafeCapturedText(text))
+        _logger.Info($"Dictation read completed. Attempts={readResult.Attempts} Method={readResult.Method} TextLength={text.Length} Stable={readResult.IsStable} ClipboardRestoreFailed={readResult.ClipboardRestoreFailed}");
+        if (text.Length == 0 || AutomationHelpers.IsUnsafeCapturedText(text) || !readResult.IsStable)
         {
-            _history.Add(string.Empty, DictationHistoryOutcomes.TranscriptionFailed);
-            RestoreTargetAndClipboard(session.Target);
-            ShowMessage("Nach dem Stoppen wurde kein Text transkribiert.");
+            var recoveredIncompleteText = text.Length > 0 && !AutomationHelpers.IsUnsafeCapturedText(text);
+            _history.Add(
+                recoveredIncompleteText ? text : string.Empty,
+                recoveredIncompleteText
+                    ? DictationHistoryOutcomes.FailureRecovered
+                    : DictationHistoryOutcomes.TranscriptionFailed);
+            RestoreTargetFocus(session.Target);
+            ShowMessage(readResult.ClipboardRestoreFailed
+                ? "Die Transkription wurde abgebrochen, weil die vorherige Zwischenablage nicht wiederhergestellt werden konnte. Ein letzter Textstand liegt gegebenenfalls im Verlauf oder Clipboard."
+                : recoveredIncompleteText
+                    ? "Die Transkription wurde nicht sicher fertig. Der letzte Textstand liegt im Verlauf."
+                    : "Nach dem Stoppen wurde kein Text transkribiert.");
             ResetToIdle();
             return;
         }
 
         SetStatus(AppStatus.Pasting);
         var historyEntryId = _history.Add(text, DictationHistoryOutcomes.Transcribed);
-        var pasteSucceeded = _pasteService.PasteIntoTarget(text, session.Target, _settings);
+        var pasteResult = _pasteService.PasteIntoTarget(text, session.Target, _settings);
         _history.UpdateOutcome(
             historyEntryId,
-            pasteSucceeded ? DictationHistoryOutcomes.Pasted : DictationHistoryOutcomes.PasteFailed);
-        _logger.Info($"Dictation paste completed. Success={pasteSucceeded} TextLength={text.Length}");
-        if (!pasteSucceeded)
+            pasteResult.Succeeded ? DictationHistoryOutcomes.Pasted : DictationHistoryOutcomes.PasteFailed);
+        _logger.Info($"Dictation paste completed. Success={pasteResult.Succeeded} TextLength={text.Length} ClipboardRestoreOutcome={pasteResult.ClipboardRestoreOutcome} TextIsOnClipboard={pasteResult.TextIsOnClipboard}");
+        if (!pasteResult.Succeeded)
         {
-            ShowMessage("Text wurde gelesen, aber konnte nicht ins Ziel eingefügt werden.");
+            var copied = pasteResult.TextIsOnClipboard ||
+                         (pasteResult.AllowClipboardFallback && ClipboardHelper.TrySetText(text, _logger));
+            ShowMessage(pasteResult.ClipboardRestoreOutcome == ClipboardRestoreOutcome.Failed ||
+                        readResult.ClipboardRestoreFailed
+                ? copied
+                    ? "Text konnte nicht eingefügt werden und die vorherige Zwischenablage nicht wiederhergestellt werden. Das Diktat liegt im Verlauf und aktuell auch im Clipboard."
+                    : "Text konnte nicht eingefügt werden; außerdem ließ sich die vorherige Zwischenablage nicht wiederherstellen. Das Diktat liegt sicher im Verlauf."
+                : copied
+                    ? "Text konnte nicht eingefügt werden. Er liegt in der Zwischenablage und im Verlauf – Strg+V fügt ihn ein."
+                    : "Text konnte nicht eingefügt werden. Er wurde im Diktierverlauf gesichert.");
+        }
+        else if (pasteResult.ClipboardRestoreOutcome == ClipboardRestoreOutcome.Failed ||
+                 readResult.ClipboardRestoreFailed)
+        {
+            ShowMessage("Text wurde eingefügt, aber die vorherige Zwischenablage konnte nicht wiederhergestellt werden.");
         }
 
         ResetToIdle();
@@ -271,38 +398,70 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _logger.Info("Recording abort requested.");
             SetStatus(AppStatus.Stopping);
             var stopResult = await _dictationController.StopDictationAsync(session.ChatWindow);
+            StopAudioDucking();
             var textWasRecovered = false;
-            if (stopResult.Ok)
+            var recoveryClipboardRestoreFailed = false;
+            var terminationConfirmed = stopResult.IsTerminationConfirmed;
+            try
             {
-                SetStatus(AppStatus.ReadingText);
-                var readResult = await _dictationController.ReadDictatedTextAsync(session.ChatWindow);
-                var text = readResult.Text.Trim();
-                if (text.Length > 0 && !AutomationHelpers.IsUnsafeCapturedText(text))
+                if (stopResult.Ok)
                 {
-                    _history.Add(text, DictationHistoryOutcomes.CancelledRecovered);
-                    textWasRecovered = true;
+                    SetStatus(AppStatus.ReadingText);
+                    var readResult = await _dictationController.ReadDictatedTextAsync(session.ChatWindow, session.ChatInput);
+                    recoveryClipboardRestoreFailed = readResult.ClipboardRestoreFailed;
+                    var text = readResult.Text.Trim();
+                    if (text.Length > 0 && !AutomationHelpers.IsUnsafeCapturedText(text))
+                    {
+                        _history.Add(text, DictationHistoryOutcomes.CancelledRecovered);
+                        textWasRecovered = true;
+                    }
+                    else
+                    {
+                        _history.Add(string.Empty, DictationHistoryOutcomes.CancelledWithoutText);
+                    }
+                }
+                else if (stopResult.CanRecoverText)
+                {
+                    SetStatus(AppStatus.ReadingText);
+                    var recovery = await TryRecoverTextToHistoryAsync(
+                        session.ChatWindow,
+                        DictationHistoryOutcomes.CancelledRecovered,
+                        stopResult.RequiresDeferredCleanup ? 2500 : null);
+                    textWasRecovered = recovery.TextRecovered;
+                    recoveryClipboardRestoreFailed = recovery.ClipboardRestoreFailed;
+                    if (!textWasRecovered)
+                    {
+                        _history.Add(string.Empty, DictationHistoryOutcomes.CancelledWithoutText);
+                    }
                 }
                 else
                 {
                     _history.Add(string.Empty, DictationHistoryOutcomes.CancelledWithoutText);
                 }
             }
-            else
+            finally
             {
-                SetStatus(AppStatus.ReadingText);
-                textWasRecovered = await TryRecoverTextToHistoryAsync(
-                    session.ChatWindow,
-                    DictationHistoryOutcomes.CancelledRecovered);
-                if (!textWasRecovered)
+                if (stopResult.RequiresDeferredCleanup)
                 {
-                    _history.Add(string.Empty, DictationHistoryOutcomes.CancelledWithoutText);
+                    terminationConfirmed = await _dictationController.CompleteDeferredStopCleanupAsync(
+                        session.ChatWindow);
                 }
             }
 
-            RestoreTargetAndClipboard(session.Target);
-            ShowMessage(textWasRecovered
-                ? "Aufnahme abgebrochen. Der gesprochene Text wurde im Verlauf gesichert."
-                : "Aufnahme abgebrochen. Es konnte kein Text gesichert werden.");
+            RestoreTargetFocus(session.Target);
+            if (!terminationConfirmed)
+            {
+                _hotkeyWindow.SetEscapeEnabled(true);
+                SetStatus(AppStatus.Recording);
+                ShowMessage("Das Mikrofon konnte nicht sicher beendet werden. Bitte F8 erneut drücken oder das ChatGPT-Fenster schließen.");
+                return;
+            }
+
+            ShowMessage(recoveryClipboardRestoreFailed
+                ? "Aufnahme abgebrochen, aber die vorherige Zwischenablage konnte bei der Textrettung nicht wiederhergestellt werden."
+                : textWasRecovered
+                    ? "Aufnahme abgebrochen. Der gesprochene Text wurde im Verlauf gesichert."
+                    : "Aufnahme abgebrochen. Es konnte kein Text gesichert werden.");
             ResetToIdle();
         }
         finally
@@ -427,18 +586,23 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _historyForm.ShowAndActivate();
     }
 
-    private async Task<bool> TryRecoverTextToHistoryAsync(IntPtr chatWindow, string outcome)
+    private async Task<DictationRecoveryResult> TryRecoverTextToHistoryAsync(
+        IntPtr chatWindow,
+        string outcome,
+        int? timeoutOverrideMs = null)
     {
-        var readResult = await _dictationController.ReadDictatedTextAsync(chatWindow);
+        var readResult = await _dictationController.ReadDictatedTextAsync(
+            chatWindow,
+            timeoutOverrideMs: timeoutOverrideMs);
         var text = readResult.Text.Trim();
         _logger.Info($"Dictation recovery read completed. Attempts={readResult.Attempts} Method={readResult.Method} TextLength={text.Length}");
         if (text.Length == 0 || AutomationHelpers.IsUnsafeCapturedText(text))
         {
-            return false;
+            return new DictationRecoveryResult(false, readResult.ClipboardRestoreFailed);
         }
 
         _history.Add(text, outcome);
-        return true;
+        return new DictationRecoveryResult(true, readResult.ClipboardRestoreFailed);
     }
 
     private async Task WriteChatGptDiagnosticsAsync()
@@ -466,20 +630,25 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         OpenPath(validation.ProfileDirectoryPath);
     }
 
-    private void RestoreTargetAndClipboard(FocusTarget target)
+    private void RestoreTargetFocus(FocusTarget target)
     {
         _pasteService.RestoreTargetFocus(target);
-        _pasteService.RestoreClipboard(target, _settings);
     }
 
     private void ResetToIdle()
     {
-        _audioDuckingTimer.Stop();
-        _audioDucking.Restore();
+        StopAudioDucking();
         _session = null;
+        _queuedStopRequested = false;
         _hotkeyWindow.SetEscapeEnabled(false);
         SetStatus(AppStatus.Idle);
         _overlayTargetWindow = IntPtr.Zero;
+    }
+
+    private void StopAudioDucking()
+    {
+        _audioDuckingTimer.Stop();
+        _audioDucking.Restore();
     }
 
     private void SetStatus(AppStatus status)
@@ -526,8 +695,53 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
     }
 
-    private void Exit(object? sender, EventArgs e)
+    private async void Exit(object? sender, EventArgs e)
     {
+        if (_exitInProgress)
+        {
+            return;
+        }
+
+        _exitInProgress = true;
+        _hotkeyWindow.SetToggleEnabled(false);
+        var terminationConfirmed = true;
+        await _operationLock.WaitAsync();
+        try
+        {
+            var session = _session;
+            if (session is not null && _status != AppStatus.Idle)
+            {
+                SetStatus(AppStatus.Stopping);
+                StopAudioDucking();
+                terminationConfirmed = await _dictationController.TerminateRecordingForShutdownAsync(
+                    session.ChatWindow);
+                if (terminationConfirmed)
+                {
+                    _session = null;
+                    _hotkeyWindow.SetEscapeEnabled(false);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            terminationConfirmed = false;
+            _logger.Error("Application exit recording cleanup failed.", ex);
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+
+        if (!terminationConfirmed)
+        {
+            _exitInProgress = false;
+            _hotkeyWindow.SetToggleEnabled(true);
+            _hotkeyWindow.SetEscapeEnabled(true);
+            SetStatus(AppStatus.Recording);
+            ShowMessage("OpenAI Flow bleibt geöffnet, weil das Mikrofon nicht sicher beendet werden konnte. Bitte F8 drücken oder das ChatGPT-Fenster schließen.");
+            return;
+        }
+
         _logger.Info("Application exiting.");
         ExitThread();
     }
@@ -549,4 +763,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         FocusTarget Target,
         IntPtr ChatWindow,
         AutomationElement? ChatInput);
+
+    private sealed record DictationRecoveryResult(
+        bool TextRecovered,
+        bool ClipboardRestoreFailed);
 }

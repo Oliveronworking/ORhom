@@ -55,6 +55,12 @@ internal static class NativeMethods
     public static extern bool IsIconic(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    public static extern uint GetClipboardSequenceNumber();
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int virtualKey);
+
+    [DllImport("user32.dll")]
     public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -76,6 +82,12 @@ internal static class NativeMethods
     private static extern bool SetCursorPos(int x, int y);
 
     [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(NativePoint point);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
+
+    [DllImport("user32.dll")]
     private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -85,6 +97,7 @@ internal static class NativeMethods
     private const uint MouseEventLeftUp = 0x0004;
     private const uint InputKeyboard = 1;
     private const uint KeyEventKeyUp = 0x0002;
+    private const uint GetAncestorRoot = 2;
     private const int GwlExStyle = -20;
     private const int WsExLayered = 0x00080000;
     private const uint LwaAlpha = 0x00000002;
@@ -119,11 +132,29 @@ internal static class NativeMethods
         return builder.ToString();
     }
 
-    public static bool ClickAt(int x, int y)
+    public static bool ClickAt(int x, int y, IntPtr expectedWindow)
     {
+        if (expectedWindow == IntPtr.Zero ||
+            GetForegroundWindow() != expectedWindow ||
+            !IsPointOwnedByWindow(x, y, expectedWindow))
+        {
+            return false;
+        }
+
         var restoreCursor = GetCursorPos(out var originalPosition);
         if (!SetCursorPos(x, y))
         {
+            return false;
+        }
+
+        if (GetForegroundWindow() != expectedWindow ||
+            !IsPointOwnedByWindow(x, y, expectedWindow))
+        {
+            if (restoreCursor)
+            {
+                _ = SetCursorPos(originalPosition.X, originalPosition.Y);
+            }
+
             return false;
         }
 
@@ -136,6 +167,12 @@ internal static class NativeMethods
         }
 
         return true;
+    }
+
+    private static bool IsPointOwnedByWindow(int x, int y, IntPtr expectedWindow)
+    {
+        var pointWindow = WindowFromPoint(new NativePoint { X = x, Y = y });
+        return pointWindow != IntPtr.Zero && GetAncestor(pointWindow, GetAncestorRoot) == expectedWindow;
     }
 
     public static bool ForceForegroundWindow(IntPtr targetWindow, int timeoutMs = 250)
@@ -212,6 +249,8 @@ internal static class NativeMethods
         };
         return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>()) == (uint)inputs.Length;
     }
+
+    public static bool IsKeyDown(Keys key) => (GetAsyncKeyState((int)key) & 0x8000) != 0;
 
     public static bool MarkWindow(IntPtr hWnd, string propertyName)
     {

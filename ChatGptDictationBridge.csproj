@@ -22,4 +22,8 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="OpenAIFlow.Tests\**\*.cs" />
+  </ItemGroup>
+
 </Project>

@@ -21,6 +21,8 @@
   "keepChatGptWindowHidden": true,
   "showRecordingOverlay": true,
   "recordingOverlayBottomOffsetPx": 72,
+  "enableHybridPushToTalk": true,
+  "pushToTalkHoldThresholdMs": 350,
   "restoreTargetAfterStart": true,
   "restoreClipboard": true,
   "browserChromeExclusionTopPx": 110,

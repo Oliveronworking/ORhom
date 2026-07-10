@@ -24,6 +24,75 @@ internal static class AutomationHelpers
         }
     }
 
+    public static bool AreSameElement(AutomationElement? left, AutomationElement? right)
+    {
+        if (left is null || right is null)
+        {
+            return false;
+        }
+
+        if (ReferenceEquals(left, right))
+        {
+            return true;
+        }
+
+        try
+        {
+            return left.GetRuntimeId().SequenceEqual(right.GetRuntimeId());
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool IsSameElementOrWithinCapturedWebViewRoot(
+        AutomationElement? focused,
+        AutomationElement? captured)
+    {
+        if (focused is null || captured is null)
+        {
+            return false;
+        }
+
+        if (AreSameElement(focused, captured))
+        {
+            return true;
+        }
+
+        try
+        {
+            var capturedCurrent = captured.Current;
+            var isWebViewRoot = capturedCurrent.AutomationId.Equals(
+                                    "RootWebArea",
+                                    StringComparison.OrdinalIgnoreCase) ||
+                                capturedCurrent.ClassName.Contains(
+                                    "Chrome_RenderWidgetHost",
+                                    StringComparison.OrdinalIgnoreCase);
+            if (!isWebViewRoot)
+            {
+                return false;
+            }
+
+            var current = focused;
+            for (var depth = 0; depth < 80 && current is not null; depth++)
+            {
+                if (AreSameElement(current, captured))
+                {
+                    return true;
+                }
+
+                current = TreeWalker.RawViewWalker.GetParent(current);
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return false;
+    }
+
     public static bool IsPasswordElement(AutomationElement? element)
     {
         if (element is null)
@@ -72,8 +141,7 @@ internal static class AutomationHelpers
         try
         {
             var current = element.Current;
-            return current.ControlType == ControlType.Document ||
-                   current.AutomationId.Equals("RootWebArea", StringComparison.OrdinalIgnoreCase) ||
+            return current.AutomationId.Equals("RootWebArea", StringComparison.OrdinalIgnoreCase) ||
                    current.ClassName.Contains("ProseMirror", StringComparison.OrdinalIgnoreCase) ||
                    current.ClassName.Contains("Chrome_RenderWidgetHost", StringComparison.OrdinalIgnoreCase);
         }
@@ -184,7 +252,13 @@ internal static class AutomationHelpers
 
         var focused = GetFocusedElement(logger);
         LogElement("Focused known ChatGPT input", focused, logger);
-        return IsSafeChatGptInput(focused, chatWindow, settings) ? focused : element;
+        if (IsSafeChatGptInput(focused, chatWindow, settings))
+        {
+            return focused;
+        }
+
+        logger.Info("Known ChatGPT input focus could not be confirmed.");
+        return null;
     }
 
     public static bool IsSafeChatGptInput(AutomationElement? element, IntPtr chatWindow, AppSettings settings)
@@ -261,17 +335,23 @@ internal static class AutomationHelpers
         IntPtr chatWindow,
         AppSettings settings,
         AppLogger logger,
-        bool windowAlreadyPrepared = false)
+        bool windowAlreadyPrepared = false,
+        AutomationElement? preferredInput = null,
+        int? timeoutOverrideMs = null)
     {
-        var timeoutMs = Math.Max(settings.DictationResultTimeoutMs, 1000);
+        var timeoutMs = timeoutOverrideMs is null
+            ? Math.Max(settings.DictationResultTimeoutMs, 1000)
+            : Math.Clamp(timeoutOverrideMs.Value, 1000, Math.Max(settings.DictationResultTimeoutMs, 1000));
         var pollIntervalMs = Math.Clamp(settings.DictationResultPollIntervalMs, 100, 1000);
         var start = Environment.TickCount64;
         var attempts = 0;
-        AutomationElement? lastSafeInput = null;
+        var lastSafeInput = IsSafeChatGptInput(preferredInput, chatWindow, settings)
+            ? preferredInput
+            : null;
         var stableMs = Math.Clamp(settings.DictationTextStableMs, 300, 3000);
-        var latestCandidate = string.Empty;
-        var latestMethod = "None";
-        var latestCandidateChangedAt = 0L;
+        var tracker = new DictationCandidateTracker();
+        var clipboardFallbackEnabled = true;
+        var clipboardRestoreFailed = false;
 
         while (Environment.TickCount64 - start < timeoutMs)
         {
@@ -283,20 +363,26 @@ internal static class AutomationHelpers
                 continue;
             }
 
-            if (!(windowAlreadyPrepared && attempts == 1) &&
-                !ChatGptWindowFinder.PrepareForAutomation(chatWindow, settings, logger))
-            {
-                logger.Info($"ChatGPT dictated text read attempt could not prepare window. Attempt={attempts}");
-                await Task.Delay(pollIntervalMs);
-                continue;
-            }
-
-            var input = FocusChatGptInput(chatWindow, settings, logger);
+            var input = lastSafeInput;
             if (!IsSafeChatGptInput(input, chatWindow, settings))
             {
-                logger.Info($"ChatGPT dictated text read attempt did not find a safe input. Attempt={attempts}");
-                await Task.Delay(pollIntervalMs);
-                continue;
+                if (!(windowAlreadyPrepared && attempts == 1) &&
+                    !ChatGptWindowFinder.PrepareForAutomation(chatWindow, settings, logger))
+                {
+                    logger.Info($"ChatGPT dictated text read attempt could not prepare window. Attempt={attempts}");
+                    await Task.Delay(GetBoundedPollDelay(start, timeoutMs, pollIntervalMs));
+                    continue;
+                }
+
+                input = FocusChatGptInput(chatWindow, settings, logger);
+                if (!IsSafeChatGptInput(input, chatWindow, settings))
+                {
+                    lastSafeInput = null;
+                    tracker.MarkUncertain();
+                    logger.Info($"ChatGPT dictated text read attempt did not find a safe input. Attempt={attempts}");
+                    await Task.Delay(GetBoundedPollDelay(start, timeoutMs, pollIntervalMs));
+                    continue;
+                }
             }
 
             lastSafeInput = input;
@@ -317,50 +403,99 @@ internal static class AutomationHelpers
                 method = "DocumentRange";
             }
 
-            if (!IsAcceptableCapturedText(candidate))
+            if (!IsAcceptableCapturedText(candidate) && clipboardFallbackEnabled)
             {
                 LogRejectedRead(method, candidate, attempts, logger);
                 var clipboardTimeoutMs = Math.Min(Math.Max(pollIntervalMs * 2, 300), 600);
-                candidate = await CopyTextSafelyAsync(input, chatWindow, settings, logger, clipboardTimeoutMs);
+                var clipboardCopy = await CopyTextSafelyAsync(
+                    input,
+                    chatWindow,
+                    settings,
+                    logger,
+                    clipboardTimeoutMs);
+                candidate = clipboardCopy.Text;
                 method = "Clipboard";
+                if (clipboardCopy.RestoreOutcome == ClipboardRestoreOutcome.Failed)
+                {
+                    clipboardFallbackEnabled = false;
+                    clipboardRestoreFailed = true;
+                    logger.Info("Clipboard fallback disabled for the remainder of this read because restoration failed.");
+                }
+            }
+            else if (!IsAcceptableCapturedText(candidate))
+            {
+                method = "ClipboardDisabled";
             }
 
             if (IsAcceptableCapturedText(candidate))
             {
                 candidate = candidate.Trim();
                 var now = Environment.TickCount64;
-                if (!candidate.Equals(latestCandidate, StringComparison.Ordinal))
+                var observation = tracker.Observe(candidate, method, now, stableMs);
+                if (observation == CandidateObservation.Changed)
                 {
-                    latestCandidate = candidate;
-                    latestMethod = method;
-                    latestCandidateChangedAt = now;
                     logger.Info($"ChatGPT dictated text candidate changed. Attempt={attempts} Method={method} TextLength={candidate.Length}");
                 }
-                else if (now - latestCandidateChangedAt >= stableMs)
+                else if (observation == CandidateObservation.Stable)
                 {
-                    logger.Info($"ChatGPT dictated text stabilized. Attempt={attempts} Method={latestMethod} TextLength={latestCandidate.Length} StableMs={now - latestCandidateChangedAt}");
-                    return new ChatGptDictationReadResult(latestCandidate, latestMethod, attempts, input);
+                    logger.Info($"ChatGPT dictated text stabilized. Attempt={attempts} Method={tracker.Method} TextLength={tracker.Text.Length} StableMs={now - tracker.ChangedAt}");
+                    return new ChatGptDictationReadResult(
+                        tracker.Text,
+                        tracker.Method,
+                        attempts,
+                        input,
+                        IsStable: true,
+                        ClipboardRestoreFailed: clipboardRestoreFailed);
                 }
             }
             else
             {
+                tracker.MarkUncertain();
                 LogRejectedRead(method, candidate, attempts, logger);
             }
 
-            await Task.Delay(pollIntervalMs);
+            var delayMs = GetBoundedPollDelay(start, timeoutMs, pollIntervalMs);
+            if (tracker.HasCandidate)
+            {
+                var remainingStabilityMs = stableMs - (Environment.TickCount64 - tracker.ChangedAt);
+                if (remainingStabilityMs > 0)
+                {
+                    delayMs = (int)Math.Min(delayMs, remainingStabilityMs);
+                }
+            }
+
+            await Task.Delay(Math.Max(delayMs, 1));
         }
 
-        if (latestCandidate.Length > 0)
+        if (tracker.HasCandidate)
         {
-            logger.Info($"ChatGPT dictated text returned at timeout without full stability. Attempts={attempts} Method={latestMethod} TextLength={latestCandidate.Length}");
-            return new ChatGptDictationReadResult(latestCandidate, latestMethod, attempts, lastSafeInput);
+            logger.Info($"ChatGPT dictated text returned at timeout without full stability. Attempts={attempts} Method={tracker.Method} TextLength={tracker.Text.Length}");
+            return new ChatGptDictationReadResult(
+                tracker.Text,
+                tracker.Method,
+                attempts,
+                lastSafeInput,
+                IsStable: false,
+                ClipboardRestoreFailed: clipboardRestoreFailed);
         }
 
         logger.Info($"ChatGPT dictated text read timed out. Attempts={attempts} TimeoutMs={timeoutMs}");
-        return new ChatGptDictationReadResult(string.Empty, "None", attempts, lastSafeInput);
+        return new ChatGptDictationReadResult(
+            string.Empty,
+            "None",
+            attempts,
+            lastSafeInput,
+            IsStable: false,
+            ClipboardRestoreFailed: clipboardRestoreFailed);
     }
 
-    public static async Task<string> CopyTextSafelyAsync(
+    private static int GetBoundedPollDelay(long startedAt, int timeoutMs, int pollIntervalMs)
+    {
+        var remainingMs = timeoutMs - (Environment.TickCount64 - startedAt);
+        return (int)Math.Clamp(Math.Min(remainingMs, pollIntervalMs), 1, pollIntervalMs);
+    }
+
+    public static async Task<SafeClipboardCopyResult> CopyTextSafelyAsync(
         AutomationElement? element,
         IntPtr chatWindow,
         AppSettings settings,
@@ -369,50 +504,195 @@ internal static class AutomationHelpers
     {
         if (element is null || !IsSafeChatGptInput(element, chatWindow, settings))
         {
-            return string.Empty;
+            return SafeClipboardCopyResult.Empty;
         }
 
+        IDataObject? clipboardSnapshot = null;
+        var capturedClipboardSequence = 0U;
+        uint? ownedClipboardSequence = null;
+        var clipboardChangedByUs = false;
+        var candidate = string.Empty;
+        var restoreOutcome = ClipboardRestoreOutcome.NotRequested;
         try
         {
-            element.SetFocus();
-            Thread.Sleep(80);
-            if (!IsSafeChatGptInput(GetFocusedElement(logger), chatWindow, settings))
+            do
             {
-                logger.Info("ChatGPT copy skipped because focused element is not safe.");
-                return string.Empty;
+                element.SetFocus();
+                Thread.Sleep(80);
+                if (NativeMethods.GetForegroundWindow() != chatWindow ||
+                    !IsSafeChatGptInput(GetFocusedElement(logger), chatWindow, settings))
+                {
+                    logger.Info("ChatGPT copy skipped because focused element is not safe.");
+                    break;
+                }
+
+                if (settings.RestoreClipboard &&
+                    !ClipboardHelper.TryCaptureStable(
+                        logger,
+                        out clipboardSnapshot,
+                        out capturedClipboardSequence))
+                {
+                    logger.Info("ChatGPT copy skipped because the clipboard could not be snapshotted safely.");
+                    break;
+                }
+
+                if (settings.RestoreClipboard &&
+                    NativeMethods.GetClipboardSequenceNumber() != capturedClipboardSequence)
+                {
+                    logger.Info("ChatGPT copy skipped because the clipboard changed after it was snapshotted.");
+                    break;
+                }
+
+                Clipboard.Clear();
+                clipboardChangedByUs = true;
+                ownedClipboardSequence = NativeMethods.GetClipboardSequenceNumber();
+                Thread.Sleep(50);
+                if (!IsSafeKeyboardTarget(element, chatWindow, settings, logger))
+                {
+                    logger.Info("ChatGPT copy skipped because focus changed before select-all dispatch.");
+                    break;
+                }
+
+                SendKeys.SendWait("^a");
+                Thread.Sleep(80);
+                if (!IsSafeKeyboardTarget(element, chatWindow, settings, logger))
+                {
+                    logger.Info("ChatGPT copy skipped because focus changed before copy dispatch.");
+                    break;
+                }
+
+                SendKeys.SendWait("^c");
+
+                var timeoutMs = clipboardTimeoutMs ?? settings.DictationResultTimeoutMs;
+                var clipboardRead = await WaitForClipboardTextAsync(
+                    timeoutMs,
+                    ownedClipboardSequence.Value,
+                    logger);
+                if (clipboardRead.SequenceNumber == 0 ||
+                    NativeMethods.GetForegroundWindow() != chatWindow ||
+                    !IsSafeKeyboardTarget(element, chatWindow, settings, logger) ||
+                    NativeMethods.GetClipboardSequenceNumber() != clipboardRead.SequenceNumber)
+                {
+                    logger.Info("Guarded ChatGPT copy rejected because foreground, focus, or clipboard ownership changed while waiting.");
+                    break;
+                }
+
+                ownedClipboardSequence = clipboardRead.SequenceNumber;
+                if (!IsAcceptableCapturedText(clipboardRead.Text))
+                {
+                    logger.Info($"Guarded ChatGPT copy did not capture acceptable text. Length={clipboardRead.Text.Trim().Length}");
+                    break;
+                }
+
+                candidate = clipboardRead.Text.Trim();
+                logger.Info($"Guarded ChatGPT copy captured text. Length={candidate.Length}");
             }
-
-            Clipboard.Clear();
-            Thread.Sleep(50);
-            SendKeys.SendWait("^a");
-            Thread.Sleep(80);
-            SendKeys.SendWait("^c");
-
-            var timeoutMs = clipboardTimeoutMs ?? settings.DictationResultTimeoutMs;
-            var text = await WaitForClipboardTextAsync(timeoutMs, logger);
-            if (!IsAcceptableCapturedText(text))
-            {
-                logger.Info($"Guarded ChatGPT copy did not capture acceptable text. Length={text.Trim().Length}");
-                return string.Empty;
-            }
-
-            logger.Info($"Guarded ChatGPT copy captured text. Length={text.Trim().Length}");
-            return text.Trim();
+            while (false);
         }
         catch (Exception ex)
         {
             logger.Error("Guarded ChatGPT copy failed.", ex);
-            return string.Empty;
         }
+        finally
+        {
+            if (clipboardChangedByUs)
+            {
+                restoreOutcome = ClipboardHelper.Restore(
+                    clipboardSnapshot,
+                    settings,
+                    logger,
+                    ownedClipboardSequence);
+            }
+        }
+
+        if (restoreOutcome == ClipboardRestoreOutcome.Failed)
+        {
+            logger.Info("Guarded ChatGPT copy rejected because the previous clipboard could not be restored.");
+            return new SafeClipboardCopyResult(string.Empty, restoreOutcome);
+        }
+
+        if (restoreOutcome == ClipboardRestoreOutcome.SkippedExternalChange)
+        {
+            logger.Info("Guarded ChatGPT copy preserved a newer external clipboard change.");
+        }
+
+        return new SafeClipboardCopyResult(candidate, restoreOutcome);
     }
 
-    public static bool ClearTextSafely(AutomationElement? element, IntPtr chatWindow, AppSettings settings, AppLogger logger)
+    public static async Task<bool> ClearTextAndConfirmAsync(
+        AutomationElement? element,
+        IntPtr chatWindow,
+        AppSettings settings,
+        AppLogger logger,
+        int verificationTimeoutMs = 650)
     {
         if (element is null || !IsSafeChatGptInput(element, chatWindow, settings))
         {
             return false;
         }
 
+        var keyboardFirst = LooksLikeProseMirror(element);
+        if (keyboardFirst)
+        {
+            if (TryClearWithKeyboard(element, chatWindow, settings, logger) &&
+                await WaitForConfirmedEmptyInputAsync(
+                    chatWindow,
+                    settings,
+                    logger,
+                    verificationTimeoutMs,
+                    requiredEmptyReads: 1))
+            {
+                logger.Info("ChatGPT input cleared and verified via guarded keyboard input.");
+                return true;
+            }
+
+            element = FindChatGptInput(chatWindow, settings, logger) ?? element;
+            if (TryClearWithValuePattern(element, logger) &&
+                await WaitForConfirmedEmptyInputAsync(
+                    chatWindow,
+                    settings,
+                    logger,
+                    verificationTimeoutMs,
+                    requiredEmptyReads: 2))
+            {
+                logger.Info("ChatGPT input cleared and verified via ValuePattern fallback.");
+                return true;
+            }
+        }
+        else
+        {
+            if (TryClearWithValuePattern(element, logger) &&
+                await WaitForConfirmedEmptyInputAsync(
+                    chatWindow,
+                    settings,
+                    logger,
+                    verificationTimeoutMs,
+                    requiredEmptyReads: 2))
+            {
+                logger.Info("ChatGPT input cleared and verified via ValuePattern.");
+                return true;
+            }
+
+            element = FindChatGptInput(chatWindow, settings, logger) ?? element;
+            if (TryClearWithKeyboard(element, chatWindow, settings, logger) &&
+                await WaitForConfirmedEmptyInputAsync(
+                    chatWindow,
+                    settings,
+                    logger,
+                    verificationTimeoutMs,
+                    requiredEmptyReads: 1))
+            {
+                logger.Info("ChatGPT input cleared and verified via guarded keyboard fallback.");
+                return true;
+            }
+        }
+
+        logger.Info("ChatGPT input clear could not be verified.");
+        return false;
+    }
+
+    private static bool TryClearWithValuePattern(AutomationElement element, AppLogger logger)
+    {
         try
         {
             if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var valuePatternObj) &&
@@ -420,7 +700,6 @@ internal static class AutomationHelpers
                 !valuePattern.Current.IsReadOnly)
             {
                 valuePattern.SetValue(string.Empty);
-                logger.Info("ChatGPT input cleared via ValuePattern.");
                 return true;
             }
         }
@@ -429,25 +708,167 @@ internal static class AutomationHelpers
             logger.Error("ValuePattern clear failed.", ex);
         }
 
+        return false;
+    }
+
+    private static bool TryClearWithKeyboard(
+        AutomationElement element,
+        IntPtr chatWindow,
+        AppSettings settings,
+        AppLogger logger)
+    {
         try
         {
-            element.SetFocus();
-            Thread.Sleep(80);
-            if (!IsSafeChatGptInput(GetFocusedElement(logger), chatWindow, settings))
+            if (!TryFocusElement(element, logger))
+            {
+                return false;
+            }
+
+            if (!IsSafeKeyboardTarget(element, chatWindow, settings, logger))
             {
                 logger.Info("Keyboard clear skipped because focused element is not a safe ChatGPT input.");
                 return false;
             }
 
             SendKeys.SendWait("^a");
-            Thread.Sleep(50);
+            Thread.Sleep(40);
+            if (!IsSafeKeyboardTarget(element, chatWindow, settings, logger))
+            {
+                logger.Info("Keyboard clear stopped because focus changed before delete dispatch.");
+                return false;
+            }
+
             SendKeys.SendWait("{DEL}");
-            logger.Info("ChatGPT input cleared via guarded keyboard fallback.");
             return true;
         }
         catch (Exception ex)
         {
             logger.Error("Guarded keyboard clear failed.", ex);
+            return false;
+        }
+    }
+
+    private static bool IsSafeKeyboardTarget(
+        AutomationElement expected,
+        IntPtr chatWindow,
+        AppSettings settings,
+        AppLogger logger)
+    {
+        if (NativeMethods.GetForegroundWindow() != chatWindow)
+        {
+            return false;
+        }
+
+        var focused = GetFocusedElement(logger);
+        return IsElementInWindow(focused, chatWindow) &&
+               IsSafeChatGptInput(focused, chatWindow, settings) &&
+               IsSameElementOrWithinCapturedWebViewRoot(focused, expected);
+    }
+
+    private static async Task<bool> WaitForConfirmedEmptyInputAsync(
+        IntPtr chatWindow,
+        AppSettings settings,
+        AppLogger logger,
+        int timeoutMs,
+        int requiredEmptyReads)
+    {
+        var deadline = Environment.TickCount64 + Math.Clamp(timeoutMs, 200, 1500);
+        var consecutiveEmptyReads = 0;
+        while (Environment.TickCount64 <= deadline)
+        {
+            var freshInput = FindChatGptInput(chatWindow, settings, logger);
+            if (IsSafeChatGptInput(freshInput, chatWindow, settings) &&
+                TryDetermineInputEmpty(freshInput!, out var inputIsEmpty) &&
+                inputIsEmpty)
+            {
+                consecutiveEmptyReads++;
+                if (consecutiveEmptyReads >= Math.Max(requiredEmptyReads, 1))
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                consecutiveEmptyReads = 0;
+            }
+
+            var remainingMs = deadline - Environment.TickCount64;
+            if (remainingMs <= 0)
+            {
+                break;
+            }
+
+            await Task.Delay((int)Math.Min(remainingMs, 70));
+        }
+
+        return false;
+    }
+
+    private static bool TryDetermineInputEmpty(AutomationElement element, out bool isEmpty)
+    {
+        isEmpty = false;
+        try
+        {
+            var foundReadableSource = false;
+            if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var valuePatternObject) &&
+                valuePatternObject is ValuePattern valuePattern)
+            {
+                foundReadableSource = true;
+                var valueText = valuePattern.Current.Value ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(valueText) && !IsPlaceholder(valueText))
+                {
+                    return true;
+                }
+            }
+
+            if (element.TryGetCurrentPattern(TextPattern.Pattern, out var textPatternObject) &&
+                textPatternObject is TextPattern textPattern)
+            {
+                foundReadableSource = true;
+                var textPatternText = textPattern.DocumentRange.GetText(-1);
+                if (!string.IsNullOrWhiteSpace(textPatternText) && !IsPlaceholder(textPatternText))
+                {
+                    return true;
+                }
+            }
+
+            var descendants = element.FindAll(
+                TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.IsTextPatternAvailableProperty, true));
+            foreach (AutomationElement descendant in descendants.Cast<AutomationElement>().Take(20))
+            {
+                if (!descendant.TryGetCurrentPattern(TextPattern.Pattern, out var patternObject) ||
+                    patternObject is not TextPattern descendantTextPattern)
+                {
+                    continue;
+                }
+
+                foundReadableSource = true;
+                var descendantText = descendantTextPattern.DocumentRange.GetText(-1);
+                if (!string.IsNullOrWhiteSpace(descendantText) && !IsPlaceholder(descendantText))
+                {
+                    return true;
+                }
+            }
+
+            isEmpty = foundReadableSource;
+            return foundReadableSource;
+        }
+        catch
+        {
+            isEmpty = false;
+            return false;
+        }
+    }
+
+    private static bool LooksLikeProseMirror(AutomationElement element)
+    {
+        try
+        {
+            return element.Current.ClassName.Contains("ProseMirror", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
             return false;
         }
     }
@@ -890,16 +1311,25 @@ internal static class AutomationHelpers
                text.Equals("ChatGPT fragen", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task<string> WaitForClipboardTextAsync(int timeoutMs, AppLogger logger)
+    private static async Task<ClipboardTextReadResult> WaitForClipboardTextAsync(
+        int timeoutMs,
+        uint previousSequenceNumber,
+        AppLogger logger)
     {
         var start = Environment.TickCount64;
         while (Environment.TickCount64 - start < timeoutMs)
         {
             try
             {
-                if (Clipboard.ContainsText())
+                var sequenceBeforeRead = NativeMethods.GetClipboardSequenceNumber();
+                if (sequenceBeforeRead != previousSequenceNumber && Clipboard.ContainsText())
                 {
-                    return Clipboard.GetText().Trim();
+                    var text = Clipboard.GetText().Trim();
+                    var sequenceAfterRead = NativeMethods.GetClipboardSequenceNumber();
+                    if (sequenceBeforeRead == sequenceAfterRead)
+                    {
+                        return new ClipboardTextReadResult(text, sequenceAfterRead);
+                    }
                 }
             }
             catch (Exception ex)
@@ -910,14 +1340,29 @@ internal static class AutomationHelpers
             await Task.Delay(100);
         }
 
-        return string.Empty;
+        return ClipboardTextReadResult.Empty;
     }
+}
+
+internal sealed record ClipboardTextReadResult(string Text, uint SequenceNumber)
+{
+    public static ClipboardTextReadResult Empty { get; } = new(string.Empty, 0);
+}
+
+internal sealed record SafeClipboardCopyResult(
+    string Text,
+    ClipboardRestoreOutcome RestoreOutcome)
+{
+    public static SafeClipboardCopyResult Empty { get; } =
+        new(string.Empty, ClipboardRestoreOutcome.NotRequested);
 }
 
 internal sealed record ChatGptDictationReadResult(
     string Text,
     string Method,
     int Attempts,
-    AutomationElement? Input);
+    AutomationElement? Input,
+    bool IsStable,
+    bool ClipboardRestoreFailed = false);
 
 internal sealed record SafeFocusMetadata(string ControlType, string ClassName, string AutomationId);

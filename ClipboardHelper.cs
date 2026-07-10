@@ -1,12 +1,69 @@
+using System.Collections.Specialized;
+using System.IO;
+
 namespace ChatGptDictationBridge;
 
 internal static class ClipboardHelper
 {
+    private const int ClipboardAttemptCount = 4;
+
+    public static bool TryCaptureStable(
+        AppLogger logger,
+        out IDataObject? snapshot,
+        out uint sequenceNumber)
+    {
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var before = NativeMethods.GetClipboardSequenceNumber();
+            snapshot = Capture(logger);
+            var after = NativeMethods.GetClipboardSequenceNumber();
+            if (snapshot is not null && before == after)
+            {
+                sequenceNumber = after;
+                return true;
+            }
+
+            Thread.Sleep(10);
+        }
+
+        snapshot = null;
+        sequenceNumber = 0;
+        return false;
+    }
+
     public static IDataObject? Capture(AppLogger logger)
     {
         try
         {
-            return Clipboard.GetDataObject();
+            var source = Clipboard.GetDataObject();
+            if (source is null)
+            {
+                return new DataObject();
+            }
+
+            var snapshot = new DataObject();
+            var snapshotFailed = false;
+            foreach (var format in source.GetFormats(autoConvert: false))
+            {
+                try
+                {
+                    var data = source.GetData(format, autoConvert: false);
+                    if (data is null)
+                    {
+                        snapshotFailed = true;
+                        continue;
+                    }
+
+                    snapshot.SetData(format, autoConvert: false, CloneClipboardValue(data));
+                }
+                catch (Exception ex)
+                {
+                    logger.Error($"Clipboard format snapshot failed. Format='{format}'", ex);
+                    snapshotFailed = true;
+                }
+            }
+
+            return snapshotFailed ? null : snapshot;
         }
         catch (Exception ex)
         {
@@ -15,21 +72,117 @@ internal static class ClipboardHelper
         }
     }
 
-    public static void Restore(IDataObject? dataObject, AppSettings settings, AppLogger logger)
+    public static ClipboardRestoreOutcome Restore(
+        IDataObject? dataObject,
+        AppSettings settings,
+        AppLogger logger,
+        uint? expectedSequenceNumber = null)
     {
-        if (!settings.RestoreClipboard || dataObject is null)
+        if (!settings.RestoreClipboard)
         {
-            return;
+            return ClipboardRestoreOutcome.NotRequested;
         }
 
-        try
+        if (dataObject is null)
         {
-            Clipboard.SetDataObject(dataObject, true);
-            logger.Info("Clipboard restored.");
+            logger.Info("Clipboard restore skipped because no safe snapshot is available.");
+            return ClipboardRestoreOutcome.Failed;
         }
-        catch (Exception ex)
+
+        for (var attempt = 1; attempt <= ClipboardAttemptCount; attempt++)
         {
-            logger.Error("Clipboard restore failed.", ex);
+            if (expectedSequenceNumber is not null &&
+                NativeMethods.GetClipboardSequenceNumber() != expectedSequenceNumber.Value)
+            {
+                logger.Info("Clipboard restore skipped because another application changed the clipboard.");
+                return ClipboardRestoreOutcome.SkippedExternalChange;
+            }
+
+            try
+            {
+                if (dataObject.GetFormats(autoConvert: false).Length == 0)
+                {
+                    Clipboard.Clear();
+                }
+                else
+                {
+                    Clipboard.SetDataObject(dataObject, true);
+                }
+
+                logger.Info("Clipboard restored.");
+                return ClipboardRestoreOutcome.Restored;
+            }
+            catch (Exception ex)
+            {
+                if (expectedSequenceNumber is not null &&
+                    NativeMethods.GetClipboardSequenceNumber() != expectedSequenceNumber.Value)
+                {
+                    logger.Error("Clipboard restore failed after the clipboard changed during our restore attempt.", ex);
+                    return ClipboardRestoreOutcome.Failed;
+                }
+
+                if (attempt == ClipboardAttemptCount)
+                {
+                    logger.Error("Clipboard restore failed.", ex);
+                    return ClipboardRestoreOutcome.Failed;
+                }
+
+                Thread.Sleep(20 * attempt);
+            }
         }
+
+        return ClipboardRestoreOutcome.Failed;
     }
+
+    public static bool TrySetText(string text, AppLogger logger)
+    {
+        for (var attempt = 1; attempt <= ClipboardAttemptCount; attempt++)
+        {
+            try
+            {
+                Clipboard.SetText(text);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (attempt == ClipboardAttemptCount)
+                {
+                    logger.Error("Clipboard text update failed.", ex);
+                    return false;
+                }
+
+                Thread.Sleep(20 * attempt);
+            }
+        }
+
+        return false;
+    }
+
+    internal static object CloneClipboardValue(object value)
+    {
+        return value switch
+        {
+            Image image => image.Clone(),
+            byte[] bytes => bytes.ToArray(),
+            string[] paths => paths.ToArray(),
+            StringCollection collection => CloneStringCollection(collection),
+            MemoryStream stream => new MemoryStream(stream.ToArray(), writable: false),
+            _ => value
+        };
+    }
+
+    private static StringCollection CloneStringCollection(StringCollection source)
+    {
+        var clone = new StringCollection();
+        clone.AddRange(source.Cast<string>().ToArray());
+        return clone;
+    }
+}
+
+internal enum ClipboardRestoreOutcome
+{
+    NotRequested,
+    Restored,
+    SkippedExternalChange,
+    Failed
 }
