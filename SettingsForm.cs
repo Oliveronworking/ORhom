@@ -4,8 +4,10 @@ internal sealed class SettingsForm : Form
 {
     private readonly AppSettings _settings;
     private readonly AudioInputDeviceService _audioDevices;
-    private readonly Func<string, string, Task<SettingsApplyResult>> _saveAsync;
+    private readonly ChromeProfileDiscovery _chromeProfiles;
+    private readonly Func<string, string, ChromeProfileInfo, Task<SettingsApplyResult>> _saveAsync;
     private readonly ComboBox _microphoneCombo;
+    private readonly ComboBox _chromeProfileCombo;
     private readonly TextBox _hotkeyBox;
     private readonly Label _statusLabel;
     private readonly Button _saveButton;
@@ -14,16 +16,18 @@ internal sealed class SettingsForm : Form
     public SettingsForm(
         AppSettings settings,
         AudioInputDeviceService audioDevices,
-        Func<string, string, Task<SettingsApplyResult>> saveAsync)
+        ChromeProfileDiscovery chromeProfiles,
+        Func<string, string, ChromeProfileInfo, Task<SettingsApplyResult>> saveAsync)
     {
         _settings = settings;
         _audioDevices = audioDevices;
+        _chromeProfiles = chromeProfiles;
         _saveAsync = saveAsync;
 
         Text = "OpenAI Flow";
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Color.FromArgb(17, 18, 22);
-        ClientSize = new Size(620, 470);
+        ClientSize = new Size(620, 596);
         Font = new Font("Segoe UI", 9.5f);
         ForeColor = Color.White;
         FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -42,7 +46,28 @@ internal sealed class SettingsForm : Form
         Controls.Add(title);
         Controls.Add(subtitle);
 
-        var deviceCard = CreateCard(new Point(32, 112), new Size(556, 132));
+        var profileCard = CreateCard(new Point(32, 112), new Size(556, 118));
+        profileCard.Controls.Add(CreateLabel("CHROME-PROFIL", new Font("Segoe UI", 8.5f, FontStyle.Bold), new Point(20, 14), new Size(200, 22), Color.FromArgb(150, 155, 168)));
+        profileCard.Controls.Add(CreateLabel("Wähle das Chrome-Profil, in dem du bei ChatGPT angemeldet bist.", new Font("Segoe UI", 9f), new Point(20, 35), new Size(500, 22), Color.FromArgb(190, 193, 201)));
+        _chromeProfileCombo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(39, 41, 49),
+            ForeColor = Color.White,
+            Location = new Point(20, 69),
+            Size = new Size(448, 30),
+            IntegralHeight = false,
+            DropDownHeight = 220
+        };
+        var profileRefreshButton = CreateButton("↻", new Point(480, 67), new Size(48, 32), secondary: true);
+        profileRefreshButton.Font = new Font("Segoe UI Symbol", 12, FontStyle.Bold);
+        profileRefreshButton.Click += (_, _) => ReloadChromeProfiles();
+        profileCard.Controls.Add(_chromeProfileCombo);
+        profileCard.Controls.Add(profileRefreshButton);
+        Controls.Add(profileCard);
+
+        var deviceCard = CreateCard(new Point(32, 244), new Size(556, 132));
         deviceCard.Controls.Add(CreateLabel("MIKROFON", new Font("Segoe UI", 8.5f, FontStyle.Bold), new Point(20, 16), new Size(200, 22), Color.FromArgb(150, 155, 168)));
         deviceCard.Controls.Add(CreateLabel("Wähle den Eingang, den OpenAI Flow in Chrome verwenden soll.", new Font("Segoe UI", 9f), new Point(20, 39), new Size(500, 22), Color.FromArgb(190, 193, 201)));
         _microphoneCombo = new ComboBox
@@ -63,7 +88,7 @@ internal sealed class SettingsForm : Form
         deviceCard.Controls.Add(refreshButton);
         Controls.Add(deviceCard);
 
-        var hotkeyCard = CreateCard(new Point(32, 258), new Size(556, 104));
+        var hotkeyCard = CreateCard(new Point(32, 390), new Size(556, 104));
         hotkeyCard.Controls.Add(CreateLabel("TASTENKOMBINATION", new Font("Segoe UI", 8.5f, FontStyle.Bold), new Point(20, 15), new Size(220, 22), Color.FromArgb(150, 155, 168)));
         hotkeyCard.Controls.Add(CreateLabel("In das Feld klicken und die gewünschte Kombination drücken.", new Font("Segoe UI", 9f), new Point(20, 37), new Size(360, 22), Color.FromArgb(190, 193, 201)));
         _hotkeyBox = new TextBox
@@ -86,19 +111,23 @@ internal sealed class SettingsForm : Form
         _statusLabel = CreateLabel(
             "Bereit. Nach dem Schließen läuft OpenAI Flow im Infobereich weiter.",
             new Font("Segoe UI", 9f),
-            new Point(39, 377),
+            new Point(39, 509),
             new Size(545, 24),
             Color.FromArgb(148, 163, 184));
         Controls.Add(_statusLabel);
 
-        _saveButton = CreateButton("Speichern und im Hintergrund starten", new Point(32, 412), new Size(352, 40), secondary: false);
+        _saveButton = CreateButton("Speichern und im Hintergrund starten", new Point(32, 538), new Size(352, 40), secondary: false);
         _saveButton.Click += async (_, _) => await SaveAsync();
-        var hideButton = CreateButton("Im Hintergrund schließen", new Point(396, 412), new Size(192, 40), secondary: true);
+        var hideButton = CreateButton("Im Hintergrund schließen", new Point(396, 538), new Size(192, 40), secondary: true);
         hideButton.Click += (_, _) => Hide();
         Controls.Add(_saveButton);
         Controls.Add(hideButton);
 
-        Shown += (_, _) => ReloadMicrophones();
+        Shown += (_, _) =>
+        {
+            ReloadChromeProfiles();
+            ReloadMicrophones();
+        };
         FormClosing += OnFormClosing;
     }
 
@@ -144,17 +173,50 @@ internal sealed class SettingsForm : Form
         _microphoneCombo.EndUpdate();
     }
 
+    private void ReloadChromeProfiles()
+    {
+        var selectedDirectory = (_chromeProfileCombo.SelectedItem as ChromeProfileInfo)?.DirectoryName
+            ?? _settings.ChromeProfileDirectory;
+        var result = _chromeProfiles.Discover(_settings.ChromeExecutablePath, _settings.ChromeUserDataDir);
+        _chromeProfileCombo.BeginUpdate();
+        _chromeProfileCombo.Items.Clear();
+        foreach (var profile in result.Profiles)
+        {
+            _chromeProfileCombo.Items.Add(profile);
+        }
+
+        _chromeProfileCombo.SelectedItem = result.Profiles.FirstOrDefault(profile =>
+            profile.DirectoryName.Equals(selectedDirectory, StringComparison.OrdinalIgnoreCase));
+        if (_chromeProfileCombo.SelectedIndex < 0 && _chromeProfileCombo.Items.Count > 0)
+        {
+            _chromeProfileCombo.SelectedIndex = 0;
+        }
+        _chromeProfileCombo.EndUpdate();
+
+        SetStatus(
+            result.Profiles.Count == 0
+                ? "Keine Chrome-Profile gefunden. Ist Google Chrome installiert?"
+                : $"{result.Profiles.Count} Chrome-Profil(e) gefunden.",
+            result.Profiles.Count == 0 ? Color.FromArgb(248, 113, 113) : Color.FromArgb(148, 163, 184));
+    }
+
     private async Task SaveAsync()
     {
         var microphone = _microphoneCombo.SelectedItem?.ToString() ?? string.Empty;
         var hotkey = _hotkeyBox.Text.Trim();
+        if (_chromeProfileCombo.SelectedItem is not ChromeProfileInfo chromeProfile)
+        {
+            SetStatus("Bitte zuerst ein Chrome-Profil auswählen.", Color.FromArgb(248, 113, 113));
+            return;
+        }
         _saveButton.Enabled = false;
         _microphoneCombo.Enabled = false;
+        _chromeProfileCombo.Enabled = false;
         _hotkeyBox.Enabled = false;
         SetStatus("Mikrofon und Tastenkombination werden eingerichtet …", Color.FromArgb(96, 165, 250));
         try
         {
-            var result = await _saveAsync(microphone, hotkey);
+            var result = await _saveAsync(microphone, hotkey, chromeProfile);
             if (!result.Ok)
             {
                 SetStatus(result.Message, Color.FromArgb(248, 113, 113));
@@ -169,6 +231,7 @@ internal sealed class SettingsForm : Form
         {
             _saveButton.Enabled = true;
             _microphoneCombo.Enabled = true;
+            _chromeProfileCombo.Enabled = true;
             _hotkeyBox.Enabled = true;
         }
     }

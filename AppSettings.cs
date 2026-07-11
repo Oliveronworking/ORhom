@@ -21,9 +21,9 @@ internal sealed class AppSettings
     public string ChatGptUrl { get; set; } = "https://chatgpt.com";
     public string[] ChatGptWindowTitleContains { get; set; } = ["ChatGPT", "chatgpt.com"];
     public string BrowserProfileMode { get; set; } = "ExistingChromeProfile";
-    public string ChromeExecutablePath { get; set; } = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
-    public string ChromeUserDataDir { get; set; } = @"C:\Users\Admin\AppData\Local\Google\Chrome\User Data";
-    public string ChromeProfileDirectory { get; set; } = "Profile 3";
+    public string ChromeExecutablePath { get; set; } = string.Empty;
+    public string ChromeUserDataDir { get; set; } = string.Empty;
+    public string ChromeProfileDirectory { get; set; } = string.Empty;
     public bool RequireConfiguredChromeProfile { get; set; } = true;
     public bool AllowGuestProfile { get; set; } = false;
     public bool AllowIncognitoProfile { get; set; } = false;

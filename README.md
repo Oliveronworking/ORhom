@@ -2,13 +2,13 @@
 
 OpenAIFlow ist eine Windows-Tray-App für browserbasierte ChatGPT-Diktierung. F8 startet die Aufnahme im kleinen Diktier-/Mikrofonbutton des ChatGPT-Composers; ein zweites F8 stoppt die Aufnahme, wartet auf die Transkription und fügt den Text am ursprünglichen Cursor ein. Alternativ funktioniert derselbe Hotkey als Push-to-talk: länger halten, sprechen und zum Stoppen loslassen. Ein kurzer Tastendruck behält unverändert den Toggle-Modus. Escape bricht eine laufende Aufnahme ab und versucht, bereits gesprochenen Text im Diktierverlauf zu retten.
 
-Die App benötigt keinen OpenAI-API-Key. Sie verwendet ausschließlich das bereits vorhandene und bei ChatGPT angemeldete Chrome-Profil `Profile 3`.
+Die App benötigt keinen OpenAI-API-Key. Sie verwendet ausschließlich ein vorhandenes, vom Benutzer ausgewähltes und bei ChatGPT angemeldetes Chrome-Profil.
 
 ## Voraussetzungen und Build
 
 - Windows mit .NET 8 SDK
-- Google Chrome unter `C:\Program Files\Google\Chrome\Application\chrome.exe`
-- das Chrome-Profil `C:\Users\Admin\AppData\Local\Google\Chrome\User Data\Profile 3`
+- Google Chrome (Standardinstallation für den aktuellen Windows-Benutzer oder systemweit)
+- mindestens ein bereits angelegtes Chrome-Profil
 
 ```powershell
 dotnet build .\OpenAIFlow.sln -c Release
@@ -19,12 +19,12 @@ Beim ersten Start öffnet sich die OpenAI-Flow-Einrichtung. Dort werden Mikrofon
 
 OpenAIFlow hält genau ein eigenes ChatGPT-Fenster dauerhaft im Hintergrund. Es wird minimiert gestartet, über App-Neustarts hinweg wiedererkannt und nur nahezu transparent für die kurzen UI-Automationsschritte aktiviert. Beim normalen F8-Ablauf erscheint deshalb kein Chrome-Fenster auf dem Desktop. Sichtbar geöffnet wird es ausschließlich über den bewusst gewählten Tray-Menüpunkt **ChatGPT Profil öffnen**.
 
-## Chrome Profile 3 einrichten
+## Chrome-Profil einrichten
 
-OpenAIFlow startet Chrome immer mit diesen beiden vorhandenen Profilparametern:
+OpenAIFlow erkennt die Standardpfade von Chrome und startet es mit den Parametern des ausgewählten Profils, zum Beispiel:
 
 ```text
---user-data-dir=C:\Users\Admin\AppData\Local\Google\Chrome\User Data
+--user-data-dir=C:\Users\<Benutzer>\AppData\Local\Google\Chrome\User Data
 --profile-directory=Profile 3
 ```
 
@@ -32,24 +32,27 @@ Gast-, Inkognito- und temporäre Profile sind deaktiviert. Die App weicht nicht 
 
 - `chrome.exe` ist vorhanden,
 - der konfigurierte User-Data-Ordner ist vorhanden,
-- der Ordner `Profile 3` ist vorhanden,
-- `Profile 3\Preferences` ist vorhanden.
+- der ausgewählte Profilordner ist vorhanden,
+- dessen `Preferences`-Datei ist vorhanden.
 
 Zur Ersteinrichtung:
 
-1. In der OpenAI-Flow-Einrichtung das gewünschte Mikrofon auswählen.
-2. In das Tastenkombinationsfeld klicken und zum Beispiel `F8` drücken.
-3. **Speichern und im Hintergrund starten** wählen. OpenAI Flow setzt den Eingang im unsichtbaren Profile-3-Browser und bereitet die ChatGPT-Seite frisch vor.
-4. Falls ChatGPT noch nicht angemeldet ist: Im Tray-Menü **ChatGPT Profil öffnen** wählen, anmelden und den Mikrofonzugriff für `https://chatgpt.com` erlauben.
-5. In ein beliebiges Zieltextfeld klicken und die gewählte Tastenkombination testen.
+1. In der OpenAI-Flow-Einrichtung das gewünschte Chrome-Profil auswählen.
+2. Das gewünschte Mikrofon auswählen.
+3. In das Tastenkombinationsfeld klicken und zum Beispiel `F8` drücken.
+4. **Speichern und im Hintergrund starten** wählen. OpenAI Flow setzt den Eingang im unsichtbaren Browser des gewählten Profils und bereitet die ChatGPT-Seite frisch vor.
+5. Falls ChatGPT noch nicht angemeldet ist: Im Tray-Menü **ChatGPT Profil öffnen** wählen, anmelden und den Mikrofonzugriff für `https://chatgpt.com` erlauben.
+6. In ein beliebiges Zieltextfeld klicken und die gewählte Tastenkombination testen.
 
-Fehlt das Profil, startet die Diktierung nicht und die Tray-Meldung verweist auf `settings.json`.
+Beim ersten Start erkennt OpenAI Flow die lokal vorhandenen Chrome-Profile automatisch. In **OpenAI Flow öffnen** kann das gewünschte Profil anhand seines Chrome-Namens und Profilordners ausgewählt werden. Die Auswahl wird zusammen mit den auf diesem PC erkannten Chrome-Pfaden gespeichert. Dadurch kann dieselbe Anwendung auf einem weiteren PC eingerichtet werden, ohne Benutzerpfade oder `Profile 3` von Hand in `settings.json` einzutragen.
+
+Fehlt das ausgewählte Profil später, startet die Diktierung nicht und die Tray-Meldung fordert zur erneuten Auswahl in OpenAI Flow auf.
 
 ## Nutzung
 
 1. Den Cursor in das gewünschte Zieltextfeld setzen.
 2. F8 kurz drücken oder gedrückt halten. OpenAIFlow prüft zuerst, ob das konfigurierte Mikrofon noch aktiv ist, und merkt sich Fenster sowie Eingabefeld. Die Zwischenablage wird erst unmittelbar vor dem Einfügen gesichert, damit zwischenzeitliche Kopiervorgänge des Benutzers erhalten bleiben.
-3. Die App verwendet ihr einziges unsichtbares ChatGPT-Hintergrundfenster in Profile 3, prüft Login und Composer, klickt bevorzugt den kleinen Diktierbutton und bestätigt den Aufnahmezustand.
+3. Die App verwendet ihr einziges unsichtbares ChatGPT-Hintergrundfenster im ausgewählten Profil, prüft Login und Composer, klickt bevorzugt den kleinen Diktierbutton und bestätigt den Aufnahmezustand.
 4. Sprechen. Unten mittig zeigt eine fokusfreie Desktop-Pille **Hört zu …** sowie **F8 zum Stoppen · Esc Abbruch**. Die Anzeige ist klickdurchlässig und verändert weder Fokus noch Cursor.
 5. F8 erneut drücken oder einen gehaltenen Hotkey loslassen. Die App lässt dem letzten gesprochenen Wort noch einen kurzen Audiopuffer und löst den Stop-Befehl genau einmal aus. Bei langen Diktaten darf ChatGPT anschließend bis zum konfigurierten Transkriptionslimit weiterverarbeiten; ein noch sichtbarer Aufnahme-/Verarbeitungszustand führt nicht mehr nach fünf Sekunden zu einem falschen Fehler oder zu einem zweiten Klick. Der Composer wird wiederholt über mehrere UI-Automation-Verfahren oder einen abgesicherten Zwischenablage-Fallback gelesen. Übernommen wird der Text erst, wenn er sich für die konfigurierte Stabilitätszeit nicht mehr verändert hat. Ein zweiter kurzer Tastendruck während des Starts wird als Stop-Wunsch vorgemerkt statt verworfen.
 6. Der Text wird am ursprünglichen Cursor eingefügt und die vorherige Zwischenablage wiederhergestellt.
@@ -79,11 +82,11 @@ Beim Einfügen wird das ursprüngliche Zielfenster verifiziert aktiviert. In VS 
 ## Diagnose im Tray-Menü
 
 - **Diktierverlauf (letzte 10)** zeigt erfolgreiche, fehlgeschlagene und abgebrochene Diktierungen. Einträge mit erkanntem Text können dort kopiert werden.
-- **ChatGPT Profil öffnen** öffnet ChatGPT sichtbar mit Profile 3 für Anmeldung und Mikrofonfreigabe.
-- **Mikrofon & Hotkey einstellen** öffnet die OpenAI-Flow-Oberfläche. Die Auswahl wird automatisch in Profile 3 übernommen; ein separates Chrome-Einstellungsfenster ist nicht nötig.
-- **Chrome-Profil prüfen** validiert `chrome.exe`, User-Data-Ordner, `Profile 3` und dessen `Preferences`-Datei.
+- **ChatGPT Profil öffnen** öffnet ChatGPT sichtbar mit dem ausgewählten Profil für Anmeldung und Mikrofonfreigabe.
+- **Chrome-Profil, Mikrofon & Hotkey einstellen** öffnet die OpenAI-Flow-Oberfläche. Die Auswahl wird automatisch in das gewählte Profil übernommen; ein separates Chrome-Einstellungsfenster ist nicht nötig.
+- **Chrome-Profil prüfen** validiert `chrome.exe`, User-Data-Ordner, den gewählten Profilordner und dessen `Preferences`-Datei.
 - **ChatGPT Diagnose speichern** protokolliert Profilstatus, Fenster, Login-Eindruck, sicher redigierte Composer-Kandidaten, Diktierbutton-Kandidaten und erkannten Aufnahmezustand.
-- **Chrome-Profilordner öffnen** öffnet den validierten Ordner `Profile 3`.
+- **Chrome-Profilordner öffnen** öffnet den validierten, ausgewählten Profilordner.
 
 Die Diagnose protokolliert keine ChatGPT-Inhalte, Cookies, Tokens oder diktierten Texte. Namen möglicher Texteingaben werden redigiert; lediglich technische Metadaten und Textlängen werden gespeichert.
 
@@ -96,9 +99,9 @@ Die mitgelieferte `settings.json` enthält insbesondere:
   "browserProfileMode": "ExistingChromeProfile",
   "preferredMicrophoneName": "Mikrofon (Logi C525 HD WebCam)",
   "setupCompleted": false,
-  "chromeExecutablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "chromeUserDataDir": "C:\\Users\\Admin\\AppData\\Local\\Google\\Chrome\\User Data",
-  "chromeProfileDirectory": "Profile 3",
+  "chromeExecutablePath": "",
+  "chromeUserDataDir": "",
+  "chromeProfileDirectory": "",
   "requireConfiguredChromeProfile": true,
   "allowGuestProfile": false,
   "allowIncognitoProfile": false,
