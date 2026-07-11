@@ -31,14 +31,20 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private IntPtr _overlayTargetWindow;
     private bool _queuedStopRequested;
     private bool _exitInProgress;
+    private readonly bool _forceNewProfileWindowOnStartup;
 
-    public DictationTrayAppContext()
+    public DictationTrayAppContext(
+        AppSettings settings,
+        AppLogger logger,
+        ChromeProfileDiscovery chromeProfileDiscovery,
+        bool forceNewProfileWindowOnStartup)
     {
         var baseDirectory = AppContext.BaseDirectory;
-        _logger = new AppLogger(Path.Combine(baseDirectory, "logs"));
+        _logger = logger;
         _applicationIcon = LoadApplicationIcon();
-        _settings = AppSettings.Load(Path.Combine(baseDirectory, "settings.json"), _logger);
-        _chromeProfileDiscovery = new ChromeProfileDiscovery();
+        _settings = settings;
+        _chromeProfileDiscovery = chromeProfileDiscovery;
+        _forceNewProfileWindowOnStartup = forceNewProfileWindowOnStartup;
         _chromeProfileLauncher = new ChromeProfileLauncher(_settings, _logger);
         _microphoneConfigurator = new ChromeMicrophoneConfigurator(_chromeProfileLauncher, _logger);
         _audioInputDevices = new AudioInputDeviceService(_logger);
@@ -538,10 +544,26 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         try
         {
             var foregroundBeforeLaunch = NativeMethods.GetForegroundWindow();
-            var result = await _dictationController.PrepareBackgroundWindowAsync(IntPtr.Zero);
-            if (!result.Ok)
+            bool preparationSucceeded;
+            ChatGptFailure preparationFailure;
+            if (_forceNewProfileWindowOnStartup)
             {
-                _logger.Info($"ChatGPT startup preparation failed. Failure={result.Failure}");
+                var resetResult = await _dictationController.ResetChatGptPageAsync(
+                    IntPtr.Zero,
+                    forceNewProfileWindow: true);
+                preparationSucceeded = resetResult.Ok;
+                preparationFailure = resetResult.Failure;
+            }
+            else
+            {
+                var prepareResult = await _dictationController.PrepareBackgroundWindowAsync(IntPtr.Zero);
+                preparationSucceeded = prepareResult.Ok;
+                preparationFailure = prepareResult.Failure;
+            }
+
+            if (!preparationSucceeded)
+            {
+                _logger.Info($"ChatGPT startup preparation failed. Failure={preparationFailure}");
                 return;
             }
 

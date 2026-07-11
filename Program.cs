@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace ChatGptDictationBridge;
 
 internal static class Program
@@ -17,6 +19,24 @@ internal static class Program
         }
 
         ApplicationConfiguration.Initialize();
-        Application.Run(new DictationTrayAppContext());
+        var baseDirectory = AppContext.BaseDirectory;
+        var logger = new AppLogger(Path.Combine(baseDirectory, "logs"));
+        var settings = AppSettings.Load(Path.Combine(baseDirectory, "settings.json"), logger);
+        var discovery = new ChromeProfileDiscovery();
+        using var profileSelection = new ChromeProfileSelectionForm(settings, discovery);
+        if (profileSelection.ShowDialog() != DialogResult.OK || profileSelection.SelectedProfile is not { } profile)
+        {
+            return;
+        }
+
+        var profileChanged =
+            !settings.ChromeUserDataDir.Equals(profile.UserDataDirectory, StringComparison.OrdinalIgnoreCase) ||
+            !settings.ChromeProfileDirectory.Equals(profile.DirectoryName, StringComparison.OrdinalIgnoreCase);
+        settings.ChromeExecutablePath = profile.ChromeExecutablePath;
+        settings.ChromeUserDataDir = profile.UserDataDirectory;
+        settings.ChromeProfileDirectory = profile.DirectoryName;
+        settings.Save(logger);
+
+        Application.Run(new DictationTrayAppContext(settings, logger, discovery, profileChanged));
     }
 }
