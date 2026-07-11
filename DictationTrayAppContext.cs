@@ -847,7 +847,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
-        _logger.Info("Application exiting.");
+        _ = ChatGptWindowFinder.CloseOwnedBackgroundWindow(_settings, _logger);
+        _logger.Info("Application exiting; owned Chrome background window close requested.");
         ExitThread();
     }
 

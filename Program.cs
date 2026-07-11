@@ -23,6 +23,12 @@ internal static class Program
         var logger = new AppLogger(Path.Combine(baseDirectory, "logs"));
         var settings = AppSettings.Load(Path.Combine(baseDirectory, "settings.json"), logger);
         var discovery = new ChromeProfileDiscovery();
+        var previousBackgroundWindow = ChatGptWindowFinder.CloseOwnedBackgroundWindow(settings, logger);
+        if (previousBackgroundWindow != IntPtr.Zero)
+        {
+            Thread.Sleep(250);
+        }
+
         using var profileSelection = new ChromeProfileSelectionForm(settings, discovery);
         if (profileSelection.ShowDialog() != DialogResult.OK || profileSelection.SelectedProfile is not { } profile)
         {

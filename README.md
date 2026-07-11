@@ -15,7 +15,7 @@ dotnet build .\OpenAIFlow.sln -c Release
 Start-Process "bin\Release\net8.0-windows\ChatGptDictationBridge.exe"
 ```
 
-Bei jedem Start erscheint zuerst eine eigene Chrome-Profilauswahl mit den lokal erkannten Profilnamen. Erst nach Auswahl und **Profil verwenden** startet OpenAI Flow. Beim ersten Start öffnet sich danach zusätzlich die Einrichtung für Mikrofon und globale Tastenkombination. Das X und **Im Hintergrund schließen** blenden nur die Einstellungsoberfläche aus; Diktierung, Status, Diagnose und Beenden bleiben über den Infobereich der Taskleiste erreichbar. Ein Doppelklick auf das Tray-Symbol öffnet die Einstellungen wieder.
+Bei jedem Start wird zunächst ein eventuell noch vorhandenes OpenAI-Flow-Hintergrundfenster von Chrome geschlossen. Danach erscheint die Chrome-Profilauswahl mit den lokal erkannten Profilnamen. Erst nach Auswahl und **Profil verwenden** startet Chrome mit genau diesem Profil und wird anschließend minimiert. Beim ersten Start öffnet sich danach zusätzlich die Einrichtung für Mikrofon und globale Tastenkombination. Das X und **Im Hintergrund schließen** blenden nur die Einstellungsoberfläche aus; Diktierung, Status, Diagnose und Beenden bleiben über den Infobereich der Taskleiste erreichbar. Ein Doppelklick auf das Tray-Symbol öffnet die Einstellungen wieder.
 
 OpenAIFlow hält genau ein eigenes ChatGPT-Fenster dauerhaft im Hintergrund. Es wird minimiert gestartet, über App-Neustarts hinweg wiedererkannt und nur nahezu transparent für die kurzen UI-Automationsschritte aktiviert. Beim normalen F8-Ablauf erscheint deshalb kein Chrome-Fenster auf dem Desktop. Sichtbar geöffnet wird es ausschließlich über den bewusst gewählten Tray-Menüpunkt **ChatGPT Profil öffnen**.
 
