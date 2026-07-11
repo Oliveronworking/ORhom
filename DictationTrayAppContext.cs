@@ -592,6 +592,9 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var previousExecutablePath = _settings.ChromeExecutablePath;
         var previousUserDataDirectory = _settings.ChromeUserDataDir;
         var previousProfileDirectory = _settings.ChromeProfileDirectory;
+        var profileChanged =
+            !previousUserDataDirectory.Equals(chromeProfile.UserDataDirectory, StringComparison.OrdinalIgnoreCase) ||
+            !previousProfileDirectory.Equals(chromeProfile.DirectoryName, StringComparison.OrdinalIgnoreCase);
         void RestorePreviousChromeProfile()
         {
             _settings.ChromeExecutablePath = previousExecutablePath;
@@ -623,7 +626,9 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return SettingsApplyResult.Fail(microphoneResult.Message);
         }
 
-        var pageReset = await _dictationController.ResetChatGptPageAsync(_settingsForm.Handle);
+        var pageReset = await _dictationController.ResetChatGptPageAsync(
+            _settingsForm.Handle,
+            forceNewProfileWindow: profileChanged);
         if (!pageReset.Ok)
         {
             RestorePreviousChromeProfile();

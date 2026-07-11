@@ -58,7 +58,7 @@ internal sealed class ChatGptDictationController : IDisposable
 
     public ChromeProfileValidationResult ValidateConfiguredProfile() => _profileLauncher.ValidateConfiguredProfile();
 
-    public async Task<ChatGptReadyResult> ResetChatGptPageAsync(IntPtr excludedWindow)
+    public async Task<ChatGptReadyResult> ResetChatGptPageAsync(IntPtr excludedWindow, bool forceNewProfileWindow = false)
     {
         await _gate.WaitAsync();
         try
@@ -69,10 +69,22 @@ internal sealed class ChatGptDictationController : IDisposable
                 return ChatGptReadyResult.Fail(ChatGptFailure.ProfileNotFound, MessageFor(ChatGptFailure.ProfileNotFound));
             }
 
-            var chatWindow = KnownChatWindow;
+            var previousProfileWindow = IntPtr.Zero;
+            if (forceNewProfileWindow)
+            {
+                previousProfileWindow = ChatGptWindowFinder.CloseOwnedBackgroundWindow(_settings, _logger);
+                _chatWindow = IntPtr.Zero;
+                if (previousProfileWindow != IntPtr.Zero)
+                {
+                    await Task.Delay(250);
+                }
+            }
+
+            var chatWindow = forceNewProfileWindow ? IntPtr.Zero : KnownChatWindow;
             if (chatWindow == IntPtr.Zero)
             {
-                chatWindow = await LaunchConfiguredWindowCoreAsync(excludedWindow);
+                chatWindow = await LaunchConfiguredWindowCoreAsync(
+                    previousProfileWindow != IntPtr.Zero ? previousProfileWindow : excludedWindow);
             }
 
             if (chatWindow == IntPtr.Zero ||
