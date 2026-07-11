@@ -10,6 +10,7 @@ internal sealed class AudioInputDeviceService
     private const int DeviceStateActive = 1;
 
     private readonly AppLogger _logger;
+    private string _lastDeviceSignature = string.Empty;
 
     public AudioInputDeviceService(AppLogger logger)
     {
@@ -58,7 +59,12 @@ internal sealed class AudioInputDeviceService
         }
 
         var result = names.OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase).ToList();
-        _logger.Info($"Active microphone enumeration completed. Count={result.Count}");
+        var signature = string.Join("\u001f", result);
+        if (!signature.Equals(_lastDeviceSignature, StringComparison.Ordinal))
+        {
+            _lastDeviceSignature = signature;
+            _logger.Info($"Active microphone devices changed. Count={result.Count}");
+        }
         return result;
     }
 }

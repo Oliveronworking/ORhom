@@ -9,7 +9,11 @@ internal sealed class SettingsForm : Form
     private readonly TextBox _hotkeyBox;
     private readonly Label _statusLabel;
     private readonly Button _saveButton;
+    private readonly System.Windows.Forms.Timer _microphoneRefreshTimer;
+    private readonly HashSet<string> _knownMicrophones = new(StringComparer.OrdinalIgnoreCase);
     private bool _allowClose;
+    private bool _reloadingMicrophones;
+    private bool _saveInProgress;
 
     public SettingsForm(
         AppSettings settings,
@@ -56,9 +60,16 @@ internal sealed class SettingsForm : Form
             IntegralHeight = false,
             DropDownHeight = 180
         };
+        _microphoneCombo.SelectedIndexChanged += (_, _) =>
+        {
+            if (!_reloadingMicrophones)
+            {
+                SetStatus("Mikrofon ausgewählt. Zum Aktivieren speichern.", Color.FromArgb(148, 163, 184));
+            }
+        };
         var refreshButton = CreateButton("↻", new Point(480, 70), new Size(48, 32), secondary: true);
         refreshButton.Font = new Font("Segoe UI Symbol", 12, FontStyle.Bold);
-        refreshButton.Click += (_, _) => ReloadMicrophones();
+        refreshButton.Click += (_, _) => ReloadMicrophones(showStatus: true);
         deviceCard.Controls.Add(_microphoneCombo);
         deviceCard.Controls.Add(refreshButton);
         Controls.Add(deviceCard);
@@ -98,7 +109,26 @@ internal sealed class SettingsForm : Form
         Controls.Add(_saveButton);
         Controls.Add(hideButton);
 
-        Shown += (_, _) => ReloadMicrophones();
+        _microphoneRefreshTimer = new System.Windows.Forms.Timer { Interval = 2000 };
+        _microphoneRefreshTimer.Tick += (_, _) =>
+        {
+            if (Visible && !_saveInProgress)
+            {
+                ReloadMicrophones(showStatus: false);
+            }
+        };
+        VisibleChanged += (_, _) =>
+        {
+            if (Visible)
+            {
+                ReloadMicrophones(showStatus: true);
+                _microphoneRefreshTimer.Start();
+            }
+            else
+            {
+                _microphoneRefreshTimer.Stop();
+            }
+        };
         FormClosing += OnFormClosing;
     }
 
@@ -107,6 +137,10 @@ internal sealed class SettingsForm : Form
         if (!Visible)
         {
             Show();
+        }
+        else
+        {
+            ReloadMicrophones(showStatus: true);
         }
 
         WindowState = FormWindowState.Normal;
@@ -120,34 +154,79 @@ internal sealed class SettingsForm : Form
         Close();
     }
 
-    private void ReloadMicrophones()
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _microphoneRefreshTimer.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
+
+    private void ReloadMicrophones(bool showStatus)
     {
         var selected = _microphoneCombo.SelectedItem?.ToString() ?? _settings.PreferredMicrophoneName;
         var microphones = _audioDevices.GetActiveMicrophones();
+        var devicesChanged = !_knownMicrophones.SetEquals(microphones);
+        if (!devicesChanged && !showStatus)
+        {
+            return;
+        }
+
+        _knownMicrophones.Clear();
+        _knownMicrophones.UnionWith(microphones);
+        _reloadingMicrophones = true;
         _microphoneCombo.BeginUpdate();
-        _microphoneCombo.Items.Clear();
-        foreach (var microphone in microphones)
+        try
         {
-            _microphoneCombo.Items.Add(microphone);
+            _microphoneCombo.Items.Clear();
+            foreach (var microphone in microphones)
+            {
+                _microphoneCombo.Items.Add(microphone);
+            }
+
+            var matchingSelection = microphones.FirstOrDefault(microphone =>
+                microphone.Equals(selected, StringComparison.OrdinalIgnoreCase));
+            matchingSelection ??= microphones.FirstOrDefault(microphone =>
+                microphone.Equals(_settings.PreferredMicrophoneName, StringComparison.OrdinalIgnoreCase));
+            if (matchingSelection is not null)
+            {
+                _microphoneCombo.SelectedItem = matchingSelection;
+            }
+            else if (_microphoneCombo.Items.Count > 0)
+            {
+                _microphoneCombo.SelectedIndex = 0;
+            }
+        }
+        finally
+        {
+            _microphoneCombo.EndUpdate();
+            _reloadingMicrophones = false;
         }
 
-        if (!string.IsNullOrWhiteSpace(selected) && !_microphoneCombo.Items.Contains(selected))
+        if (microphones.Count == 0)
         {
-            _microphoneCombo.Items.Insert(0, selected);
+            SetStatus("Kein aktives Mikrofon erkannt. Bitte ein Gerät verbinden.", Color.FromArgb(248, 113, 113));
         }
-
-        _microphoneCombo.SelectedItem = selected;
-        if (_microphoneCombo.SelectedIndex < 0 && _microphoneCombo.Items.Count > 0)
+        else if (!string.IsNullOrWhiteSpace(selected) &&
+                 !microphones.Contains(selected, StringComparer.OrdinalIgnoreCase))
         {
-            _microphoneCombo.SelectedIndex = 0;
+            SetStatus("Das bisherige Mikrofon ist nicht verbunden. Bitte ein anderes auswählen.", Color.FromArgb(251, 191, 36));
         }
-        _microphoneCombo.EndUpdate();
+        else if (showStatus || devicesChanged)
+        {
+            var suffix = microphones.Count == 1 ? "Mikrofon erkannt." : "Mikrofone erkannt.";
+            SetStatus($"{microphones.Count} {suffix}", Color.FromArgb(74, 222, 128));
+        }
     }
 
     private async Task SaveAsync()
     {
         var microphone = _microphoneCombo.SelectedItem?.ToString() ?? string.Empty;
         var hotkey = _hotkeyBox.Text.Trim();
+        _saveInProgress = true;
+        _microphoneRefreshTimer.Stop();
         _saveButton.Enabled = false;
         _microphoneCombo.Enabled = false;
         _hotkeyBox.Enabled = false;
@@ -167,9 +246,14 @@ internal sealed class SettingsForm : Form
         }
         finally
         {
+            _saveInProgress = false;
             _saveButton.Enabled = true;
             _microphoneCombo.Enabled = true;
             _hotkeyBox.Enabled = true;
+            if (Visible)
+            {
+                _microphoneRefreshTimer.Start();
+            }
         }
     }
 
