@@ -16,6 +16,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private readonly PasteService _pasteService;
     private readonly AppSettings _settings;
     private readonly ChromeProfileLauncher _chromeProfileLauncher;
+    private readonly ChromeProfileDiscovery _chromeProfileDiscovery;
     private readonly ChromeMicrophoneConfigurator _microphoneConfigurator;
     private readonly AudioInputDeviceService _audioInputDevices;
     private readonly ChatGptDictationController _dictationController;
@@ -30,13 +31,20 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private IntPtr _overlayTargetWindow;
     private bool _queuedStopRequested;
     private bool _exitInProgress;
+    private readonly bool _forceNewProfileWindowOnStartup;
 
-    public DictationTrayAppContext()
+    public DictationTrayAppContext(
+        AppSettings settings,
+        AppLogger logger,
+        ChromeProfileDiscovery chromeProfileDiscovery,
+        bool forceNewProfileWindowOnStartup)
     {
         var baseDirectory = AppContext.BaseDirectory;
-        _logger = new AppLogger(Path.Combine(baseDirectory, "logs"));
+        _logger = logger;
         _applicationIcon = LoadApplicationIcon();
-        _settings = AppSettings.Load(Path.Combine(baseDirectory, "settings.json"), _logger);
+        _settings = settings;
+        _chromeProfileDiscovery = chromeProfileDiscovery;
+        _forceNewProfileWindowOnStartup = forceNewProfileWindowOnStartup;
         _chromeProfileLauncher = new ChromeProfileLauncher(_settings, _logger);
         _microphoneConfigurator = new ChromeMicrophoneConfigurator(_chromeProfileLauncher, _logger);
         _audioInputDevices = new AudioInputDeviceService(_logger);
@@ -60,7 +68,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _hotkeyWindow.ToggleReleased += OnToggleReleased;
         _hotkeyWindow.EscapePressed += (_, _) => _ = AbortRecordingAsync();
         _hotkeyWindow.CreateControl();
-        _settingsForm = new SettingsForm(_settings, _audioInputDevices, ApplySettingsAsync);
+        _settingsForm = new SettingsForm(_settings, _audioInputDevices, _chromeProfileDiscovery, ApplySettingsAsync);
         _settingsForm.Icon = _applicationIcon;
         _settingsForm.VisibleChanged += (_, _) => _hotkeyWindow.SetToggleEnabled(!_settingsForm.Visible);
 
@@ -75,7 +83,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         {
             Enabled = _settings.OpenChatGptProfileVisibleForSetup
         });
-        menu.Items.Add(new ToolStripMenuItem("Mikrofon & Hotkey einstellen", null, (_, _) => OpenSettings()));
+        menu.Items.Add(new ToolStripMenuItem("Chrome-Profil, Mikrofon & Hotkey einstellen", null, (_, _) => OpenSettings()));
         menu.Items.Add(new ToolStripMenuItem("Chrome-Profil prüfen", null, (_, _) => CheckChromeProfile()));
         menu.Items.Add(new ToolStripMenuItem("ChatGPT Diagnose speichern", null, (_, _) => _ = WriteChatGptDiagnosticsAsync())
         {
@@ -536,10 +544,26 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         try
         {
             var foregroundBeforeLaunch = NativeMethods.GetForegroundWindow();
-            var result = await _dictationController.PrepareBackgroundWindowAsync(IntPtr.Zero);
-            if (!result.Ok)
+            bool preparationSucceeded;
+            ChatGptFailure preparationFailure;
+            if (_forceNewProfileWindowOnStartup)
             {
-                _logger.Info($"ChatGPT startup preparation failed. Failure={result.Failure}");
+                var resetResult = await _dictationController.ResetChatGptPageAsync(
+                    IntPtr.Zero,
+                    forceNewProfileWindow: true);
+                preparationSucceeded = resetResult.Ok;
+                preparationFailure = resetResult.Failure;
+            }
+            else
+            {
+                var prepareResult = await _dictationController.PrepareBackgroundWindowAsync(IntPtr.Zero);
+                preparationSucceeded = prepareResult.Ok;
+                preparationFailure = prepareResult.Failure;
+            }
+
+            if (!preparationSucceeded)
+            {
+                _logger.Info($"ChatGPT startup preparation failed. Failure={preparationFailure}");
                 return;
             }
 
@@ -563,7 +587,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
-        ShowMessage("ChatGPT wurde im konfigurierten Chrome-Profil Profile 3 geöffnet.");
+        ShowMessage($"ChatGPT wurde im Chrome-Profil {_settings.ChromeProfileDirectory} geöffnet.");
     }
 
     private void CheckChromeProfile()
@@ -580,33 +604,62 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         ShowConfiguredProfileUnavailable();
     }
 
-    private async Task<SettingsApplyResult> ApplySettingsAsync(string microphoneName, string hotkey)
+    private async Task<SettingsApplyResult> ApplySettingsAsync(string microphoneName, string hotkey, ChromeProfileInfo chromeProfile)
     {
         if (_status != AppStatus.Idle)
         {
             return SettingsApplyResult.Fail("Bitte zuerst die laufende Aufnahme beenden.");
         }
 
+        var previousExecutablePath = _settings.ChromeExecutablePath;
+        var previousUserDataDirectory = _settings.ChromeUserDataDir;
+        var previousProfileDirectory = _settings.ChromeProfileDirectory;
+        var profileChanged =
+            !previousUserDataDirectory.Equals(chromeProfile.UserDataDirectory, StringComparison.OrdinalIgnoreCase) ||
+            !previousProfileDirectory.Equals(chromeProfile.DirectoryName, StringComparison.OrdinalIgnoreCase);
+        void RestorePreviousChromeProfile()
+        {
+            _settings.ChromeExecutablePath = previousExecutablePath;
+            _settings.ChromeUserDataDir = previousUserDataDirectory;
+            _settings.ChromeProfileDirectory = previousProfileDirectory;
+        }
+
+        _settings.ChromeExecutablePath = chromeProfile.ChromeExecutablePath;
+        _settings.ChromeUserDataDir = chromeProfile.UserDataDirectory;
+        _settings.ChromeProfileDirectory = chromeProfile.DirectoryName;
+        var profileValidation = _chromeProfileLauncher.ValidateConfiguredProfile();
+        if (!profileValidation.IsValid)
+        {
+            RestorePreviousChromeProfile();
+            return SettingsApplyResult.Fail($"Das Chrome-Profil ist nicht verfügbar: {profileValidation.FailureReason}");
+        }
+
         var activeMicrophones = _audioInputDevices.GetActiveMicrophones();
         if (!activeMicrophones.Contains(microphoneName, StringComparer.OrdinalIgnoreCase))
         {
+            RestorePreviousChromeProfile();
             return SettingsApplyResult.Fail("Das ausgewählte Mikrofon ist nicht mehr verbunden.");
         }
 
         var microphoneResult = await _microphoneConfigurator.ApplyAsync(microphoneName);
         if (!microphoneResult.Ok)
         {
+            RestorePreviousChromeProfile();
             return SettingsApplyResult.Fail(microphoneResult.Message);
         }
 
-        var pageReset = await _dictationController.ResetChatGptPageAsync(_settingsForm.Handle);
+        var pageReset = await _dictationController.ResetChatGptPageAsync(
+            _settingsForm.Handle,
+            forceNewProfileWindow: profileChanged);
         if (!pageReset.Ok)
         {
+            RestorePreviousChromeProfile();
             return SettingsApplyResult.Fail("Mikrofon gespeichert, aber ChatGPT konnte nicht vorbereitet werden. Bitte ChatGPT Profil öffnen und Anmeldung prüfen.");
         }
 
         if (!_hotkeyWindow.TryUpdateToggleHotkey(hotkey, out var hotkeyFailure))
         {
+            RestorePreviousChromeProfile();
             return SettingsApplyResult.Fail(hotkeyFailure);
         }
 
@@ -615,7 +668,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _settings.SetupCompleted = true;
         _settings.Save(_logger);
         _recordingOverlay.SetToggleHotkey(hotkey);
-        _logger.Info($"Settings applied from UI. MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}'.");
+        _logger.Info($"Settings applied from UI. ChromeProfileDirectory='{chromeProfile.DirectoryName}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}'.");
         ShowMessage($"OpenAI Flow läuft jetzt mit {hotkey} im Hintergrund.");
         return SettingsApplyResult.Success(microphoneName, hotkey);
     }
@@ -731,7 +784,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
     private void ShowConfiguredProfileUnavailable()
     {
-        ShowMessage($"Konfiguriertes Chrome-Profil {_settings.ChromeProfileDirectory} nicht gefunden. Bitte settings.json prüfen.");
+        ShowMessage($"Chrome-Profil {_settings.ChromeProfileDirectory} nicht gefunden. Bitte OpenAI Flow öffnen und ein Profil auswählen.");
     }
 
     private void OpenPath(string path)
@@ -794,7 +847,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return;
         }
 
-        _logger.Info("Application exiting.");
+        _ = ChatGptWindowFinder.CloseOwnedBackgroundWindow(_settings, _logger);
+        _logger.Info("Application exiting; owned Chrome background window close requested.");
         ExitThread();
     }
 

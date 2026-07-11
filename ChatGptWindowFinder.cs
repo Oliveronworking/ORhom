@@ -60,6 +60,17 @@ internal static class ChatGptWindowFinder
             .FirstOrDefault(window => NativeMethods.HasWindowMark(window, BackgroundWindowProperty));
     }
 
+    public static IntPtr CloseOwnedBackgroundWindow(AppSettings settings, AppLogger logger)
+    {
+        var window = FindOwnedBackgroundWindow(settings);
+        if (window != IntPtr.Zero && NativeMethods.RequestWindowClose(window))
+        {
+            logger.Info($"Previous ChatGPT background window closed for profile switch. Handle=0x{window.ToInt64():X}");
+        }
+
+        return window;
+    }
+
     public static bool IsChatGptWindow(IntPtr hWnd, AppSettings settings, IntPtr excludedWindow = default)
     {
         if (hWnd == IntPtr.Zero || hWnd == excludedWindow || !NativeMethods.IsWindowVisible(hWnd))

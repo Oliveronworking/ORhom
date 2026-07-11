@@ -280,6 +280,9 @@ internal static class NativeMethods
         return hWnd != IntPtr.Zero && GetProp(hWnd, propertyName) != IntPtr.Zero;
     }
 
+    public static bool RequestWindowClose(IntPtr hWnd) =>
+        hWnd != IntPtr.Zero && IsWindow(hWnd) && PostMessage(hWnd, WmClose, IntPtr.Zero, IntPtr.Zero);
+
     public static bool SetWindowOpacity(IntPtr hWnd, byte alpha)
     {
         if (hWnd == IntPtr.Zero || !IsWindow(hWnd))
