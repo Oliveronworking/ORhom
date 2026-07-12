@@ -8,7 +8,11 @@ internal static class AutomationHelpers
     [
         ControlType.Edit,
         ControlType.Custom,
-        ControlType.Document
+        ControlType.Document,
+        // Chromium occasionally exposes a contenteditable ProseMirror node as a
+        // Group while its accessibility tree is being rebuilt.  It is accepted
+        // below only when it also carries strong composer-specific metadata.
+        ControlType.Group
     ];
 
     public static AutomationElement? GetFocusedElement(AppLogger logger)
@@ -217,7 +221,8 @@ internal static class AutomationHelpers
                 LogElement("ChatGPT input candidate", candidate, logger);
                 var focused = GetFocusedElement(logger);
                 LogElement("Focused element after ChatGPT input focus", focused, logger);
-                if (IsSafeChatGptInput(focused, chatWindow, settings))
+                if (IsElementInWindow(focused, chatWindow) &&
+                    IsSafeChatGptInput(focused, chatWindow, settings))
                 {
                     logger.Info("ChatGPT input focused safely.");
                     return focused;
@@ -252,7 +257,8 @@ internal static class AutomationHelpers
 
         var focused = GetFocusedElement(logger);
         LogElement("Focused known ChatGPT input", focused, logger);
-        if (IsSafeChatGptInput(focused, chatWindow, settings))
+        if (IsElementInWindow(focused, chatWindow) &&
+            IsSafeChatGptInput(focused, chatWindow, settings))
         {
             return focused;
         }
@@ -1270,6 +1276,11 @@ internal static class AutomationHelpers
                 return "not-chatgpt-composer";
             }
 
+            if (controlType == ControlType.Group && !LooksLikeStrongChatInputMetadata(metadata))
+            {
+                return "group-without-strong-composer-marker";
+            }
+
             var maxHeight = settings.MaxChatGptInputHeightPx;
             if (rect.Height > maxHeight)
             {
@@ -1385,6 +1396,15 @@ internal static class AutomationHelpers
                metadata.Contains("enter prompt", StringComparison.OrdinalIgnoreCase) ||
                metadata.Contains("sprich mit chatgpt", StringComparison.OrdinalIgnoreCase) ||
                metadata.Contains("ChatGPT message composer", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool LooksLikeStrongChatInputMetadata(string metadata)
+    {
+        return metadata.Contains("ProseMirror", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("prompt-textarea", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("contenteditable", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("composer", StringComparison.OrdinalIgnoreCase) ||
+               metadata.Contains("lexical", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool LooksLikeKnownNonComposerMetadata(string metadata)

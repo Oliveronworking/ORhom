@@ -181,8 +181,7 @@ internal sealed class ChatGptDictationController : IDisposable
             var method = triggered ? "ComposerButton" : "None";
             if (dictationButton is null)
             {
-                triggered = TrySendShortcutFallback(chatWindow, input);
-                method = triggered ? "ShortcutFallback" : "None";
+                _logger.Info("ChatGPT composer dictation control was not found; no browser keyboard shortcut was sent.");
             }
             else if (!triggered)
             {
@@ -246,6 +245,10 @@ internal sealed class ChatGptDictationController : IDisposable
             _recordingComposerRect = composerRect;
             recordingConfirmed = true;
             _logger.Info($"ChatGPT dictation start confirmed. TriggerMethod={method} ChatWindow=0x{chatWindow.ToInt64():X}");
+            // A nearly transparent Chrome window still receives mouse-wheel and
+            // pointer input on the monitor where it is placed. Keep it minimized
+            // for the recording itself so the user can work and scroll normally.
+            HideBackgroundWindow();
             return ChatGptStartResult.Success(chatWindow, input);
         }
         catch (Exception ex)
@@ -290,7 +293,7 @@ internal sealed class ChatGptDictationController : IDisposable
                     chatWindow,
                     _recordingComposerRect,
                     "stop-window-unavailable",
-                    deferUnknownForRecovery: true);
+                    deferUnknownForRecovery: false);
                 return ChatGptStopResult.Fail(
                     ChatGptFailure.StopFailed,
                     MessageFor(ChatGptFailure.StopFailed),
@@ -307,7 +310,7 @@ internal sealed class ChatGptDictationController : IDisposable
                     chatWindow,
                     null,
                     "stop-composer-unavailable",
-                    deferUnknownForRecovery: true);
+                    deferUnknownForRecovery: false);
                 return ChatGptStopResult.Fail(
                     ChatGptFailure.InputNotFound,
                     MessageFor(ChatGptFailure.InputNotFound),
@@ -322,27 +325,15 @@ internal sealed class ChatGptDictationController : IDisposable
                 await Task.Delay((int)remainingGraceMs);
             }
 
-            var stopButton = FindDictationStopButton(chatWindow, composerRect.Value);
             var triggered = false;
             var method = "None";
             try
             {
-                triggered = stopButton is not null && TryInvokeButton(stopButton, chatWindow);
+                triggered = await TryInvokeStopControlWithRetryAsync(chatWindow, composerRect.Value);
                 method = triggered ? "ComposerStopButton" : "None";
-                if (stopButton is null)
+                if (!triggered)
                 {
-                    triggered = AutomationHelpers.IsSafeChatGptInput(input, chatWindow, _settings)
-                        ? TrySendShortcutFallback(chatWindow, input)
-                        : TrySendConfirmedRecordingShortcutFallback(chatWindow);
-                    method = triggered ? "ShortcutFallback" : "None";
-                }
-                else if (!triggered)
-                {
-                    triggered = TrySendConfirmedRecordingShortcutFallback(chatWindow);
-                    method = triggered ? "ConfirmedShortcutFallback" : "None";
-                    _logger.Info(triggered
-                        ? "ChatGPT stop control could not be invoked; the confirmed-recording shortcut fallback was sent once."
-                        : "ChatGPT stop control and confirmed-recording shortcut fallback could not be dispatched.");
+                    _logger.Info("ChatGPT stop control could not be dispatched; no browser keyboard shortcut was sent.");
                 }
             }
             finally
@@ -368,7 +359,7 @@ internal sealed class ChatGptDictationController : IDisposable
                     chatWindow,
                     composerRect,
                     "stop-failed",
-                    deferUnknownForRecovery: true);
+                    deferUnknownForRecovery: triggered);
                 if (triggered && cleanup == RecordingFailureCleanupResult.Recoverable)
                 {
                     leavePreparedForRead = true;
@@ -657,7 +648,7 @@ internal sealed class ChatGptDictationController : IDisposable
             return ChatGptReadyResult.Fail(ChatGptFailure.WindowNotFound, MessageFor(ChatGptFailure.WindowNotFound));
         }
 
-        var input = AutomationHelpers.FocusChatGptInput(chatWindow, _settings, _logger);
+        var input = await FindAndFocusChatGptInputWithRetryAsync(chatWindow);
         if (!AutomationHelpers.IsSafeChatGptInput(input, chatWindow, _settings))
         {
             var loginStatus = ChatGptLoginDetector.Detect(chatWindow, _settings, _logger);
@@ -672,6 +663,50 @@ internal sealed class ChatGptDictationController : IDisposable
 
         _logger.Info("ChatGPT readiness confirmed by the safe authenticated composer.");
         return ChatGptReadyResult.Success(chatWindow, input!);
+    }
+
+    private async Task<AutomationElement?> FindAndFocusChatGptInputWithRetryAsync(IntPtr chatWindow)
+    {
+        const int timeoutMs = 3000;
+        const int retryDelayMs = 150;
+        var startedAt = Environment.TickCount64;
+        var attempts = 0;
+
+        while (Environment.TickCount64 - startedAt < timeoutMs)
+        {
+            attempts++;
+
+            // When Chromium has already put the caret into the composer, use that
+            // element immediately. This also survives a temporarily incomplete tree.
+            var focused = AutomationHelpers.GetFocusedElement(_logger);
+            if (AutomationHelpers.IsElementInWindow(focused, chatWindow) &&
+                AutomationHelpers.IsSafeChatGptInput(focused, chatWindow, _settings))
+            {
+                _logger.Info($"ChatGPT composer reused from current focus. Attempts={attempts}");
+                return focused;
+            }
+
+            var input = AutomationHelpers.FocusChatGptInput(chatWindow, _settings, _logger);
+            if (AutomationHelpers.IsSafeChatGptInput(input, chatWindow, _settings))
+            {
+                if (attempts > 1)
+                {
+                    _logger.Info($"ChatGPT composer found after retry. Attempts={attempts}");
+                }
+
+                return input;
+            }
+
+            await Task.Delay(retryDelayMs);
+        }
+
+        _logger.Info($"ChatGPT composer was not available before the readiness timeout. Attempts={attempts} TimeoutMs={timeoutMs}");
+        if (_settings.EnableChatGptInputDiagnostics)
+        {
+            AutomationHelpers.WriteChatGptInputDiagnostics(chatWindow, _settings, _logger);
+        }
+
+        return null;
     }
 
     private async Task<IntPtr> LaunchConfiguredWindowCoreAsync(IntPtr excludedWindow)
@@ -696,28 +731,6 @@ internal sealed class ChatGptDictationController : IDisposable
         {
             ChatGptWindowFinder.MinimizeBackgroundWindow(window, _settings, _logger);
         }
-    }
-
-    private bool TrySendShortcutFallback(IntPtr chatWindow, AutomationElement? input)
-    {
-        if (!ChatGptWindowFinder.PrepareForAutomation(chatWindow, _settings, _logger))
-        {
-            return false;
-        }
-
-        _ = AutomationHelpers.FocusKnownChatGptInput(input, chatWindow, _settings, _logger) ??
-            AutomationHelpers.FocusChatGptInput(chatWindow, _settings, _logger);
-        var actuallyFocused = AutomationHelpers.GetFocusedElement(_logger);
-        if (NativeMethods.GetForegroundWindow() != chatWindow ||
-            !AutomationHelpers.IsSafeChatGptInput(actuallyFocused, chatWindow, _settings))
-        {
-            _logger.Info("ChatGPT dictation shortcut fallback skipped because no safe composer is focused.");
-            return false;
-        }
-
-        KeyboardHelpers.SendHotkey(_settings.ChatGptDictationHotkey);
-        _logger.Info($"ChatGPT dictation shortcut fallback sent: {_settings.ChatGptDictationHotkey}");
-        return true;
     }
 
     private bool TryNavigateWindow(IntPtr chatWindow, string url)
@@ -770,26 +783,34 @@ internal sealed class ChatGptDictationController : IDisposable
         }
     }
 
-    private bool TrySendConfirmedRecordingShortcutFallback(IntPtr chatWindow)
+    private async Task<bool> TryInvokeStopControlWithRetryAsync(
+        IntPtr chatWindow,
+        System.Windows.Rect composerRect)
     {
-        if (!ChatGptWindowFinder.PrepareForAutomation(chatWindow, _settings, _logger))
+        const int timeoutMs = 2500;
+        const int retryDelayMs = 125;
+        var startedAt = Environment.TickCount64;
+        var attempts = 0;
+
+        while (Environment.TickCount64 - startedAt < timeoutMs)
         {
-            return false;
+            attempts++;
+            var stopButton = FindDictationStopButton(chatWindow, composerRect);
+            if (stopButton is not null && TryInvokeButton(stopButton, chatWindow))
+            {
+                if (attempts > 1)
+                {
+                    _logger.Info($"ChatGPT stop control found after retry. Attempts={attempts}");
+                }
+
+                return true;
+            }
+
+            await Task.Delay(retryDelayMs);
         }
 
-        var focused = AutomationHelpers.GetFocusedElement(_logger);
-        if (_recordingComposerRect is null ||
-            NativeMethods.GetForegroundWindow() != chatWindow ||
-            !AutomationHelpers.IsElementInWindow(focused, chatWindow) ||
-            AutomationHelpers.LooksLikeUnsafeHotkeyTarget(focused))
-        {
-            _logger.Info("ChatGPT stop shortcut fallback skipped because the confirmed recording anchor is unavailable or focus is unsafe.");
-            return false;
-        }
-
-        KeyboardHelpers.SendHotkey(_settings.ChatGptDictationHotkey);
-        _logger.Info($"ChatGPT stop shortcut fallback sent after a previously confirmed recording: {_settings.ChatGptDictationHotkey}");
-        return true;
+        _logger.Info($"ChatGPT stop control was not available before timeout. Attempts={attempts} TimeoutMs={timeoutMs}");
+        return false;
     }
 
     private static bool AreSameAutomationElement(AutomationElement? left, AutomationElement? right)
