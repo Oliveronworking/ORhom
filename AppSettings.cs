@@ -45,10 +45,10 @@ internal sealed class AppSettings
     public double MaxChatGptInputWindowWidthRatio { get; set; } = 0.92;
     public int RecordingStateTimeoutMs { get; set; } = 5000;
     public int DictationStopConfirmationTimeoutMs { get; set; } = 9000;
-    public int DictationResultTimeoutMs { get; set; } = 30000;
+    public int DictationResultTimeoutMs { get; set; } = 300000;
     public int DictationResultPollIntervalMs { get; set; } = 100;
     public int DictationSettleDelayMs { get; set; } = 0;
-    public int DictationTextStableMs { get; set; } = 1100;
+    public int DictationTextStableMs { get; set; } = 3000;
     public int DictationStopGracePeriodMs { get; set; } = 250;
     public bool EnableAudioDucking { get; set; } = true;
     public int AudioDuckingVolumePercent { get; set; } = 10;
@@ -60,6 +60,9 @@ internal sealed class AppSettings
     [JsonIgnore]
     public string SettingsPath { get; private set; } = string.Empty;
 
+    [JsonIgnore]
+    public bool IsPersistenceAvailable { get; private set; } = true;
+
     public static AppSettings Load(string path, AppLogger logger)
     {
         try
@@ -67,28 +70,81 @@ internal sealed class AppSettings
             if (!File.Exists(path))
             {
                 var defaults = new AppSettings { SettingsPath = path };
-                _ = defaults.Save(logger);
+                if (!defaults.Save(logger))
+                {
+                    defaults.IsPersistenceAvailable = false;
+                }
                 return defaults;
             }
 
             var json = File.ReadAllText(path);
-            var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ??
+                           throw new JsonException("Settings JSON root is null.");
             settings.SettingsPath = path;
+            settings.NormalizeDeserializedValues();
             return settings;
+        }
+        catch (JsonException ex)
+        {
+            logger.Error("Settings JSON could not be parsed.", ex);
+            if (TryQuarantineUnreadableSettings(path, logger))
+            {
+                var defaults = new AppSettings { SettingsPath = path };
+                if (!defaults.Save(logger))
+                {
+                    defaults.IsPersistenceAvailable = false;
+                }
+                return defaults;
+            }
+
+            return new AppSettings
+            {
+                SettingsPath = path,
+                IsPersistenceAvailable = false
+            };
         }
         catch (Exception ex)
         {
-            logger.Error("Settings could not be loaded, using defaults.", ex);
-            return new AppSettings { SettingsPath = path };
+            logger.Error("Settings could not be loaded; saving is disabled to protect the existing file.", ex);
+            return new AppSettings
+            {
+                SettingsPath = path,
+                IsPersistenceAvailable = false
+            };
         }
     }
 
     public bool Save(AppLogger logger)
     {
+        string? temporaryPath = null;
+        if (!IsPersistenceAvailable)
+        {
+            logger.Info("Settings save blocked because the existing settings file was not loaded safely.");
+            return false;
+        }
+
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath) ?? AppContext.BaseDirectory);
-            File.WriteAllText(SettingsPath, JsonSerializer.Serialize(this, JsonOptions));
+            var settingsPath = Path.GetFullPath(SettingsPath);
+            var settingsDirectory = Path.GetDirectoryName(settingsPath) ?? AppContext.BaseDirectory;
+            Directory.CreateDirectory(settingsDirectory);
+
+            temporaryPath = Path.Combine(
+                settingsDirectory,
+                $".{Path.GetFileName(settingsPath)}.{Guid.NewGuid():N}.tmp");
+            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(this, JsonOptions));
+
+            if (File.Exists(settingsPath))
+            {
+                File.Replace(temporaryPath, settingsPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
+            }
+            else
+            {
+                File.Move(temporaryPath, settingsPath);
+            }
+
+            temporaryPath = null;
+            IsPersistenceAvailable = true;
             return true;
         }
         catch (Exception ex)
@@ -96,5 +152,69 @@ internal sealed class AppSettings
             logger.Error("Settings could not be saved.", ex);
             return false;
         }
+        finally
+        {
+            if (temporaryPath is not null)
+            {
+                try
+                {
+                    File.Delete(temporaryPath);
+                }
+                catch (Exception ex)
+                {
+                    logger.Error("Temporary settings file could not be removed.", ex);
+                }
+            }
+        }
+    }
+
+    private static bool TryQuarantineUnreadableSettings(
+        string path,
+        AppLogger logger)
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(path) ?? AppContext.BaseDirectory;
+            var fileName = Path.GetFileNameWithoutExtension(path);
+            var extension = Path.GetExtension(path);
+            var quarantinePath = Path.Combine(
+                directory,
+                $"{fileName}.unreadable-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fff}{extension}");
+            File.Move(path, quarantinePath);
+            logger.Info($"Unreadable settings were preserved as '{quarantinePath}'.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.Error("Unreadable settings could not be quarantined.", ex);
+            return false;
+        }
+    }
+
+    private void NormalizeDeserializedValues()
+    {
+        ToggleHotkey = string.IsNullOrWhiteSpace(ToggleHotkey) ? "F8" : ToggleHotkey.Trim();
+        PreferredMicrophoneName ??= string.Empty;
+        ChatGptDictationHotkey = string.IsNullOrWhiteSpace(ChatGptDictationHotkey)
+            ? "Ctrl+Shift+D"
+            : ChatGptDictationHotkey.Trim();
+        ChatGptUrl = string.IsNullOrWhiteSpace(ChatGptUrl)
+            ? "https://chatgpt.com"
+            : ChatGptUrl.Trim();
+        ChatGptWindowTitleContains = ChatGptWindowTitleContains?
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .ToArray() ?? [];
+        if (ChatGptWindowTitleContains.Length == 0)
+        {
+            ChatGptWindowTitleContains = ["ChatGPT", "chatgpt.com"];
+        }
+
+        BrowserProfileMode = string.IsNullOrWhiteSpace(BrowserProfileMode)
+            ? "ExistingChromeProfile"
+            : BrowserProfileMode.Trim();
+        ChromeExecutablePath ??= string.Empty;
+        ChromeUserDataDir ??= string.Empty;
+        ChromeProfileDirectory ??= string.Empty;
     }
 }

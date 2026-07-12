@@ -87,8 +87,9 @@ internal static class HybridPushToTalkPolicy
 internal static class StopTransitionTimeoutPolicy
 {
     public const int DefaultRecordingStateTimeoutMs = 5_000;
-    public const int DefaultTranscriptionTimeoutMs = 30_000;
-    public const int MaximumTimeoutMs = 120_000;
+    public const int DefaultTranscriptionTimeoutMs = 300_000;
+    public const int MinimumSafeTranscriptionTimeoutMs = 300_000;
+    public const int MaximumTimeoutMs = 900_000;
 
     public static int ResolveTimeoutMs(
         int recordingStateTimeoutMs = DefaultRecordingStateTimeoutMs,
@@ -106,9 +107,15 @@ internal static class StopTransitionTimeoutPolicy
     public static int ResolveTranscriptionTimeoutMs(
         int transcriptionTimeoutMs = DefaultTranscriptionTimeoutMs)
     {
-        return transcriptionTimeoutMs > 0
-            ? Math.Min(transcriptionTimeoutMs, MaximumTimeoutMs)
-            : DefaultTranscriptionTimeoutMs;
+        if (transcriptionTimeoutMs <= 0)
+        {
+            return DefaultTranscriptionTimeoutMs;
+        }
+
+        return Math.Clamp(
+            transcriptionTimeoutMs,
+            MinimumSafeTranscriptionTimeoutMs,
+            MaximumTimeoutMs);
     }
 }
 

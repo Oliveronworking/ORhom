@@ -101,15 +101,16 @@ public sealed class HybridPushToTalkPolicyTests
 public sealed class StopTransitionTimeoutPolicyTests
 {
     [Fact]
-    public void DefaultStopTransitionTimeoutUsesThirtySecondTranscriptionTimeout()
+    public void DefaultStopTransitionTimeoutUsesFiveMinuteTranscriptionTimeout()
     {
-        Assert.Equal(30_000, StopTransitionTimeoutPolicy.ResolveTimeoutMs());
+        Assert.Equal(300_000, StopTransitionTimeoutPolicy.ResolveTimeoutMs());
     }
 
     [Theory]
-    [InlineData(5_000, 30_000, 30_000)]
-    [InlineData(5_000, 45_000, 45_000)]
-    [InlineData(60_000, 30_000, 60_000)]
+    [InlineData(5_000, 30_000, 300_000)]
+    [InlineData(5_000, 45_000, 300_000)]
+    [InlineData(60_000, 30_000, 300_000)]
+    [InlineData(5_000, 420_000, 420_000)]
     public void StopTransitionTimeoutIsNeverShorterThanEitherRequiredTimeout(
         int recordingStateTimeoutMs,
         int transcriptionTimeoutMs,
@@ -148,7 +149,7 @@ public sealed class StopTransitionTimeoutPolicyTests
     }
 
     [Fact]
-    public void ExcessiveTimeoutsAreClampedToTwoMinutes()
+    public void ExcessiveTimeoutsAreClampedToFifteenMinutes()
     {
         Assert.Equal(
             StopTransitionTimeoutPolicy.MaximumTimeoutMs,

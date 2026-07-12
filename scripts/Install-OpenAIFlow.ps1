@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [switch]$NoLaunch
 )
@@ -14,6 +14,28 @@ $installedExe = Join-Path $installDir 'OpenAIFlow.exe'
 
 if (-not $publishDir.StartsWith($repoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Der Publish-Ordner liegt unerwartet außerhalb des Projekts: $publishDir"
+}
+
+$managedProcessNames = @('OpenAIFlow', 'ChatGptDictationBridge')
+$managedProcesses = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+    if ($managedProcessNames -notcontains $_.ProcessName) {
+        return $false
+    }
+
+    try {
+        $path = $_.Path
+        return $path -and (
+            $path.StartsWith($repoRoot, [StringComparison]::OrdinalIgnoreCase) -or
+            $path.StartsWith($installDir, [StringComparison]::OrdinalIgnoreCase))
+    }
+    catch {
+        return $false
+    }
+})
+
+if ($managedProcesses.Count -gt 0) {
+    $processIds = ($managedProcesses | ForEach-Object { $_.Id }) -join ', '
+    throw "OpenAI Flow läuft noch (PID: $processIds). Bitte zuerst über das Tray-Menü 'Beenden' wählen und die Installation erneut starten. Ein erzwungener Abbruch könnte eine Aufnahme oder die Audiolautstärke in einem inkonsistenten Zustand hinterlassen."
 }
 
 if (Test-Path -LiteralPath $publishDir) {
@@ -34,6 +56,15 @@ if ($LASTEXITCODE -ne 0) {
 $publishedExe = Join-Path $publishDir 'OpenAIFlow.exe'
 if (-not (Test-Path -LiteralPath $publishedExe)) {
     throw "Die veröffentlichte OpenAIFlow.exe wurde nicht gefunden."
+}
+$publishedFiles = @(Get-ChildItem -LiteralPath $publishDir -File -Recurse)
+if ($publishedFiles.Count -ne 1 -or
+    -not $publishedFiles[0].FullName.Equals($publishedExe, [StringComparison]::OrdinalIgnoreCase)) {
+    $publishedNames = ($publishedFiles | ForEach-Object { $_.FullName }) -join ', '
+    throw "Der Publish ist nicht mehr eine einzelne OpenAIFlow.exe. Gefundene Dateien: $publishedNames"
+}
+if ($publishedFiles[0].Length -le 0) {
+    throw 'Die veröffentlichte OpenAIFlow.exe ist leer.'
 }
 
 New-Item -ItemType Directory -Path $dataDir -Force | Out-Null
@@ -61,45 +92,31 @@ if (-not (Test-Path -LiteralPath $settingsPath)) {
     }
 }
 
-$managedProcessNames = @('OpenAIFlow', 'ChatGptDictationBridge')
-$managedProcesses = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
-    if ($managedProcessNames -notcontains $_.ProcessName) {
-        return $false
-    }
-
-    try {
-        $path = $_.Path
-        return $path -and (
-            $path.StartsWith($repoRoot, [StringComparison]::OrdinalIgnoreCase) -or
-            $path.StartsWith($installDir, [StringComparison]::OrdinalIgnoreCase))
-    }
-    catch {
-        return $false
-    }
-})
-
-if ($managedProcesses.Count -gt 0) {
-    $managedProcesses | Stop-Process -Force
-    foreach ($process in $managedProcesses) {
-        if (-not $process.WaitForExit(10000)) {
-            throw "Die laufende App (PID $($process.Id)) konnte nicht rechtzeitig beendet werden."
-        }
-    }
-}
-
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 $copyCompleted = $false
 for ($attempt = 1; $attempt -le 20; $attempt++) {
+    $temporaryInstalledExe = Join-Path $installDir ".OpenAIFlow.$([Guid]::NewGuid().ToString('N')).tmp"
     try {
-        Copy-Item -LiteralPath $publishedExe -Destination $installedExe -Force
+        Copy-Item -LiteralPath $publishedExe -Destination $temporaryInstalledExe
+        if (Test-Path -LiteralPath $installedExe) {
+            [IO.File]::Replace($temporaryInstalledExe, $installedExe, $null, $true)
+        }
+        else {
+            [IO.File]::Move($temporaryInstalledExe, $installedExe)
+        }
+
         $copyCompleted = $true
         break
     }
     catch [IO.IOException] {
+        Remove-Item -LiteralPath $temporaryInstalledExe -Force -ErrorAction SilentlyContinue
         if ($attempt -eq 20) {
             throw
         }
         Start-Sleep -Milliseconds 250
+    }
+    finally {
+        Remove-Item -LiteralPath $temporaryInstalledExe -Force -ErrorAction SilentlyContinue
     }
 }
 if (-not $copyCompleted) {
