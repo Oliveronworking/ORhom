@@ -116,6 +116,9 @@ internal static class NativeMethods
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern IntPtr GetProp(IntPtr hWnd, string lpString);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr RemoveProp(IntPtr hWnd, string lpString);
+
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
     private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
 
@@ -280,6 +283,17 @@ internal static class NativeMethods
         return hWnd != IntPtr.Zero && GetProp(hWnd, propertyName) != IntPtr.Zero;
     }
 
+    public static bool UnmarkWindow(IntPtr hWnd, string propertyName)
+    {
+        return hWnd != IntPtr.Zero && RemoveProp(hWnd, propertyName) != IntPtr.Zero;
+    }
+
+    public static uint GetOwningProcessId(IntPtr hWnd)
+    {
+        _ = GetWindowThreadProcessId(hWnd, out var processId);
+        return processId;
+    }
+
     public static bool RequestWindowClose(IntPtr hWnd) =>
         hWnd != IntPtr.Zero && IsWindow(hWnd) && PostMessage(hWnd, WmClose, IntPtr.Zero, IntPtr.Zero);
 
@@ -312,6 +326,35 @@ internal static class NativeMethods
         {
             Marshal.SetLastPInvokeError(0);
             var previousStyle = SetWindowLong(hWnd, GwlExStyle, backgroundStyle);
+            if (previousStyle == 0 && Marshal.GetLastPInvokeError() != 0)
+            {
+                return false;
+            }
+        }
+
+        return SetWindowPos(
+            hWnd,
+            IntPtr.Zero,
+            0,
+            0,
+            0,
+            0,
+            SwpNoSize | SwpNoMove | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
+    }
+
+    public static bool ShowWindowInTaskbar(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero || !IsWindow(hWnd))
+        {
+            return false;
+        }
+
+        var extendedStyle = GetWindowLong(hWnd, GwlExStyle);
+        var foregroundStyle = (extendedStyle & ~WsExToolWindow) | WsExAppWindow;
+        if (foregroundStyle != extendedStyle)
+        {
+            Marshal.SetLastPInvokeError(0);
+            var previousStyle = SetWindowLong(hWnd, GwlExStyle, foregroundStyle);
             if (previousStyle == 0 && Marshal.GetLastPInvokeError() != 0)
             {
                 return false;

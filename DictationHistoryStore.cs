@@ -18,12 +18,13 @@ internal sealed class DictationHistoryStore
     private readonly string _path;
     private readonly AppLogger _logger;
     private List<DictationHistoryEntry> _entries;
+    private bool _persistenceAvailable;
 
     public DictationHistoryStore(string path, AppLogger logger)
     {
         _path = path;
         _logger = logger;
-        _entries = Load();
+        _entries = Load(out _persistenceAvailable);
     }
 
     public event EventHandler? Changed;
@@ -38,6 +39,26 @@ internal sealed class DictationHistoryStore
 
     public Guid Add(string text, string outcome)
     {
+        return TryAdd(text, outcome, out var id) ? id : Guid.Empty;
+    }
+
+    public bool ContainsText(string text)
+    {
+        text = text.Trim();
+        if (text.Length == 0)
+        {
+            return false;
+        }
+
+        lock (_gate)
+        {
+            return _entries.Any(entry =>
+                string.Equals(entry.Text, text, StringComparison.Ordinal));
+        }
+    }
+
+    public bool TryAdd(string text, string outcome, out Guid id)
+    {
         var entry = new DictationHistoryEntry(
             Guid.NewGuid(),
             DateTimeOffset.Now,
@@ -47,6 +68,13 @@ internal sealed class DictationHistoryStore
 
         lock (_gate)
         {
+            if (!EnsurePersistenceAvailableLocked())
+            {
+                id = Guid.Empty;
+                return false;
+            }
+
+            var previousEntries = _entries.ToList();
             _entries.Insert(0, entry);
             if (_entries.Count > MaximumEntries)
             {
@@ -54,12 +82,18 @@ internal sealed class DictationHistoryStore
             }
 
             entryCount = _entries.Count;
-            SaveLocked();
+            if (!SaveLocked())
+            {
+                _entries = previousEntries;
+                id = Guid.Empty;
+                return false;
+            }
         }
 
         _logger.Info($"Dictation history entry saved. Outcome={outcome} TextLength={entry.Text.Length} EntryCount={entryCount}");
         Changed?.Invoke(this, EventArgs.Empty);
-        return entry.Id;
+        id = entry.Id;
+        return true;
     }
 
     public void UpdateOutcome(Guid id, string outcome)
@@ -67,12 +101,21 @@ internal sealed class DictationHistoryStore
         var updated = false;
         lock (_gate)
         {
+            if (!EnsurePersistenceAvailableLocked())
+            {
+                return;
+            }
+
             var index = _entries.FindIndex(entry => entry.Id == id);
             if (index >= 0)
             {
+                var previousEntry = _entries[index];
                 _entries[index] = _entries[index] with { Outcome = outcome };
-                SaveLocked();
-                updated = true;
+                updated = SaveLocked();
+                if (!updated)
+                {
+                    _entries[index] = previousEntry;
+                }
             }
         }
 
@@ -85,22 +128,37 @@ internal sealed class DictationHistoryStore
 
     public void Clear()
     {
+        var cleared = false;
         lock (_gate)
         {
+            if (!EnsurePersistenceAvailableLocked())
+            {
+                return;
+            }
+
+            var previousEntries = _entries.ToList();
             _entries.Clear();
-            SaveLocked();
+            cleared = SaveLocked();
+            if (!cleared)
+            {
+                _entries = previousEntries;
+            }
         }
 
-        _logger.Info("Dictation history cleared.");
-        Changed?.Invoke(this, EventArgs.Empty);
+        if (cleared)
+        {
+            _logger.Info("Dictation history cleared.");
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
     }
 
-    private List<DictationHistoryEntry> Load()
+    private List<DictationHistoryEntry> Load(out bool persistenceAvailable)
     {
         try
         {
             if (!File.Exists(_path))
             {
+                persistenceAvailable = true;
                 return [];
             }
 
@@ -108,6 +166,7 @@ internal sealed class DictationHistoryStore
                               File.ReadAllText(_path),
                               JsonOptions) ?? [];
             var sanitized = entries
+                .OfType<DictationHistoryEntry>()
                 .Where(entry => entry.Id != Guid.Empty && entry.CreatedAt != default)
                 .Select(entry => entry with
                 {
@@ -120,27 +179,99 @@ internal sealed class DictationHistoryStore
                 .Take(MaximumEntries)
                 .ToList();
             _logger.Info($"Dictation history loaded. EntryCount={sanitized.Count}");
+            persistenceAvailable = true;
             return sanitized;
+        }
+        catch (JsonException ex)
+        {
+            _logger.Error("Dictation history JSON could not be parsed.", ex);
+            if (TryQuarantineUnreadableHistory())
+            {
+                persistenceAvailable = true;
+                return [];
+            }
+
+            persistenceAvailable = false;
+            return [];
         }
         catch (Exception ex)
         {
-            _logger.Error("Dictation history could not be loaded; starting with an empty history.", ex);
+            _logger.Error("Dictation history could not be loaded; persistence remains disabled to protect the existing file.", ex);
+            persistenceAvailable = false;
             return [];
         }
     }
 
-    private void SaveLocked()
+    private bool EnsurePersistenceAvailableLocked()
+    {
+        if (_persistenceAvailable)
+        {
+            return true;
+        }
+
+        var reloadedEntries = Load(out var persistenceAvailable);
+        if (!persistenceAvailable)
+        {
+            return false;
+        }
+
+        _entries = reloadedEntries;
+        _persistenceAvailable = true;
+        return true;
+    }
+
+    private bool TryQuarantineUnreadableHistory()
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_path) ?? AppContext.BaseDirectory);
-            var temporaryPath = _path + ".tmp";
-            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(_entries, JsonOptions));
-            File.Move(temporaryPath, _path, overwrite: true);
+            var directory = Path.GetDirectoryName(_path) ?? AppContext.BaseDirectory;
+            var fileName = Path.GetFileNameWithoutExtension(_path);
+            var extension = Path.GetExtension(_path);
+            var quarantinePath = Path.Combine(
+                directory,
+                $"{fileName}.unreadable-{DateTimeOffset.Now:yyyyMMdd-HHmmss-fff}{extension}");
+            File.Move(_path, quarantinePath);
+            _logger.Info($"Unreadable dictation history was preserved as '{quarantinePath}'.");
+            return true;
         }
         catch (Exception ex)
         {
+            _logger.Error("Unreadable dictation history could not be quarantined; persistence remains disabled.", ex);
+            return false;
+        }
+    }
+
+    private bool SaveLocked()
+    {
+        string? temporaryPath = null;
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_path) ?? AppContext.BaseDirectory);
+            temporaryPath = $"{_path}.{Guid.NewGuid():N}.tmp";
+            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(_entries, JsonOptions));
+            File.Move(temporaryPath, _path, overwrite: true);
+            temporaryPath = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _persistenceAvailable = false;
             _logger.Error("Dictation history could not be saved.", ex);
+            return false;
+        }
+        finally
+        {
+            if (temporaryPath is not null)
+            {
+                try
+                {
+                    File.Delete(temporaryPath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error("Temporary dictation history file could not be removed.", ex);
+                }
+            }
         }
     }
 }
@@ -161,6 +292,7 @@ internal static class DictationHistoryOutcomes
     public const string FailureRecovered = "failure-recovered";
     public const string StopFailed = "stop-failed";
     public const string TranscriptionFailed = "transcription-failed";
+    public const string PreservedBeforeClose = "preserved-before-close";
 
     public static string GetDisplayText(string outcome) => outcome switch
     {
@@ -171,6 +303,7 @@ internal static class DictationHistoryOutcomes
         FailureRecovered => "Fehler · Text gerettet",
         StopFailed => "Stoppen fehlgeschlagen",
         TranscriptionFailed => "Kein Text erkannt",
+        PreservedBeforeClose => "Vor dem Schließen gesichert",
         Transcribed => "Transkribiert",
         _ => "Gespeichert"
     };

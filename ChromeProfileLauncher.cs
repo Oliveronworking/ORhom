@@ -67,7 +67,16 @@ internal sealed class ChromeProfileLauncher
         return new ChromeProfileValidationResult(true, profileDirectory, string.Empty);
     }
 
-    public bool TryOpenChatGptProfile(out string failureReason)
+    public bool TryOpenChatGptProfile(out string failureReason) =>
+        TryOpenChatGptProfile(_settings.ChatGptUrl, startMinimized: true, out failureReason);
+
+    public bool TryOpenChatGptProfile(string targetUrl, out string failureReason) =>
+        TryOpenChatGptProfile(targetUrl, startMinimized: true, out failureReason);
+
+    public bool TryOpenChatGptProfileVisible(out string failureReason) =>
+        TryOpenChatGptProfile(_settings.ChatGptUrl, startMinimized: false, out failureReason);
+
+    private bool TryOpenChatGptProfile(string targetUrl, bool startMinimized, out string failureReason)
     {
         var validation = ValidateConfiguredProfile();
         if (!validation.IsValid)
@@ -78,21 +87,20 @@ internal sealed class ChromeProfileLauncher
 
         try
         {
-            var startInfo = new ProcessStartInfo
+            var startInfo = CreateChromeStartInfo(
+                _settings.ChromeExecutablePath,
+                _settings.ChromeUserDataDir,
+                _settings.ChromeProfileDirectory,
+                targetUrl,
+                startMinimized);
+            using var process = Process.Start(startInfo);
+            if (process is null)
             {
-                FileName = _settings.ChromeExecutablePath,
-                UseShellExecute = false
-            };
-            startInfo.ArgumentList.Add($"--user-data-dir={_settings.ChromeUserDataDir}");
-            startInfo.ArgumentList.Add($"--profile-directory={_settings.ChromeProfileDirectory}");
-            startInfo.ArgumentList.Add("--new-window");
-            startInfo.ArgumentList.Add("--start-minimized");
-            startInfo.ArgumentList.Add("--no-first-run");
-            startInfo.ArgumentList.Add("--no-default-browser-check");
-            startInfo.ArgumentList.Add(_settings.ChatGptUrl);
+                failureReason = "Chrome could not be started with the configured profile.";
+                return false;
+            }
 
-            _ = Process.Start(startInfo);
-            _logger.Info($"Configured Chrome profile launched for ChatGPT. UserDataDir='{_settings.ChromeUserDataDir}' ProfileDirectory='{_settings.ChromeProfileDirectory}'.");
+            _logger.Info($"Configured Chrome profile launched for ChatGPT. UserDataDir='{_settings.ChromeUserDataDir}' ProfileDirectory='{_settings.ChromeProfileDirectory}' StartMinimized={startMinimized}.");
             failureReason = string.Empty;
             return true;
         }
@@ -107,8 +115,11 @@ internal sealed class ChromeProfileLauncher
     public bool TryOpenMicrophoneSettings(out string failureReason) =>
         TryOpenMicrophoneSettings(startMinimized: false, "chrome://settings/content/microphone", out failureReason);
 
-    public bool TryOpenMicrophoneSettingsHidden(out string failureReason) =>
-        TryOpenMicrophoneSettings(startMinimized: false, "about:blank", out failureReason);
+    public bool TryOpenMicrophoneSettingsHidden(out string markerUrl, out string failureReason)
+    {
+        markerUrl = CreateMicrophoneMarkerUrl();
+        return TryOpenMicrophoneSettings(startMinimized: false, markerUrl, out failureReason);
+    }
 
     private bool TryOpenMicrophoneSettings(bool startMinimized, string targetUrl, out string failureReason)
     {
@@ -121,23 +132,19 @@ internal sealed class ChromeProfileLauncher
 
         try
         {
-            var startInfo = new ProcessStartInfo
+            var startInfo = CreateChromeStartInfo(
+                _settings.ChromeExecutablePath,
+                _settings.ChromeUserDataDir,
+                _settings.ChromeProfileDirectory,
+                targetUrl,
+                startMinimized);
+            using var process = Process.Start(startInfo);
+            if (process is null)
             {
-                FileName = _settings.ChromeExecutablePath,
-                UseShellExecute = false
-            };
-            startInfo.ArgumentList.Add($"--user-data-dir={_settings.ChromeUserDataDir}");
-            startInfo.ArgumentList.Add($"--profile-directory={_settings.ChromeProfileDirectory}");
-            startInfo.ArgumentList.Add("--new-window");
-            if (startMinimized)
-            {
-                startInfo.ArgumentList.Add("--start-minimized");
+                failureReason = "Chrome microphone settings could not be opened.";
+                return false;
             }
-            startInfo.ArgumentList.Add("--no-first-run");
-            startInfo.ArgumentList.Add("--no-default-browser-check");
-            startInfo.ArgumentList.Add(targetUrl);
 
-            _ = Process.Start(startInfo);
             _logger.Info($"Chrome microphone settings opened for configured profile. ProfileDirectory='{_settings.ChromeProfileDirectory}' StartMinimized={startMinimized}.");
             failureReason = string.Empty;
             return true;
@@ -148,6 +155,38 @@ internal sealed class ChromeProfileLauncher
             failureReason = "Chrome microphone settings could not be opened.";
             return false;
         }
+    }
+
+    internal static string CreateMicrophoneMarkerUrl() =>
+        CreateMicrophoneMarkerUrl(Guid.NewGuid());
+
+    internal static string CreateMicrophoneMarkerUrl(Guid correlationId) =>
+        $"https://openai-flow.invalid/microphone/{correlationId:D}";
+
+    internal static ProcessStartInfo CreateChromeStartInfo(
+        string chromeExecutablePath,
+        string chromeUserDataDirectory,
+        string chromeProfileDirectory,
+        string targetUrl,
+        bool startMinimized)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = chromeExecutablePath,
+            UseShellExecute = false
+        };
+        startInfo.ArgumentList.Add($"--user-data-dir={chromeUserDataDirectory}");
+        startInfo.ArgumentList.Add($"--profile-directory={chromeProfileDirectory}");
+        startInfo.ArgumentList.Add("--new-window");
+        if (startMinimized)
+        {
+            startInfo.ArgumentList.Add("--start-minimized");
+        }
+
+        startInfo.ArgumentList.Add("--no-first-run");
+        startInfo.ArgumentList.Add("--no-default-browser-check");
+        startInfo.ArgumentList.Add(targetUrl);
+        return startInfo;
     }
 
     private ChromeProfileValidationResult Invalid(string reason)
