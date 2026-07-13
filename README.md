@@ -24,16 +24,18 @@ Das X und **Im Hintergrund schließen** blenden nur die Einstellungsoberfläche 
 ## Lokale Spracherkennung
 
 - Engine: `whisper.cpp`, eingebettet über `Whisper.net.Runtime.Vulkan` 1.9.1 (native Basis: gepinnter whisper.cpp-Commit `f24588a`, entsprechend v1.8.5)
+- Aufnahme: `NAudio.Wasapi` 2.3.0 im gemeinsam genutzten Windows-Audiomodus
 - Modell: unquantisiertes, mehrsprachiges `ggml-large-v3-turbo.bin`
 - Sprache/Aufgabe: fest `de`, Transkription und keine automatische Spracherkennung
+- Decoder: Greedy-Decoding mit Ausgangstemperatur `0`; ein kurzer lokaler Fachwort-Prompt stabilisiert insbesondere Schreibweisen wie `OpenAI Flow`, `Codex`, `GitHub`, `PowerShell`, `.NET`, `JSON`, `Vulkan` und `Whisper Large V3 Turbo`
 - GPU: vollständiger GPU-Offload und Flash Attention; die RX 7700 XT wird aus der Vulkan-Geräteliste erkannt und auch dann gezielt gewählt, wenn sie nicht Gerät 0 ist. Ein fehlendes Vulkan-Backend wird als Fehler gemeldet, nicht still als CPU-Lauf fortgesetzt
 - Modellquelle: immutable Revision `5359861c739e955e79d9a303bcbc70fb988958b1` von `ggerganov/whisper.cpp`
 - Modellgröße: `1.624.555.275` Bytes
 - SHA-256: `1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69`
 
-Das Modell und der Vulkan-Kontext werden im Hintergrund einmal geladen und bleiben warm. Dadurch muss beim Stoppen eines Diktats kein neuer `whisper-cli`-Prozess starten und das 1,6-GB-Modell nicht erneut eingelesen werden. Ein deutsches Community-Finetuning wurde bewusst nicht zum automatischen Standard gemacht: Das derzeit stärkste gefundene Modell veröffentlicht kein autorenseitiges GGML-Artefakt mit gleichwertig belastbarer Provenienz.
+Das Modell und der Vulkan-Kontext werden im Hintergrund einmal geladen und mit einer verworfenen synthetischen Inferenz vollständig vorgewärmt, bevor die App „bereit“ meldet. Dadurch trifft auch das erste echte Diktat auf den warmen nativen Inferenzpfad; es muss weder ein neuer `whisper-cli`-Prozess starten noch das 1,6-GB-Modell erneut eingelesen werden. Ein deutsches Community-Finetuning wurde bewusst nicht zum automatischen Standard gemacht: Das derzeit stärkste gefundene Modell veröffentlicht kein autorenseitiges GGML-Artefakt mit gleichwertig belastbarer Provenienz.
 
-Die App nimmt per WASAPI über die stabile Windows-Geräte-ID auf, mischt Mehrkanalton phasenrobust zu Mono und resampelt im Speicher auf 16 kHz. Die vorhandene Fokus-, Clipboard-, Paste-, Audio-Ducking- und Verlaufslogik wird als gemeinsamer Abschlussweg verwendet.
+Die App nimmt per WASAPI über die stabile Windows-Geräte-ID auf, mischt Mehrkanalton phasenrobust zu Mono und resampelt im Speicher auf 16 kHz. Vor der Inferenz werden nicht-finite Samples neutralisiert und nahezu digitale Stille an den äußeren Rändern konservativ entfernt. Die dafür verwendete sehr niedrige Content-Schwelle ist bewusst vom eigentlichen Sprach-Gate getrennt; zusammen mit 300 ms Schutzpolster bleiben dadurch auch leise Vor- und Nachsilben erhalten. Die vorhandene Fokus-, Clipboard-, Paste-, Audio-Ducking- und Verlaufslogik wird als gemeinsamer Abschlussweg verwendet.
 
 Im Browser-Fallback hält OpenAIFlow während seiner Laufzeit genau ein eigenes ChatGPT-Fenster im Hintergrund. Es wird minimiert gestartet, über einen generischen App-Marker und einen profilgebundenen Hash-Marker wiedererkannt und nur nahezu transparent für kurze UI-Automationsschritte aktiviert. Ein einmaliger URL-Marker ordnet einen neuen Chrome-Start eindeutig zu; andere gleichzeitig geöffnete Chrome-Profile werden nicht verändert. Der Tray-Menüpunkt **ChatGPT Profil öffnen** öffnet dagegen bewusst ein separates, unmarkiertes Nutzerfenster, das OpenAIFlow weder minimiert noch schließt.
 
@@ -96,6 +98,8 @@ Idle -> Starting -> Recording -> Stopping -> ReadingText -> Pasting -> Idle
 Die Desktop-Anzeige spiegelt diese Zustände als `Bereit zum Diktieren`, `Diktierung startet`, `Hört zu`, `Aufnahme wird beendet`, `Text wird transkribiert` und `Text wird eingefügt`. Im Zustand `Idle` bleibt sie als sichtbares Aktivitätszeichen eingeblendet; Fehler erscheinen kurz direkt in der Leiste. Die Leiste verwendet `WS_EX_NOACTIVATE`, damit ein Klick das zuvor aktive Textfeld nicht fokussiert. Im Pending-Text-Fehlerpfad wird nur das ursprüngliche Fenster mit einer begrenzten Win32-Operation wieder aktiviert; blockierende UI-Automation auf veralteten Electron-/WebView-Elementen wird dort nicht mehr ausgeführt.
 
 Beim Einfügen wird das ursprüngliche Zielfenster verifiziert aktiviert. In VS Code/Codex und anderen Chromium-/Electron-WebViews wird der interne `RootWebArea`-/`ProseMirror`-Fokus bewusst nicht überschrieben, damit Cursor und `activeElement` erhalten bleiben. `Ctrl+V` wird über Win32 `SendInput` versendet; nur ein bestätigter Dispatch wird als Erfolg protokolliert.
+
+Chromium kann unmittelbar nach dem globalen Hotkey kurz den übergeordneten `main`-Knoten statt des eigentlichen ProseMirror-Editors melden. Sobald WASAPI bereits aufnimmt, prüft OpenAIFlow diesen Fokus deshalb ein zweites Mal und übernimmt ausschließlich einen starken Editor-Fingerprint im selben Fenster, Prozess und derselben nichtleeren `RootWebArea`. Diese erneute Prüfung läuft außerhalb des UI-Threads und wird nach 180 ms sicher ignoriert. Auch beim späteren Einfügen werden Fensterhandle, Prozess-ID, unveränderter Fenstertitel, WebView-Wurzel und ein inhaltsfreier relativer Layout-Fingerprint erneut abgeglichen. Ein wiederverwendetes Handle, ein anderer Tab beziehungsweise eine andere WebView-Wurzel, ein geänderter View-Titel, ein Passwortfeld oder eine abweichende Editor-Geometrie autorisiert dadurch keinen semantischen Ersatz für das ursprüngliche Ziel.
 
 ## Diagnose im Tray-Menü
 
@@ -170,7 +174,7 @@ Bei Problemen zuerst **Chrome-Profil prüfen** und danach **ChatGPT Diagnose spe
 
 ## Tests
 
-Die Solution enthält deterministische Regressionstests für den gepinnten Modelldownload samt Fortschritt, SHA-256, Cache-Hit und Abbruch, lokale PCM/Float-Audiokonvertierung, Stereo-Downmix, 16-kHz-Resampling, Provider-Migration und feste Sprache `de`. Hinzu kommen die bestehenden Tests für Zustandsbestätigung, Push-to-talk, Clipboard-Snapshots, Sicherheitsregeln, atomare Persistenz, Chrome-Ownership, Escape-Recovery sowie Rendering und Multi-Monitor-Positionierung. Ein opt-in Hardwaretest lädt das echte Modell, verlangt ein bestätigtes Vulkan-Backend und führt eine Inferenz aus:
+Die Solution enthält deterministische Regressionstests für den gepinnten Modelldownload samt Fortschritt, SHA-256, Cache-Hit und Abbruch, lokale PCM/Float-Audiokonvertierung, Stereo-Downmix, 16-kHz-Resampling, Sprach-Gate, leise Randsilben, Randstille, Warm-up, Technik-Prompt, Provider-Migration und feste Sprache `de`. Hinzu kommen die bestehenden Tests für Zustandsbestätigung, Push-to-talk, Clipboard-Snapshots, Fokus-, Root- und Layout-Fingerprints, HWND/PID-Schutz, Sicherheitsregeln, atomare Persistenz, Chrome-Ownership, Escape-Recovery sowie Rendering und Multi-Monitor-Positionierung. Ein opt-in Hardwaretest lädt das echte Modell, verlangt ein bestätigtes Vulkan-Backend und führt eine Inferenz aus:
 
 ```powershell
 dotnet test .\OpenAIFlow.sln -c Release
@@ -192,5 +196,6 @@ dotnet test .\OpenAIFlow.sln -c Release --filter 'Category=ChromeIntegration'
 - [OpenAI-Modellkarte für Whisper large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo)
 - [Gepinnte GGML-Modellablage](https://huggingface.co/ggerganov/whisper.cpp/tree/5359861c739e955e79d9a303bcbc70fb988958b1)
 - [Whisper.net 1.9.1](https://www.nuget.org/packages/Whisper.net/1.9.1) und [Vulkan-Runtime](https://www.nuget.org/packages/Whisper.net.Runtime.Vulkan/1.9.1)
+- [NAudio 2.3.0 Release Notes](https://github.com/naudio/NAudio/blob/master/RELEASE_NOTES.md)
 
 Die Hinweise zu den MIT-lizenzierten Komponenten stehen zusätzlich in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).

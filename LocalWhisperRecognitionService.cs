@@ -12,10 +12,19 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
 {
     public const string Language = "de";
 
+    internal const string InitialPrompt =
+        "OpenAI Flow, ChatGPT, Codex, GitHub, Repository, PowerShell, .NET, JSON, " +
+        "Vulkan, Flash Attention, Whisper Large V3 Turbo, Zwischenablage.";
+
     private const int SignalFrameSamples = 320;
-    private const int MinimumActiveSignalFrames = 3;
+    private const int MinimumConsecutiveActiveSignalFrames = 3;
     private const float MinimumSignalFramePeak = 0.002f;
     private const double MinimumSignalFrameRms = 0.0005d;
+    private const float MinimumContentSampleMagnitude = 0.00001f;
+    private const int SilenceTrimPaddingSamples = 4800;
+    private const int WarmupSampleRate = 16000;
+    private const float WarmupFrequency = 220f;
+    private const float WarmupAmplitude = 0.03f;
 
     private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
     private static readonly Regex Rx7700XtVulkanDeviceRegex = new(
@@ -31,6 +40,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
     private WhisperProcessor? _processor;
     private IDisposable? _nativeLogSubscription;
     private volatile bool _vulkanBackendConfirmed;
+    private volatile bool _warmupCompleted;
     private int _rx7700XtDeviceIndex = -1;
     private bool _disposed;
 
@@ -42,7 +52,10 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
         _logger = logger;
     }
 
-    public bool IsReady => _processor is not null && _vulkanBackendConfirmed;
+    public bool IsReady =>
+        _warmupCompleted &&
+        _processor is not null &&
+        _vulkanBackendConfirmed;
 
     public async Task EnsureReadyAsync(
         IProgress<LocalWhisperModelProgress>? progress,
@@ -68,6 +81,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
             await Task.Run(
                 () => InitializeWhisper(modelPath),
                 cancellationToken).ConfigureAwait(false);
+            await WarmUpWhisperAsync(cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -114,10 +128,17 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
                 "Die Aufnahme war zu kurz. Bitte den Hotkey drücken, kurz sprechen und erneut stoppen.");
         }
 
-        if (!ContainsAudibleSignal(mono16KhzSamples))
+        var originalSampleCount = mono16KhzSamples.Length;
+        var preparedSamples = PrepareSamplesForTranscription(mono16KhzSamples);
+        if (!ContainsAudibleSignal(preparedSamples))
         {
-            _logger.Info($"Local transcription skipped because the recording contains no audible signal. Samples={mono16KhzSamples.Length}.");
+            _logger.Info($"Local transcription skipped because the recording contains no audible signal. Samples={originalSampleCount}.");
             return string.Empty;
+        }
+
+        if (preparedSamples.Length != originalSampleCount)
+        {
+            _logger.Info($"Local recording edge silence trimmed. OriginalSamples={originalSampleCount} PreparedSamples={preparedSamples.Length} PaddingMs=300.");
         }
 
         await _processingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -130,16 +151,17 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
                     "Das lokale deutsche Sprachmodell wurde zwischenzeitlich entladen. Bitte erneut versuchen.");
             }
 
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var text = new StringBuilder();
             await foreach (var segment in processor
-                               .ProcessAsync(mono16KhzSamples, cancellationToken)
+                               .ProcessAsync(preparedSamples, cancellationToken)
                                .ConfigureAwait(false))
             {
                 text.Append(segment.Text);
             }
 
             var normalized = WhitespaceRegex.Replace(text.ToString(), " ").Trim();
-            _logger.Info($"Local German transcription completed. Samples={mono16KhzSamples.Length} TextLength={normalized.Length} Language='{Language}'.");
+            _logger.Info($"Local German transcription completed. DurationMs={stopwatch.Elapsed.TotalMilliseconds:F0} Samples={preparedSamples.Length} OriginalSamples={originalSampleCount} TextLength={normalized.Length} Language='{Language}'.");
             return normalized;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -218,6 +240,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
     private void InitializeWhisper(string modelPath)
     {
         DisposeWhisperObjects();
+        _warmupCompleted = false;
         _vulkanBackendConfirmed = false;
         _rx7700XtDeviceIndex = -1;
         while (_nativeInitializationMessages.TryDequeue(out _))
@@ -274,7 +297,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
             _processor = processor;
             factory = null;
             processor = null;
-            _logger.Info($"Local whisper.cpp ready. Runtime={RuntimeOptions.LoadedLibrary} GpuDevice={selectedGpuDevice} Language='{Language}' Model='{Path.GetFileName(modelPath)}' RuntimeInfo='{CollapseForLog(WhisperFactory.GetRuntimeInfo())}'.");
+            _logger.Info($"Local whisper.cpp initialized; native warm-up pending. Runtime={RuntimeOptions.LoadedLibrary} GpuDevice={selectedGpuDevice} Language='{Language}' Model='{Path.GetFileName(modelPath)}' RuntimeInfo='{CollapseForLog(WhisperFactory.GetRuntimeInfo())}'.");
             if (rx7700XtDevice < 0)
             {
                 _logger.Info($"Vulkan backend is active, but the native device log did not explicitly contain 'RX 7700 XT'. GPU device {selectedGpuDevice} is being used.");
@@ -284,6 +307,41 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
         {
             processor?.Dispose();
             factory?.Dispose();
+        }
+    }
+
+    private async Task WarmUpWhisperAsync(CancellationToken cancellationToken)
+    {
+        var processor = _processor;
+        if (processor is null || !_vulkanBackendConfirmed)
+        {
+            throw new LocalWhisperRecognitionException(
+                "Das lokale deutsche Sprachmodell konnte nicht für die erste Transkription vorbereitet werden.");
+        }
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var discardedSegments = 0;
+        try
+        {
+            var warmupSamples = CreateWarmupSamples();
+            discardedSegments = await DrainWarmupAsync(
+                    processor.ProcessAsync(warmupSamples, cancellationToken),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            _warmupCompleted = true;
+            _logger.Info($"Local whisper.cpp native warm-up completed. DurationMs={stopwatch.Elapsed.TotalMilliseconds:F0} DiscardedSegments={discardedSegments}.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new LocalWhisperRecognitionException(
+                "Das lokale deutsche Sprachmodell konnte nicht vollständig aufgewärmt werden. Bitte erneut versuchen.",
+                ex);
         }
     }
 
@@ -319,6 +377,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
 
     private void DisposeWhisperObjects()
     {
+        _warmupCompleted = false;
         _processor?.Dispose();
         _processor = null;
         _factory?.Dispose();
@@ -347,6 +406,8 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
                 .WithLanguage(Language)
                 .WithThreads(Math.Clamp(Environment.ProcessorCount / 2, 2, 8))
                 .WithNoContext()
+                .WithPrompt(InitialPrompt)
+                .WithTemperature(0f)
                 .WithGreedySamplingStrategy()
                 .Build();
             return (factory, processor);
@@ -380,12 +441,118 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
 
     internal static bool ContainsAudibleSignal(ReadOnlySpan<float> samples)
     {
+        return ContainsConsecutiveAudibleFrames(samples);
+    }
+
+    internal static float[] PrepareSamplesForTranscription(float[] samples)
+    {
+        if (samples.Length == 0)
+        {
+            return samples;
+        }
+
+        var containsNonFiniteSample = false;
+        foreach (var sample in samples)
+        {
+            if (!float.IsFinite(sample))
+            {
+                containsNonFiniteSample = true;
+                break;
+            }
+        }
+
+        var start = 0;
+        var endExclusive = samples.Length;
+        if (TryFindContentBounds(
+                samples,
+                out var firstContentSample,
+                out var lastContentSampleExclusive))
+        {
+            start = Math.Max(0, firstContentSample - SilenceTrimPaddingSamples);
+            endExclusive = Math.Min(
+                samples.Length,
+                lastContentSampleExclusive + SilenceTrimPaddingSamples);
+        }
+
+        if (!containsNonFiniteSample && start == 0 && endExclusive == samples.Length)
+        {
+            return samples;
+        }
+
+        var prepared = new float[endExclusive - start];
+        for (var sourceIndex = start; sourceIndex < endExclusive; sourceIndex++)
+        {
+            var sample = samples[sourceIndex];
+            prepared[sourceIndex - start] = float.IsFinite(sample) ? sample : 0f;
+        }
+
+        return prepared;
+    }
+
+    internal static float[] CreateWarmupSamples()
+    {
+        var samples = new float[WarmupSampleRate];
+        for (var index = 0; index < samples.Length; index++)
+        {
+            samples[index] = WarmupAmplitude * MathF.Sin(
+                2 * MathF.PI * WarmupFrequency * index / WarmupSampleRate);
+        }
+
+        return samples;
+    }
+
+    internal static async Task<int> DrainWarmupAsync<T>(
+        IAsyncEnumerable<T> segments,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var discardedSegments = 0;
+        await foreach (var _ in segments
+                           .WithCancellation(cancellationToken)
+                           .ConfigureAwait(false))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            discardedSegments++;
+        }
+
+        return discardedSegments;
+    }
+
+    private static bool TryFindContentBounds(
+        ReadOnlySpan<float> samples,
+        out int firstContentSample,
+        out int lastContentSampleExclusive)
+    {
+        firstContentSample = -1;
+        lastContentSampleExclusive = -1;
+        for (var index = 0; index < samples.Length; index++)
+        {
+            var sample = samples[index];
+            if (!float.IsFinite(sample) ||
+                Math.Abs(sample) < MinimumContentSampleMagnitude)
+            {
+                continue;
+            }
+
+            if (firstContentSample < 0)
+            {
+                firstContentSample = index;
+            }
+
+            lastContentSampleExclusive = index + 1;
+        }
+
+        return firstContentSample >= 0;
+    }
+
+    private static bool ContainsConsecutiveAudibleFrames(ReadOnlySpan<float> samples)
+    {
         if (samples.IsEmpty)
         {
             return false;
         }
 
-        var activeFrames = 0;
+        var consecutiveActiveFrames = 0;
         for (var offset = 0; offset < samples.Length; offset += SignalFrameSamples)
         {
             var frameLength = Math.Min(SignalFrameSamples, samples.Length - offset);
@@ -406,11 +573,15 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
             var rms = Math.Sqrt(sumOfSquares / frameLength);
             if (peak >= MinimumSignalFramePeak && rms >= MinimumSignalFrameRms)
             {
-                activeFrames++;
-                if (activeFrames >= MinimumActiveSignalFrames)
+                consecutiveActiveFrames++;
+                if (consecutiveActiveFrames >= MinimumConsecutiveActiveSignalFrames)
                 {
                     return true;
                 }
+            }
+            else
+            {
+                consecutiveActiveFrames = 0;
             }
         }
 

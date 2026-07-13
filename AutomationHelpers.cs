@@ -176,6 +176,76 @@ internal static class AutomationHelpers
         }
     }
 
+    public static string GetSafeWebViewRootIdentity(AutomationElement? element)
+    {
+        if (element is null)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var current = element;
+            for (var depth = 0; depth < 80 && current is not null; depth++)
+            {
+                var properties = current.Current;
+                var isWebViewRoot = properties.AutomationId.Equals(
+                                        "RootWebArea",
+                                        StringComparison.OrdinalIgnoreCase) ||
+                                    properties.ClassName.Contains(
+                                        "Chrome_RenderWidgetHost",
+                                        StringComparison.OrdinalIgnoreCase);
+                if (isWebViewRoot)
+                {
+                    var runtimeId = current.GetRuntimeId();
+                    return runtimeId.Length == 0
+                        ? string.Empty
+                        : string.Join(":", runtimeId.Select(value => value.ToString("X8")));
+                }
+
+                current = TreeWalker.RawViewWalker.GetParent(current);
+            }
+        }
+        catch
+        {
+            // A stale or rebuilding Chromium accessibility tree is not a safe
+            // source of cross-runtime focus identity.
+        }
+
+        return string.Empty;
+    }
+
+    public static SafeFocusLayoutFingerprint GetSafeFocusLayoutFingerprint(
+        AutomationElement? element,
+        IntPtr windowHandle)
+    {
+        if (element is null ||
+            windowHandle == IntPtr.Zero ||
+            !NativeMethods.GetWindowRect(windowHandle, out var windowRect) ||
+            windowRect.Width <= 0 ||
+            windowRect.Height <= 0)
+        {
+            return SafeFocusLayoutFingerprint.Empty;
+        }
+
+        try
+        {
+            var bounds = element.Current.BoundingRectangle;
+            var fingerprint = new SafeFocusLayoutFingerprint(
+                (bounds.Left - windowRect.Left) / windowRect.Width,
+                (bounds.Top - windowRect.Top) / windowRect.Height,
+                bounds.Width / windowRect.Width,
+                bounds.Height / windowRect.Height);
+            return fingerprint.IsValid
+                ? fingerprint
+                : SafeFocusLayoutFingerprint.Empty;
+        }
+        catch
+        {
+            return SafeFocusLayoutFingerprint.Empty;
+        }
+    }
+
     public static bool IsElementInWindow(AutomationElement? element, IntPtr windowHandle)
     {
         if (element is null || windowHandle == IntPtr.Zero)

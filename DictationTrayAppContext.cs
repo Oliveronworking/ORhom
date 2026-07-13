@@ -434,6 +434,29 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             capture.RecordingLimitReached += OnLocalRecordingLimitReached;
             _localSession = new LocalRecordingSession(target, capture);
             _audioDucking.Begin();
+
+            // Capture is already running before this second focus sample. Chromium
+            // can briefly expose the page's main group instead of the active
+            // contenteditable node; recording first prevents the re-probe from
+            // clipping the first spoken syllable.
+            var targetReprobe = await _focusTracker.ReprobeAfterLocalCaptureStartedAsync(
+                target,
+                _settings,
+                _lifetimeCancellation.Token);
+            if (targetReprobe.PasswordFieldDetected)
+            {
+                await StopLocalCaptureSafelyAsync(capture);
+                ShowErrorMessage("Ziel ist ein Passwortfeld. Die bereits gestartete Aufnahme wurde sofort verworfen.");
+                ResetToIdle();
+                return;
+            }
+
+            target = targetReprobe.Target;
+            if (targetReprobe.TargetPromoted)
+            {
+                _localSession = new LocalRecordingSession(target, capture);
+            }
+
             _audioDuckingTimer.Start();
             _hotkeyWindow.SetEscapeEnabled(true);
             SetStatus(AppStatus.Recording);

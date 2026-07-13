@@ -6,7 +6,7 @@ project does not modify their licenses.
 ## NAudio.Wasapi
 
 - Project: https://github.com/naudio/NAudio
-- Package version: 2.2.1
+- Package version: 2.3.0
 - License: MIT
 
 Copyright 2020 Mark Heath

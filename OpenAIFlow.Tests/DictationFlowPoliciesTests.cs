@@ -389,3 +389,347 @@ public sealed class FocusRestorationPolicyTests
                 elementIsWebViewRoot));
     }
 }
+
+public sealed class FocusTargetSafetyPolicyTests
+{
+    private static readonly IntPtr Window = (IntPtr)0x1234;
+    private const uint ProcessId = 42;
+    private const string WindowTitle = "ChatGPT";
+    private const string WebViewRoot = "2A:00001234:00000001";
+    private static readonly SafeFocusLayoutFingerprint CapturedEditorLayout =
+        new(0.10, 0.70, 0.80, 0.12);
+    private static readonly SafeFocusLayoutFingerprint NearbyEditorLayout =
+        new(0.11, 0.705, 0.79, 0.115);
+
+    [Fact]
+    public void LocalReprobePromotesTransientChromiumMainToStrongEditor()
+    {
+        Assert.True(FocusTargetSafetyPolicy.ShouldPromoteTransientChromiumTarget(
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            WindowTitle,
+            Metadata("ControlType.Group", "not-keyboard-focused:outline-none", "main"),
+            WebViewRoot,
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            WindowTitle,
+            Metadata("ControlType.Edit", "ProseMirror ProseMirror-focused", "prompt-textarea"),
+            WebViewRoot,
+            candidateIsPassword: false));
+    }
+
+    [Theory]
+    [InlineData(true, 42U, "ControlType.Edit", "ProseMirror ProseMirror-focused", "prompt-textarea")]
+    [InlineData(false, 99U, "ControlType.Edit", "ProseMirror ProseMirror-focused", "prompt-textarea")]
+    [InlineData(false, 42U, "ControlType.Group", "text-message keyboard-focused", "message")]
+    [InlineData(false, 42U, "ControlType.Edit", "ProseMirror ProseMirror-focused", "")]
+    public void LocalReprobeRejectsPasswordProcessMismatchAndWeakTargets(
+        bool candidateIsPassword,
+        uint candidateProcessId,
+        string controlType,
+        string className,
+        string automationId)
+    {
+        Assert.False(FocusTargetSafetyPolicy.ShouldPromoteTransientChromiumTarget(
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            WindowTitle,
+            Metadata("ControlType.Group", "page-main", "main"),
+            WebViewRoot,
+            Window,
+            candidateProcessId,
+            "Chrome_WidgetWin_1",
+            WindowTitle,
+            Metadata(controlType, className, automationId),
+            WebViewRoot,
+            candidateIsPassword));
+    }
+
+    [Fact]
+    public void RuntimeIdChangeAcceptsOnlySameStrongEditorFingerprint()
+    {
+        var captured = Metadata(
+            "ControlType.Edit",
+            "ProseMirror ProseMirror-focused",
+            "prompt-textarea");
+        var rebuilt = Metadata(
+            "ControlType.Group",
+            "ProseMirror ProseMirror-focused",
+            "prompt-textarea");
+
+        Assert.True(FocusTargetSafetyPolicy.CanAcceptSemanticEditorReplacement(
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            captured,
+            WebViewRoot,
+            CapturedEditorLayout,
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            rebuilt,
+            WebViewRoot,
+            NearbyEditorLayout,
+            candidateIsPassword: false));
+    }
+
+    [Theory]
+    [InlineData(42U, "prompt-textarea", "text-message", "ControlType.Group", false)]
+    [InlineData(42U, "other-editor", "ProseMirror", "ControlType.Edit", false)]
+    [InlineData(42U, "prompt-textarea", "ProseMirror", "ControlType.Edit", true)]
+    [InlineData(99U, "prompt-textarea", "ProseMirror", "ControlType.Edit", false)]
+    public void RuntimeIdChangeRejectsWeakDifferentPasswordOrReusedProcessTargets(
+        uint candidateProcessId,
+        string candidateAutomationId,
+        string candidateClass,
+        string candidateControlType,
+        bool candidateIsPassword)
+    {
+        Assert.False(FocusTargetSafetyPolicy.CanAcceptSemanticEditorReplacement(
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            Metadata("ControlType.Edit", "ProseMirror ProseMirror-focused", "prompt-textarea"),
+            WebViewRoot,
+            CapturedEditorLayout,
+            Window,
+            candidateProcessId,
+            "Chrome_WidgetWin_1",
+            Metadata(candidateControlType, candidateClass, candidateAutomationId),
+            WebViewRoot,
+            NearbyEditorLayout,
+            candidateIsPassword));
+    }
+
+    [Fact]
+    public void SameEditorFingerprintInDifferentWebViewRootIsRejected()
+    {
+        var metadata = Metadata(
+            "ControlType.Edit",
+            "ProseMirror ProseMirror-focused",
+            "prompt-textarea");
+
+        Assert.False(FocusTargetSafetyPolicy.CanAcceptSemanticEditorReplacement(
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            metadata,
+            WebViewRoot,
+            CapturedEditorLayout,
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            metadata,
+            "2A:00005678:00000001",
+            NearbyEditorLayout,
+            candidateIsPassword: false));
+    }
+
+    [Theory]
+    [InlineData("", WebViewRoot)]
+    [InlineData(WebViewRoot, "")]
+    public void EmptyWebViewRootIdentityNeverAuthorizesSemanticReplacement(
+        string originalWebViewRoot,
+        string candidateWebViewRoot)
+    {
+        var metadata = Metadata(
+            "ControlType.Edit",
+            "ProseMirror ProseMirror-focused",
+            "prompt-textarea");
+
+        Assert.False(FocusTargetSafetyPolicy.CanAcceptSemanticEditorReplacement(
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            metadata,
+            originalWebViewRoot,
+            CapturedEditorLayout,
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            metadata,
+            candidateWebViewRoot,
+            NearbyEditorLayout,
+            candidateIsPassword: false));
+    }
+
+    [Fact]
+    public void SameEditorFingerprintAtVeryDifferentLayoutIsRejected()
+    {
+        var metadata = Metadata(
+            "ControlType.Edit",
+            "ProseMirror ProseMirror-focused",
+            "prompt-textarea");
+
+        Assert.False(FocusTargetSafetyPolicy.CanAcceptSemanticEditorReplacement(
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            metadata,
+            WebViewRoot,
+            CapturedEditorLayout,
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            metadata,
+            WebViewRoot,
+            new SafeFocusLayoutFingerprint(0.10, 0.20, 0.80, 0.12),
+            candidateIsPassword: false));
+    }
+
+    [Fact]
+    public void NearbyButNonOverlappingEditorLayoutsAreRejected()
+    {
+        var metadata = Metadata(
+            "ControlType.Edit",
+            "ProseMirror ProseMirror-focused",
+            "prompt-textarea");
+
+        Assert.False(FocusTargetSafetyPolicy.CanAcceptSemanticEditorReplacement(
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            metadata,
+            WebViewRoot,
+            new SafeFocusLayoutFingerprint(0.40, 0.70, 0.03, 0.10),
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            metadata,
+            WebViewRoot,
+            new SafeFocusLayoutFingerprint(0.44, 0.70, 0.03, 0.10),
+            candidateIsPassword: false));
+    }
+
+    [Fact]
+    public void EmptyOrInvalidLayoutNeverAuthorizesSemanticReplacement()
+    {
+        var metadata = Metadata(
+            "ControlType.Edit",
+            "ProseMirror ProseMirror-focused",
+            "prompt-textarea");
+
+        Assert.False(CanAcceptWithLayouts(metadata, SafeFocusLayoutFingerprint.Empty, NearbyEditorLayout));
+        Assert.False(CanAcceptWithLayouts(metadata, CapturedEditorLayout, SafeFocusLayoutFingerprint.Empty));
+        Assert.False(CanAcceptWithLayouts(
+            metadata,
+            CapturedEditorLayout,
+            new SafeFocusLayoutFingerprint(0.10, 0.70, 0, 0.12)));
+    }
+
+    [Fact]
+    public void LocalReprobeCannotPromoteEditorFromAnotherWebViewRoot()
+    {
+        Assert.False(FocusTargetSafetyPolicy.ShouldPromoteTransientChromiumTarget(
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            WindowTitle,
+            Metadata("ControlType.Group", "page-main", "main"),
+            WebViewRoot,
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            WindowTitle,
+            Metadata("ControlType.Edit", "ProseMirror", "prompt-textarea"),
+            "2A:00005678:00000001",
+            candidateIsPassword: false));
+    }
+
+    [Theory]
+    [InlineData("ChatGPT", "ChatGPT", true)]
+    [InlineData("ChatGPT", "Other conversation", false)]
+    [InlineData("ChatGPT", "chatgpt", false)]
+    [InlineData("", "ChatGPT", false)]
+    [InlineData("ChatGPT", "", false)]
+    [InlineData(" ", " ", false)]
+    public void ChromiumViewIdentityRequiresSameNonEmptyOrdinalWindowTitle(
+        string originalTitle,
+        string candidateTitle,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            FocusTargetSafetyPolicy.HasSameViewIdentity(
+                "Chrome_WidgetWin_1",
+                originalTitle,
+                "Chrome_WidgetWin_1",
+                candidateTitle));
+    }
+
+    [Theory]
+    [InlineData("", "")]
+    [InlineData("Document A", "Document B")]
+    public void NonChromiumViewIdentityPreservesPreviousBehavior(
+        string originalTitle,
+        string candidateTitle)
+    {
+        Assert.True(FocusTargetSafetyPolicy.HasSameViewIdentity(
+            "Notepad",
+            originalTitle,
+            "Notepad",
+            candidateTitle));
+    }
+
+    [Theory]
+    [InlineData("ChatGPT", "Other conversation")]
+    [InlineData("", "ChatGPT")]
+    [InlineData("ChatGPT", "")]
+    public void LocalReprobeCannotPromoteAcrossChromiumViewIdentity(
+        string originalTitle,
+        string candidateTitle)
+    {
+        Assert.False(FocusTargetSafetyPolicy.ShouldPromoteTransientChromiumTarget(
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            originalTitle,
+            Metadata("ControlType.Group", "page-main", "main"),
+            WebViewRoot,
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            candidateTitle,
+            Metadata("ControlType.Edit", "ProseMirror", "prompt-textarea"),
+            WebViewRoot,
+            candidateIsPassword: false));
+    }
+
+    [Fact]
+    public void WindowHandleReuseWithDifferentProcessIsNotTheSameTarget()
+    {
+        Assert.False(FocusTargetSafetyPolicy.HasSameWindowIdentity(
+            Window,
+            ProcessId,
+            Window,
+            ProcessId + 1));
+    }
+
+    private static SafeFocusMetadata Metadata(
+        string controlType,
+        string className,
+        string automationId) =>
+        new(controlType, className, automationId);
+
+    private static bool CanAcceptWithLayouts(
+        SafeFocusMetadata metadata,
+        SafeFocusLayoutFingerprint originalLayout,
+        SafeFocusLayoutFingerprint candidateLayout) =>
+        FocusTargetSafetyPolicy.CanAcceptSemanticEditorReplacement(
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            metadata,
+            WebViewRoot,
+            originalLayout,
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            metadata,
+            WebViewRoot,
+            candidateLayout,
+            candidateIsPassword: false);
+}

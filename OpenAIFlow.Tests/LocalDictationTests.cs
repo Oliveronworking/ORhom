@@ -97,6 +97,35 @@ public sealed class LocalDictationConfigurationTests : IDisposable
     }
 
     [Fact]
+    public void WidelySeparatedClickFramesAreNotMistakenForSpeech()
+    {
+        var samples = new float[16_000];
+        samples[5 * 320 + 10] = 0.5f;
+        samples[20 * 320 + 10] = 0.5f;
+        samples[40 * 320 + 10] = 0.5f;
+
+        Assert.False(LocalWhisperRecognitionService.ContainsAudibleSignal(samples));
+    }
+
+    [Fact]
+    public void ThreeConsecutiveQuietSpeechFramesPassThePreflightCheck()
+    {
+        var samples = new float[16_000];
+        Array.Fill(samples, 0.003f, 20 * 320, 3 * 320);
+
+        Assert.True(LocalWhisperRecognitionService.ContainsAudibleSignal(samples));
+    }
+
+    [Fact]
+    public void SubthresholdContentAloneDoesNotPassTheSpeechGate()
+    {
+        var samples = new float[16_000];
+        Array.Fill(samples, 0.001f, 20 * 320, 20 * 320);
+
+        Assert.False(LocalWhisperRecognitionService.ContainsAudibleSignal(samples));
+    }
+
+    [Fact]
     public void NormalSpeechLevelSignalPassesThePreflightCheck()
     {
         var samples = Enumerable.Range(0, 16_000)
@@ -117,6 +146,139 @@ public sealed class LocalDictationConfigurationTests : IDisposable
         }
 
         Assert.True(LocalWhisperRecognitionService.ContainsAudibleSignal(samples));
+    }
+
+    [Fact]
+    public void PreparationTrimsOnlyEdgeSilenceAndKeepsThreeHundredMillisecondsOfPadding()
+    {
+        var samples = new float[64_000];
+        const int speechStart = 16_000;
+        const int speechEndExclusive = 32_000;
+        Array.Fill(samples, 0.003f, speechStart, speechEndExclusive - speechStart);
+
+        var prepared = LocalWhisperRecognitionService.PrepareSamplesForTranscription(samples);
+
+        Assert.Equal(25_600, prepared.Length);
+        Assert.All(prepared[..4_800], sample => Assert.Equal(0f, sample));
+        Assert.Equal(0.003f, prepared[4_800]);
+        Assert.Equal(0.003f, prepared[^4_801]);
+        Assert.All(prepared[^4_800..], sample => Assert.Equal(0f, sample));
+    }
+
+    [Fact]
+    public void PreparationPreservesSubthresholdSyllablesAroundStrongerSpeech()
+    {
+        var samples = new float[96_000];
+        const int quietLeadingStart = 16_000;
+        const int quietLeadingEndExclusive = 24_000;
+        const int strongerSpeechStart = 40_000;
+        const int strongerSpeechEndExclusive = 48_000;
+        const int quietTrailingStart = 64_000;
+        const int quietTrailingEndExclusive = 72_000;
+        Array.Fill(
+            samples,
+            0.001f,
+            quietLeadingStart,
+            quietLeadingEndExclusive - quietLeadingStart);
+        Array.Fill(
+            samples,
+            0.003f,
+            strongerSpeechStart,
+            strongerSpeechEndExclusive - strongerSpeechStart);
+        Array.Fill(
+            samples,
+            0.001f,
+            quietTrailingStart,
+            quietTrailingEndExclusive - quietTrailingStart);
+
+        var prepared = LocalWhisperRecognitionService.PrepareSamplesForTranscription(samples);
+
+        Assert.Equal(65_600, prepared.Length);
+        Assert.All(prepared[..4_800], sample => Assert.Equal(0f, sample));
+        Assert.Equal(0.001f, prepared[4_800]);
+        Assert.Equal(0.003f, prepared[28_800]);
+        Assert.Equal(0.001f, prepared[52_800]);
+        Assert.Equal(0.001f, prepared[^4_801]);
+        Assert.All(prepared[^4_800..], sample => Assert.Equal(0f, sample));
+        Assert.True(LocalWhisperRecognitionService.ContainsAudibleSignal(prepared));
+    }
+
+    [Fact]
+    public void PreparationReplacesNonFiniteSamplesWithoutMutatingTheCapture()
+    {
+        var samples = Enumerable.Repeat(0.003f, 16_000).ToArray();
+        samples[100] = float.NaN;
+        samples[200] = float.PositiveInfinity;
+        samples[300] = float.NegativeInfinity;
+
+        var prepared = LocalWhisperRecognitionService.PrepareSamplesForTranscription(samples);
+
+        Assert.NotSame(samples, prepared);
+        Assert.Equal(samples.Length, prepared.Length);
+        Assert.Equal(0f, prepared[100]);
+        Assert.Equal(0f, prepared[200]);
+        Assert.Equal(0f, prepared[300]);
+        Assert.True(float.IsNaN(samples[100]));
+        Assert.True(float.IsPositiveInfinity(samples[200]));
+        Assert.True(float.IsNegativeInfinity(samples[300]));
+        Assert.All(prepared, sample => Assert.True(float.IsFinite(sample)));
+    }
+
+    [Theory]
+    [InlineData("OpenAI Flow")]
+    [InlineData("ChatGPT")]
+    [InlineData("Codex")]
+    [InlineData("GitHub")]
+    [InlineData("Repository")]
+    [InlineData("PowerShell")]
+    [InlineData(".NET")]
+    [InlineData("JSON")]
+    [InlineData("Vulkan")]
+    [InlineData("Flash Attention")]
+    [InlineData("Whisper Large V3 Turbo")]
+    [InlineData("Zwischenablage")]
+    public void TechnicalInitialPromptContainsExpectedVocabulary(string term)
+    {
+        Assert.Contains(term, LocalWhisperRecognitionService.InitialPrompt);
+    }
+
+    [Fact]
+    public void NativeWarmupUsesOneSecondOfFiniteAudibleAudio()
+    {
+        var samples = LocalWhisperRecognitionService.CreateWarmupSamples();
+
+        Assert.Equal(16_000, samples.Length);
+        Assert.All(samples, sample => Assert.True(float.IsFinite(sample)));
+        Assert.True(LocalWhisperRecognitionService.ContainsAudibleSignal(samples));
+    }
+
+    [Fact]
+    public async Task NativeWarmupDrainConsumesAndDiscardsEverySegment()
+    {
+        var discardedSegments = await LocalWhisperRecognitionService.DrainWarmupAsync(
+            CreateWarmupSegments(),
+            CancellationToken.None);
+
+        Assert.Equal(2, discardedSegments);
+    }
+
+    [Fact]
+    public async Task NativeWarmupDrainHonorsCancellationBeforeEnumeration()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            LocalWhisperRecognitionService.DrainWarmupAsync(
+                CreateWarmupSegments(),
+                cancellation.Token));
+    }
+
+    private static async IAsyncEnumerable<string> CreateWarmupSegments()
+    {
+        yield return "discarded warm-up text";
+        await Task.Yield();
+        yield return "also discarded";
     }
 
     public void Dispose()

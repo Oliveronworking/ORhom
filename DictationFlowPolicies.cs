@@ -179,3 +179,172 @@ internal static class FocusRestorationPolicy
         elementIsWebViewRoot ||
         windowClass.Equals("Chrome_WidgetWin_1", StringComparison.OrdinalIgnoreCase);
 }
+
+internal static class FocusTargetSafetyPolicy
+{
+    private const string ChromiumWindowClass = "Chrome_WidgetWin_1";
+    private const string ProseMirrorMarker = "ProseMirror";
+
+    public static bool HasSameWindowIdentity(
+        IntPtr expectedWindow,
+        uint expectedProcessId,
+        IntPtr candidateWindow,
+        uint candidateProcessId) =>
+        expectedWindow != IntPtr.Zero &&
+        expectedWindow == candidateWindow &&
+        expectedProcessId != 0 &&
+        expectedProcessId == candidateProcessId;
+
+    public static bool HasSameViewIdentity(
+        string originalWindowClass,
+        string originalWindowTitle,
+        string candidateWindowClass,
+        string candidateWindowTitle)
+    {
+        if (!IsChromiumWindow(originalWindowClass))
+        {
+            return true;
+        }
+
+        return IsChromiumWindow(candidateWindowClass) &&
+               !string.IsNullOrWhiteSpace(originalWindowTitle) &&
+               !string.IsNullOrWhiteSpace(candidateWindowTitle) &&
+               originalWindowTitle.Equals(candidateWindowTitle, StringComparison.Ordinal);
+    }
+
+    public static bool IsTransientChromiumMainTarget(
+        string windowClass,
+        SafeFocusMetadata metadata) =>
+        IsChromiumWindow(windowClass) &&
+        metadata.ControlType.Equals("ControlType.Group", StringComparison.OrdinalIgnoreCase) &&
+        metadata.AutomationId.Equals("main", StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsStrongSemanticWebEditor(
+        string windowClass,
+        SafeFocusMetadata metadata)
+    {
+        if (!IsChromiumWindow(windowClass) ||
+            string.IsNullOrWhiteSpace(metadata.AutomationId) ||
+            !metadata.ClassName.Contains(ProseMirrorMarker, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return metadata.ControlType.Equals("ControlType.Edit", StringComparison.OrdinalIgnoreCase) ||
+               metadata.ControlType.Equals("ControlType.Document", StringComparison.OrdinalIgnoreCase) ||
+               metadata.ControlType.Equals("ControlType.Custom", StringComparison.OrdinalIgnoreCase) ||
+               metadata.ControlType.Equals("ControlType.Group", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool ShouldPromoteTransientChromiumTarget(
+        IntPtr originalWindow,
+        uint originalProcessId,
+        string originalWindowClass,
+        string originalWindowTitle,
+        SafeFocusMetadata originalMetadata,
+        string originalWebViewRootIdentity,
+        IntPtr candidateWindow,
+        uint candidateProcessId,
+        string candidateWindowClass,
+        string candidateWindowTitle,
+        SafeFocusMetadata candidateMetadata,
+        string candidateWebViewRootIdentity,
+        bool candidateIsPassword) =>
+        !candidateIsPassword &&
+        HasSameWindowIdentity(
+            originalWindow,
+            originalProcessId,
+            candidateWindow,
+            candidateProcessId) &&
+        HasSameViewIdentity(
+            originalWindowClass,
+            originalWindowTitle,
+            candidateWindowClass,
+            candidateWindowTitle) &&
+        HasSameWebViewRootIdentity(
+            originalWebViewRootIdentity,
+            candidateWebViewRootIdentity) &&
+        IsTransientChromiumMainTarget(originalWindowClass, originalMetadata) &&
+        IsStrongSemanticWebEditor(candidateWindowClass, candidateMetadata);
+
+    public static bool CanAcceptSemanticEditorReplacement(
+        IntPtr originalWindow,
+        uint originalProcessId,
+        string originalWindowClass,
+        SafeFocusMetadata originalMetadata,
+        string originalWebViewRootIdentity,
+        SafeFocusLayoutFingerprint originalLayout,
+        IntPtr candidateWindow,
+        uint candidateProcessId,
+        string candidateWindowClass,
+        SafeFocusMetadata candidateMetadata,
+        string candidateWebViewRootIdentity,
+        SafeFocusLayoutFingerprint candidateLayout,
+        bool candidateIsPassword) =>
+        !candidateIsPassword &&
+        HasSameWindowIdentity(
+            originalWindow,
+            originalProcessId,
+            candidateWindow,
+            candidateProcessId) &&
+        HasSameWebViewRootIdentity(
+            originalWebViewRootIdentity,
+            candidateWebViewRootIdentity) &&
+        IsStrongSemanticWebEditor(originalWindowClass, originalMetadata) &&
+        IsStrongSemanticWebEditor(candidateWindowClass, candidateMetadata) &&
+        HasStrongEditorLayoutMatch(originalLayout, candidateLayout) &&
+        originalMetadata.AutomationId.Equals(
+            candidateMetadata.AutomationId,
+            StringComparison.OrdinalIgnoreCase);
+
+    public static bool HasStrongEditorLayoutMatch(
+        SafeFocusLayoutFingerprint original,
+        SafeFocusLayoutFingerprint candidate)
+    {
+        if (!original.IsValid || !candidate.IsValid)
+        {
+            return false;
+        }
+
+        var originalCenterX = original.RelativeLeft + original.RelativeWidth / 2;
+        var originalCenterY = original.RelativeTop + original.RelativeHeight / 2;
+        var candidateCenterX = candidate.RelativeLeft + candidate.RelativeWidth / 2;
+        var candidateCenterY = candidate.RelativeTop + candidate.RelativeHeight / 2;
+        var widthTolerance = Math.Max(0.03, original.RelativeWidth * 0.15);
+        var heightTolerance = Math.Max(0.03, original.RelativeHeight * 0.25);
+
+        var intersectionWidth = Math.Max(
+            0,
+            Math.Min(
+                original.RelativeLeft + original.RelativeWidth,
+                candidate.RelativeLeft + candidate.RelativeWidth) -
+            Math.Max(original.RelativeLeft, candidate.RelativeLeft));
+        var intersectionHeight = Math.Max(
+            0,
+            Math.Min(
+                original.RelativeTop + original.RelativeHeight,
+                candidate.RelativeTop + candidate.RelativeHeight) -
+            Math.Max(original.RelativeTop, candidate.RelativeTop));
+        var intersectionArea = intersectionWidth * intersectionHeight;
+        var smallerArea = Math.Min(
+            original.RelativeWidth * original.RelativeHeight,
+            candidate.RelativeWidth * candidate.RelativeHeight);
+        var overlapRatio = intersectionArea / smallerArea;
+
+        return Math.Abs(originalCenterX - candidateCenterX) <= 0.05 &&
+               Math.Abs(originalCenterY - candidateCenterY) <= 0.05 &&
+               Math.Abs(original.RelativeWidth - candidate.RelativeWidth) <= widthTolerance &&
+               Math.Abs(original.RelativeHeight - candidate.RelativeHeight) <= heightTolerance &&
+               overlapRatio >= 0.6;
+    }
+
+    private static bool HasSameWebViewRootIdentity(
+        string originalIdentity,
+        string candidateIdentity) =>
+        !string.IsNullOrWhiteSpace(originalIdentity) &&
+        !string.IsNullOrWhiteSpace(candidateIdentity) &&
+        originalIdentity.Equals(candidateIdentity, StringComparison.Ordinal);
+
+    private static bool IsChromiumWindow(string windowClass) =>
+        windowClass.Equals(ChromiumWindowClass, StringComparison.OrdinalIgnoreCase);
+}

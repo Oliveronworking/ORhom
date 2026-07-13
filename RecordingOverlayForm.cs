@@ -471,7 +471,7 @@ internal sealed class RecordingOverlayForm : Form
             AppStatus.Recording => ("Hört zu …", $"{_toggleHotkey} / Klick: Stopp · Esc: Abbruch"),
             AppStatus.Stopping => ("Aufnahme wird beendet", "Audio wird verarbeitet …"),
             AppStatus.ReadingText => ("Text wird transkribiert", "Bitte kurz warten …"),
-            AppStatus.Pasting => ("Text wird eingefügt", "Fertig"),
+            AppStatus.Pasting => ("Text wird eingefügt", "Einen Moment …"),
             _ => ("Bereit zum Diktieren", $"{_toggleHotkey} oder klicken")
         };
     }
