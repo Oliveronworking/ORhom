@@ -32,7 +32,9 @@ internal sealed class AppLogger
 
     public void Error(string message, Exception? exception = null)
     {
-        var suffix = exception is null ? string.Empty : $" | {exception.GetType().Name}: {exception.Message}";
+        var suffix = exception is null
+            ? string.Empty
+            : $"{Environment.NewLine}{exception}";
         Write("ERROR", message + suffix);
     }
 

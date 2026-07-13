@@ -43,6 +43,25 @@ public sealed class AppLoggerTests : IDisposable
         Assert.True(new FileInfo(logger.LogPath).Length < AppLogger.MaximumLogFileBytes);
     }
 
+    [Fact]
+    public void ExceptionsAreLoggedWithTheirStackTrace()
+    {
+        var logger = new AppLogger(Path.Combine(_directory, "logs"));
+
+        try
+        {
+            ThrowLoggedFailure();
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.Error("Expected test failure.", ex);
+        }
+
+        var log = File.ReadAllText(logger.LogPath, Encoding.UTF8);
+        Assert.Contains("InvalidOperationException", log);
+        Assert.Contains(nameof(ThrowLoggedFailure), log);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory))
@@ -50,6 +69,9 @@ public sealed class AppLoggerTests : IDisposable
             Directory.Delete(_directory, recursive: true);
         }
     }
+
+    private static void ThrowLoggedFailure() =>
+        throw new InvalidOperationException("stack-trace-test");
 }
 
 public sealed class AppSettingsPersistenceTests : IDisposable
@@ -75,6 +97,47 @@ public sealed class AppSettingsPersistenceTests : IDisposable
         Assert.Equal("Ctrl+F9", reloaded.ToggleHotkey);
         Assert.Equal("Profile 7", reloaded.ChromeProfileDirectory);
         Assert.Empty(FindTemporarySettingsFiles());
+    }
+
+    [Fact]
+    public void RecordingBarPlacementSurvivesSettingsRoundTrip()
+    {
+        Directory.CreateDirectory(_directory);
+        var settingsPath = Path.Combine(_directory, "settings.json");
+        var logger = CreateLogger();
+        var settings = AppSettings.Load(settingsPath, logger);
+        settings.RecordingOverlayMonitorDeviceName = @"\\.\DISPLAY2";
+        settings.RecordingOverlayRelativeX = 0.375;
+        settings.RecordingOverlayRelativeY = 0.8125;
+
+        Assert.True(settings.Save(logger));
+
+        var reloaded = AppSettings.Load(settingsPath, logger);
+        Assert.Equal(@"\\.\DISPLAY2", reloaded.RecordingOverlayMonitorDeviceName);
+        Assert.Equal(0.375, reloaded.RecordingOverlayRelativeX);
+        Assert.Equal(0.8125, reloaded.RecordingOverlayRelativeY);
+    }
+
+    [Fact]
+    public void IncompleteRecordingBarPlacementIsDiscardedOnLoad()
+    {
+        Directory.CreateDirectory(_directory);
+        var settingsPath = Path.Combine(_directory, "settings.json");
+        File.WriteAllText(
+            settingsPath,
+            """
+            {
+              "recordingOverlayMonitorDeviceName": "\\\\.\\DISPLAY2",
+              "recordingOverlayRelativeX": 0.5,
+              "recordingOverlayRelativeY": null
+            }
+            """);
+
+        var settings = AppSettings.Load(settingsPath, CreateLogger());
+
+        Assert.Equal(string.Empty, settings.RecordingOverlayMonitorDeviceName);
+        Assert.Null(settings.RecordingOverlayRelativeX);
+        Assert.Null(settings.RecordingOverlayRelativeY);
     }
 
     [Fact]
@@ -263,6 +326,86 @@ public sealed class DictationHistoryStoreTests : IDisposable
         Assert.False(saved);
         Assert.Equal(Guid.Empty, id);
         Assert.Empty(store.GetEntries());
+    }
+
+    [Fact]
+    public void LatestRecoveredAbortAuthorizesCleanupOnlyOnceAndPersistsConsumption()
+    {
+        var store = CreateStore();
+        store.Add("Geretteter Text", DictationHistoryOutcomes.CancelledRecovered);
+
+        Assert.True(store.CanConsumeRecentRecoverableText("Geretteter Text"));
+        Assert.True(store.TryConsumeRecentRecoverableText("Geretteter Text"));
+        Assert.False(store.CanConsumeRecentRecoverableText("Geretteter Text"));
+        Assert.False(store.TryConsumeRecentRecoverableText("Geretteter Text"));
+
+        var reloaded = CreateStore();
+        Assert.Equal(
+            DictationHistoryOutcomes.PendingCleanupConsumed,
+            Assert.Single(reloaded.GetEntries()).Outcome);
+        Assert.False(reloaded.CanConsumeRecentRecoverableText("Geretteter Text"));
+    }
+
+    [Fact]
+    public void ExplicitPendingCleanupOutcomeCanAuthorizeOneCleanupAttempt()
+    {
+        var store = CreateStore();
+        store.Add("Offener Entwurf", DictationHistoryOutcomes.PendingComposerCleanup);
+
+        Assert.True(store.TryConsumeRecentRecoverableText("Offener Entwurf"));
+        Assert.False(store.TryConsumeRecentRecoverableText("Offener Entwurf"));
+    }
+
+    [Theory]
+    [InlineData(DictationHistoryOutcomes.Pasted)]
+    [InlineData(DictationHistoryOutcomes.Transcribed)]
+    [InlineData(DictationHistoryOutcomes.PreservedBeforeClose)]
+    [InlineData(DictationHistoryOutcomes.FailureRecovered)]
+    [InlineData(DictationHistoryOutcomes.CancelledRecoveredCleared)]
+    [InlineData(DictationHistoryOutcomes.FailureRecoveredCleared)]
+    [InlineData(DictationHistoryOutcomes.PendingCleanupConsumed)]
+    public void CompletedOrUnrelatedOutcomeCannotAuthorizeCleanup(string outcome)
+    {
+        var store = CreateStore();
+        store.Add("Gleicher Text", outcome);
+
+        Assert.False(store.CanConsumeRecentRecoverableText("Gleicher Text"));
+    }
+
+    [Fact]
+    public void OlderMatchingRecoveryCannotAuthorizeCleanupAfterNewerHistoryEntry()
+    {
+        var store = CreateStore();
+        store.Add("Alter Text", DictationHistoryOutcomes.CancelledRecovered);
+        store.Add("Neuer Text", DictationHistoryOutcomes.Pasted);
+
+        Assert.False(store.CanConsumeRecentRecoverableText("Alter Text"));
+    }
+
+    [Fact]
+    public void ExpiredRecoveryCannotAuthorizeCleanup()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "history.json");
+        var expiredAt = DateTimeOffset.Now -
+                        DictationHistoryStore.PendingCleanupRecoveryWindow -
+                        TimeSpan.FromMinutes(1);
+        File.WriteAllText(
+            path,
+            $$"""
+            [
+              {
+                "id": "{{Guid.NewGuid()}}",
+                "createdAt": "{{expiredAt:O}}",
+                "text": "Alter geretteter Text",
+                "outcome": "{{DictationHistoryOutcomes.CancelledRecovered}}"
+              }
+            ]
+            """);
+
+        var store = new DictationHistoryStore(path, CreateLogger());
+
+        Assert.False(store.CanConsumeRecentRecoverableText("Alter geretteter Text"));
     }
 
     public void Dispose()
@@ -544,10 +687,12 @@ public sealed class PasteResultTests
 
         Assert.False(withFallback.Succeeded);
         Assert.True(withFallback.AllowClipboardFallback);
+        Assert.True(withFallback.ShouldAttemptClipboardFallback);
         Assert.Equal(ClipboardRestoreOutcome.NotRequested, withFallback.ClipboardRestoreOutcome);
 
         Assert.False(withoutFallback.Succeeded);
         Assert.False(withoutFallback.AllowClipboardFallback);
+        Assert.False(withoutFallback.ShouldAttemptClipboardFallback);
         Assert.Equal(ClipboardRestoreOutcome.NotRequested, withoutFallback.ClipboardRestoreOutcome);
     }
 
@@ -566,7 +711,20 @@ public sealed class PasteResultTests
 
         Assert.True(result.Succeeded);
         Assert.False(result.AllowClipboardFallback);
+        Assert.False(result.ShouldAttemptClipboardFallback);
         Assert.Equal(restoreOutcome, result.ClipboardRestoreOutcome);
+    }
+
+    [Fact]
+    public void ExistingClipboardCopySuppressesAnotherFallbackWrite()
+    {
+        var result = new PasteResult(
+            Succeeded: false,
+            AllowClipboardFallback: true,
+            ClipboardRestoreOutcome.NotRequested,
+            TextIsOnClipboard: true);
+
+        Assert.False(result.ShouldAttemptClipboardFallback);
     }
 }
 

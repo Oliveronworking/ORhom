@@ -197,15 +197,8 @@ internal sealed class PasteService
 
     public bool RestoreTargetFocus(FocusTarget target)
     {
-        if (target.WindowHandle == IntPtr.Zero || !NativeMethods.IsWindow(target.WindowHandle))
+        if (!RestoreTargetWindow(target))
         {
-            _logger.Info("Target focus restore failed because the original window no longer exists.");
-            return false;
-        }
-
-        if (!NativeMethods.ForceForegroundWindow(target.WindowHandle))
-        {
-            _logger.Info($"Target focus restore failed because foreground activation was not confirmed. TargetWindow=0x{target.WindowHandle.ToInt64():X} ActualForeground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
             return false;
         }
 
@@ -228,6 +221,25 @@ internal sealed class PasteService
         var focusConfirmed = foregroundConfirmed && IsExpectedTargetFocused(target, focused);
         _logger.Info($"Target focus restore completed. Success={focusConfirmed} ForegroundConfirmed={foregroundConfirmed} ElementFocusAttempted={elementFocusAttempted} ElementFocusSucceeded={elementFocusSucceeded} FocusedInsideTarget={focusedInsideTarget} FocusedControlType='{focusedMetadata.ControlType}' FocusedClass='{focusedMetadata.ClassName}' FocusedAutomationId='{focusedMetadata.AutomationId}'");
         return focusConfirmed;
+    }
+
+    public bool RestoreTargetWindow(FocusTarget target)
+    {
+        if (target.WindowHandle == IntPtr.Zero || !NativeMethods.IsWindow(target.WindowHandle))
+        {
+            _logger.Info("Target window restore failed because the original window no longer exists.");
+            return false;
+        }
+
+        if (!NativeMethods.ForceForegroundWindow(target.WindowHandle))
+        {
+            _logger.Info($"Target window restore failed because foreground activation was not confirmed. TargetWindow=0x{target.WindowHandle.ToInt64():X} ActualForeground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
+            return false;
+        }
+
+        var foregroundConfirmed = NativeMethods.GetForegroundWindow() == target.WindowHandle;
+        _logger.Info($"Target window restore completed without UI Automation. Success={foregroundConfirmed} TargetWindow=0x{target.WindowHandle.ToInt64():X}");
+        return foregroundConfirmed;
     }
 
     private static bool IsExpectedTargetFocused(FocusTarget target, AutomationElement? focused)
@@ -253,6 +265,9 @@ internal sealed record PasteResult(
     ClipboardRestoreOutcome ClipboardRestoreOutcome,
     bool TextIsOnClipboard = false)
 {
+    public bool ShouldAttemptClipboardFallback =>
+        !Succeeded && AllowClipboardFallback && !TextIsOnClipboard;
+
     public static PasteResult FailedWithClipboardFallback { get; } =
         new(false, true, ClipboardRestoreOutcome.NotRequested);
 

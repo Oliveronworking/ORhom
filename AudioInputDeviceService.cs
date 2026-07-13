@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using NAudio.CoreAudioApi;
 
 namespace ChatGptDictationBridge;
 
@@ -17,54 +18,120 @@ internal sealed class AudioInputDeviceService
         _logger = logger;
     }
 
-    public IReadOnlyList<string> GetActiveMicrophones()
+    public IReadOnlyList<AudioInputDeviceInfo> GetActiveMicrophoneDevices()
     {
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var devices = new Dictionary<string, AudioInputDeviceInfo>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            using var root = Registry.LocalMachine.OpenSubKey(CaptureDevicesPath);
-            if (root is null)
+            using var enumerator = new MMDeviceEnumerator();
+            foreach (var device in enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active))
             {
-                return [];
-            }
-
-            foreach (var deviceId in root.GetSubKeyNames())
-            {
-                using var device = root.OpenSubKey(deviceId);
-                var state = Convert.ToInt32(device?.GetValue("DeviceState") ?? 0);
-                if ((state & DeviceStateActive) == 0)
+                try
                 {
-                    continue;
-                }
-
-                using var properties = device?.OpenSubKey("Properties");
-                var name = properties?.GetValue(FriendlyNameProperty) as string;
-                var deviceDescription = properties?.GetValue(DeviceDescriptionProperty) as string;
-                if (!string.IsNullOrWhiteSpace(name))
-                {
-                    name = name.Trim();
-                    if (!string.IsNullOrWhiteSpace(deviceDescription) &&
-                        !name.Contains(deviceDescription, StringComparison.OrdinalIgnoreCase))
+                    var name = device.FriendlyName?.Trim() ?? string.Empty;
+                    if (!string.IsNullOrWhiteSpace(device.ID) && !string.IsNullOrWhiteSpace(name))
                     {
-                        name = $"{name} ({deviceDescription.Trim()})";
+                        devices[device.ID] = new AudioInputDeviceInfo(device.ID, name);
                     }
-
-                    names.Add(name);
+                }
+                finally
+                {
+                    device.Dispose();
                 }
             }
         }
         catch (Exception ex)
         {
-            _logger.Error("Active microphones could not be enumerated.", ex);
+            _logger.Error("Active microphones could not be enumerated through WASAPI; registry fallback will be used.", ex);
+            AddRegistryDevices(devices);
         }
 
-        var result = names.OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase).ToList();
-        var signature = string.Join("\u001f", result);
+        var result = devices.Values
+            .OrderBy(device => device.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(device => device.Id, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var signature = string.Join(
+            "\u001f",
+            result.Select(device => $"{device.Id}\u001e{device.DisplayName}"));
         if (!signature.Equals(_lastDeviceSignature, StringComparison.Ordinal))
         {
             _lastDeviceSignature = signature;
             _logger.Info($"Active microphone devices changed. Count={result.Count}");
         }
+
         return result;
     }
+
+    public IReadOnlyList<string> GetActiveMicrophones() =>
+        GetActiveMicrophoneDevices()
+            .Select(device => device.DisplayName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    public bool IsMicrophoneActive(string? deviceId, string? displayName) =>
+        IsConfiguredMicrophoneActive(
+            GetActiveMicrophoneDevices(),
+            deviceId,
+            displayName);
+
+    internal static bool IsConfiguredMicrophoneActive(
+        IReadOnlyList<AudioInputDeviceInfo> activeDevices,
+        string? deviceId,
+        string? displayName)
+    {
+        if (!string.IsNullOrWhiteSpace(deviceId))
+        {
+            return activeDevices.Any(device =>
+                device.Id.Equals(deviceId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            return false;
+        }
+
+        return activeDevices.Count(device =>
+            device.DisplayName.Equals(displayName, StringComparison.OrdinalIgnoreCase)) == 1;
+    }
+
+    private static void AddRegistryDevices(IDictionary<string, AudioInputDeviceInfo> devices)
+    {
+        using var root = Registry.LocalMachine.OpenSubKey(CaptureDevicesPath);
+        if (root is null)
+        {
+            return;
+        }
+
+        foreach (var deviceId in root.GetSubKeyNames())
+        {
+            using var device = root.OpenSubKey(deviceId);
+            var state = Convert.ToInt32(device?.GetValue("DeviceState") ?? 0);
+            if ((state & DeviceStateActive) == 0)
+            {
+                continue;
+            }
+
+            using var properties = device?.OpenSubKey("Properties");
+            var name = properties?.GetValue(FriendlyNameProperty) as string;
+            var description = properties?.GetValue(DeviceDescriptionProperty) as string;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            name = name.Trim();
+            if (!string.IsNullOrWhiteSpace(description) &&
+                !name.Contains(description, StringComparison.OrdinalIgnoreCase))
+            {
+                name = $"{name} ({description.Trim()})";
+            }
+
+            devices[deviceId] = new AudioInputDeviceInfo(deviceId, name);
+        }
+    }
+}
+
+internal sealed record AudioInputDeviceInfo(string Id, string DisplayName)
+{
+    public override string ToString() => DisplayName;
 }

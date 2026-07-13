@@ -18,16 +18,22 @@ internal static class Program
             return;
         }
 
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         ApplicationConfiguration.Initialize();
         var paths = AppPaths.Create();
         var logger = new AppLogger(paths.LogDirectory);
+        RegisterGlobalExceptionLogging(logger);
+        logger.Info($"Application bootstrap. Version={Application.ProductVersion} ProcessId={Environment.ProcessId} Executable='{Environment.ProcessPath ?? Application.ExecutablePath}'.");
         paths.MigrateLegacySettingsIfNeeded(logger);
         var settings = AppSettings.Load(paths.SettingsPath, logger);
         var discovery = new ChromeProfileDiscovery();
         var previousProfileIdentity = ChromeProfileIdentity.From(settings);
-        _ = ChatGptWindowFinder.ReleaseLegacyGenericWindowsToUser(
-            previousProfileIdentity,
-            logger);
+        if (!DictationProviders.IsLocal(settings.DictationProvider))
+        {
+            _ = ChatGptWindowFinder.ReleaseLegacyGenericWindowsToUser(
+                previousProfileIdentity,
+                logger);
+        }
         if (!settings.IsPersistenceAvailable)
         {
             MessageBox.Show(
@@ -38,68 +44,116 @@ internal static class Program
             return;
         }
 
-        using var profileSelection = new ChromeProfileSelectionForm(settings, discovery);
-        if (profileSelection.ShowDialog() != DialogResult.OK || profileSelection.SelectedProfile is not { } profile)
+        if (!DictationProviders.IsLocal(settings.DictationProvider))
         {
-            return;
-        }
-
-        var profileChanged =
-            !settings.ChromeUserDataDir.Equals(profile.UserDataDirectory, StringComparison.OrdinalIgnoreCase) ||
-            !settings.ChromeProfileDirectory.Equals(profile.DirectoryName, StringComparison.OrdinalIgnoreCase);
-        if (profileChanged &&
-            previousProfileIdentity.IsConfigured)
-        {
-            if (!TryPreservePendingComposer(settings, paths, logger, out var preservationFailure))
+            using var profileSelection = new ChromeProfileSelectionForm(settings, discovery);
+            if (profileSelection.ShowDialog() != DialogResult.OK || profileSelection.SelectedProfile is not { } profile)
             {
-                var handedToUser = ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
+                return;
+            }
+
+            var profileChanged =
+                !settings.ChromeUserDataDir.Equals(profile.UserDataDirectory, StringComparison.OrdinalIgnoreCase) ||
+                !settings.ChromeProfileDirectory.Equals(profile.DirectoryName, StringComparison.OrdinalIgnoreCase);
+            if (profileChanged &&
+                previousProfileIdentity.IsConfigured)
+            {
+                if (!TryPreservePendingComposer(settings, paths, logger, out var preservationFailure))
+                {
+                    var handedToUser = ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
+                        previousProfileIdentity,
+                        logger);
+                    MessageBox.Show(
+                        handedToUser
+                            ? $"{preservationFailure} Das bisherige Hintergrundfenster wurde sichtbar zur manuellen Textrettung freigegeben."
+                            : preservationFailure,
+                        "OpenAI Flow Dictation",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+
+                var previousWindowReleased = ChatGptWindowFinder.CloseOwnedBackgroundWindowAndWait(
                     previousProfileIdentity,
                     logger);
+                if (!previousWindowReleased)
+                {
+                    previousWindowReleased = ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
+                        previousProfileIdentity,
+                        logger);
+                }
+
+                if (!previousWindowReleased)
+                {
+                    MessageBox.Show(
+                        "Das bisherige OpenAI-Flow-Hintergrundfenster konnte weder geschlossen noch sicher sichtbar freigegeben werden. Die Profilauswahl wurde nicht übernommen.",
+                        "OpenAI Flow Dictation",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+            }
+
+            settings.ChromeExecutablePath = profile.ChromeExecutablePath;
+            settings.ChromeUserDataDir = profile.UserDataDirectory;
+            settings.ChromeProfileDirectory = profile.DirectoryName;
+            if (!settings.Save(logger))
+            {
                 MessageBox.Show(
-                    handedToUser
-                        ? $"{preservationFailure} Das bisherige Hintergrundfenster wurde sichtbar zur manuellen Textrettung freigegeben."
-                        : preservationFailure,
+                    "Das ausgewählte Chrome-Profil konnte nicht gespeichert werden. OpenAI Flow wurde nicht gestartet.",
                     "OpenAI Flow Dictation",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 return;
             }
+        }
 
-            var previousWindowReleased = ChatGptWindowFinder.CloseOwnedBackgroundWindowAndWait(
-                previousProfileIdentity,
-                logger);
-            if (!previousWindowReleased)
+        try
+        {
+            using var applicationContext = new DictationTrayAppContext(
+                settings,
+                logger,
+                discovery);
+            Application.Run(applicationContext);
+        }
+        catch (Exception ex)
+        {
+            logger.Error("Application message loop terminated unexpectedly.", ex);
+            if (!DictationProviders.IsLocal(settings.DictationProvider))
             {
-                previousWindowReleased = ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
-                    previousProfileIdentity,
+                _ = ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
+                    ChromeProfileIdentity.From(settings),
                     logger);
             }
-
-            if (!previousWindowReleased)
+            try
             {
                 MessageBox.Show(
-                    "Das bisherige OpenAI-Flow-Hintergrundfenster konnte weder geschlossen noch sicher sichtbar freigegeben werden. Die Profilauswahl wurde nicht übernommen.",
+                    $"OpenAI Flow hat einen unerwarteten Fehler sicher abgefangen und beendet. Details stehen im Log:\n{logger.LogPath}",
                     "OpenAI Flow Dictation",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
-                return;
+            }
+            catch (Exception notificationException)
+            {
+                logger.Error("Fatal error notification could not be displayed.", notificationException);
             }
         }
+    }
 
-        settings.ChromeExecutablePath = profile.ChromeExecutablePath;
-        settings.ChromeUserDataDir = profile.UserDataDirectory;
-        settings.ChromeProfileDirectory = profile.DirectoryName;
-        if (!settings.Save(logger))
+    private static void RegisterGlobalExceptionLogging(AppLogger logger)
+    {
+        Application.ThreadException += (_, e) =>
+            logger.Error("Unhandled Windows Forms thread exception was contained.", e.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            logger.Error(
+                $"Unhandled AppDomain exception. IsTerminating={e.IsTerminating}",
+                e.ExceptionObject as Exception ??
+                new InvalidOperationException(e.ExceptionObject?.ToString() ?? "Unknown exception"));
+        TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            MessageBox.Show(
-                "Das ausgewählte Chrome-Profil konnte nicht gespeichert werden. OpenAI Flow wurde nicht gestartet.",
-                "OpenAI Flow Dictation",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
-            return;
-        }
-
-        Application.Run(new DictationTrayAppContext(settings, logger, discovery));
+            logger.Error("Unobserved task exception was contained.", e.Exception);
+            e.SetObserved();
+        };
     }
 
     private static bool TryPreservePendingComposer(

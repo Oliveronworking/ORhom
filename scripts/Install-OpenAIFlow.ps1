@@ -96,10 +96,11 @@ New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 $copyCompleted = $false
 for ($attempt = 1; $attempt -le 20; $attempt++) {
     $temporaryInstalledExe = Join-Path $installDir ".OpenAIFlow.$([Guid]::NewGuid().ToString('N')).tmp"
+    $backupInstalledExe = Join-Path $installDir ".OpenAIFlow.$([Guid]::NewGuid().ToString('N')).bak"
     try {
         Copy-Item -LiteralPath $publishedExe -Destination $temporaryInstalledExe
         if (Test-Path -LiteralPath $installedExe) {
-            [IO.File]::Replace($temporaryInstalledExe, $installedExe, $null, $true)
+            [IO.File]::Replace($temporaryInstalledExe, $installedExe, $backupInstalledExe, $true)
         }
         else {
             [IO.File]::Move($temporaryInstalledExe, $installedExe)
@@ -117,6 +118,7 @@ for ($attempt = 1; $attempt -le 20; $attempt++) {
     }
     finally {
         Remove-Item -LiteralPath $temporaryInstalledExe -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $backupInstalledExe -Force -ErrorAction SilentlyContinue
     }
 }
 if (-not $copyCompleted) {

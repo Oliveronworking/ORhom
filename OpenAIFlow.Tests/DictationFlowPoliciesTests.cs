@@ -229,3 +229,163 @@ public sealed class RecoveryTextPolicyTests
             completedWithoutDestructiveCleanup: true));
     }
 }
+
+public sealed class PendingComposerStartRecoveryTests
+{
+    [Fact]
+    public async Task KnownPersistedTextIsClearedAndStartIsRetriedExactlyOnce()
+    {
+        var clearCalls = 0;
+        var retryCalls = 0;
+        var initial = Pending("Geretteter Text");
+
+        var result = await PendingComposerStartRecovery.RetryKnownPersistedTextOnceAsync(
+            initial,
+            _ =>
+            {
+                clearCalls++;
+                return Task.FromResult(true);
+            },
+            () =>
+            {
+                retryCalls++;
+                return Task.FromResult(ChatGptStartResult.Success((IntPtr)42, null));
+            });
+
+        Assert.True(result.Ok);
+        Assert.Equal(1, clearCalls);
+        Assert.Equal(1, retryCalls);
+    }
+
+    [Fact]
+    public async Task UnapprovedTextIsNotRetried()
+    {
+        var clearCalls = 0;
+        var retryCalls = 0;
+        var initial = Pending("Nicht im Verlauf");
+
+        var result = await PendingComposerStartRecovery.RetryKnownPersistedTextOnceAsync(
+            initial,
+            _ =>
+            {
+                clearCalls++;
+                return Task.FromResult(false);
+            },
+            () =>
+            {
+                retryCalls++;
+                return Task.FromResult(ChatGptStartResult.Success((IntPtr)42, null));
+            });
+
+        Assert.Same(initial, result);
+        Assert.Equal(1, clearCalls);
+        Assert.Equal(0, retryCalls);
+    }
+
+    [Fact]
+    public async Task FailedClearKeepsSafetyBlockAndDoesNotRetry()
+    {
+        var retryCalls = 0;
+        var initial = Pending("Geretteter Text");
+
+        var result = await PendingComposerStartRecovery.RetryKnownPersistedTextOnceAsync(
+            initial,
+            _ => Task.FromResult(false),
+            () =>
+            {
+                retryCalls++;
+                return Task.FromResult(ChatGptStartResult.Success((IntPtr)42, null));
+            });
+
+        Assert.Same(initial, result);
+        Assert.Equal(0, retryCalls);
+    }
+
+    [Fact]
+    public async Task PendingRetryDoesNotCreateARecoveryLoop()
+    {
+        var retryCalls = 0;
+        var initial = Pending("Geretteter Text");
+
+        var result = await PendingComposerStartRecovery.RetryKnownPersistedTextOnceAsync(
+            initial,
+            _ => Task.FromResult(true),
+            () =>
+            {
+                retryCalls++;
+                return Task.FromResult(Pending("Geretteter Text"));
+            });
+
+        Assert.Equal(ChatGptFailure.PendingText, result.Failure);
+        Assert.Equal(1, retryCalls);
+    }
+
+    [Fact]
+    public async Task UnsafePendingUrlIsNeverAutomaticallyCleared()
+    {
+        var clearCalls = 0;
+        var initial = Pending("https://example.com");
+
+        var result = await PendingComposerStartRecovery.RetryKnownPersistedTextOnceAsync(
+            initial,
+            _ =>
+            {
+                clearCalls++;
+                return Task.FromResult(true);
+            },
+            () => Task.FromResult(ChatGptStartResult.Success((IntPtr)42, null)));
+
+        Assert.Same(initial, result);
+        Assert.Equal(0, clearCalls);
+    }
+
+    private static ChatGptStartResult Pending(string text) =>
+        ChatGptStartResult.Fail(
+            ChatGptFailure.PendingText,
+            "blocked",
+            chatWindow: (IntPtr)42,
+            pendingText: text);
+}
+
+public sealed class UnexpectedFailureStatePolicyTests
+{
+    [Theory]
+    [InlineData((int)AppStatus.Starting, true, true)]
+    [InlineData((int)AppStatus.Recording, true, true)]
+    [InlineData((int)AppStatus.Stopping, true, true)]
+    [InlineData((int)AppStatus.ReadingText, true, true)]
+    [InlineData((int)AppStatus.Pasting, true, false)]
+    [InlineData((int)AppStatus.Idle, true, false)]
+    [InlineData((int)AppStatus.Recording, false, false)]
+    public void OnlyActiveOrStartingSessionRemainsRecording(
+        int status,
+        bool hasSession,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            UnexpectedFailureStatePolicy.RecordingMayStillBeActive(
+                (AppStatus)status,
+                hasSession));
+    }
+}
+
+public sealed class FocusRestorationPolicyTests
+{
+    [Theory]
+    [InlineData("Chrome_WidgetWin_1", false, true)]
+    [InlineData("chrome_widgetwin_1", false, true)]
+    [InlineData("Notepad", true, true)]
+    [InlineData("Notepad", false, false)]
+    public void ChromiumAndWebViewTargetsAvoidElementFocus(
+        string windowClass,
+        bool elementIsWebViewRoot,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            FocusRestorationPolicy.ShouldAvoidAutomationElementFocus(
+                windowClass,
+                elementIsWebViewRoot));
+    }
+}

@@ -788,7 +788,8 @@ internal static class AutomationHelpers
         AppSettings settings,
         AppLogger logger,
         int verificationTimeoutMs = 650,
-        bool preferNonActivatingValuePattern = false)
+        bool preferNonActivatingValuePattern = false,
+        string? expectedText = null)
     {
         if (element is null ||
             !ChatGptWindowFinder.IsOwnedBackgroundWindow(chatWindow, settings) ||
@@ -797,10 +798,18 @@ internal static class AutomationHelpers
             return false;
         }
 
+        expectedText = expectedText?.Trim();
+        if (expectedText is not null &&
+            !HasExpectedText(element, expectedText, logger))
+        {
+            logger.Info("ChatGPT input clear skipped because the composer changed after it was inspected.");
+            return false;
+        }
+
         var keyboardFirst = LooksLikeProseMirror(element) && !preferNonActivatingValuePattern;
         if (keyboardFirst)
         {
-            if (TryClearWithKeyboard(element, chatWindow, settings, logger) &&
+            if (TryClearWithKeyboard(element, chatWindow, settings, logger, expectedText) &&
                 await WaitForConfirmedEmptyInputAsync(
                     chatWindow,
                     settings,
@@ -813,7 +822,7 @@ internal static class AutomationHelpers
             }
 
             element = FindChatGptInput(chatWindow, settings, logger) ?? element;
-            if (TryClearWithValuePattern(element, chatWindow, settings, logger) &&
+            if (TryClearWithValuePattern(element, chatWindow, settings, logger, expectedText) &&
                 await WaitForConfirmedEmptyInputAsync(
                     chatWindow,
                     settings,
@@ -827,7 +836,7 @@ internal static class AutomationHelpers
         }
         else
         {
-            if (TryClearWithValuePattern(element, chatWindow, settings, logger) &&
+            if (TryClearWithValuePattern(element, chatWindow, settings, logger, expectedText) &&
                 await WaitForConfirmedEmptyInputAsync(
                     chatWindow,
                     settings,
@@ -840,7 +849,7 @@ internal static class AutomationHelpers
             }
 
             element = FindChatGptInput(chatWindow, settings, logger) ?? element;
-            if (TryClearWithKeyboard(element, chatWindow, settings, logger) &&
+            if (TryClearWithKeyboard(element, chatWindow, settings, logger, expectedText) &&
                 await WaitForConfirmedEmptyInputAsync(
                     chatWindow,
                     settings,
@@ -861,7 +870,8 @@ internal static class AutomationHelpers
         AutomationElement element,
         IntPtr chatWindow,
         AppSettings settings,
-        AppLogger logger)
+        AppLogger logger,
+        string? expectedText)
     {
         try
         {
@@ -869,7 +879,12 @@ internal static class AutomationHelpers
                 IsElementInWindow(element, chatWindow) &&
                 element.TryGetCurrentPattern(ValuePattern.Pattern, out var valuePatternObj) &&
                 valuePatternObj is ValuePattern valuePattern &&
-                !valuePattern.Current.IsReadOnly)
+                !valuePattern.Current.IsReadOnly &&
+                (expectedText is null ||
+                 string.Equals(
+                     valuePattern.Current.Value?.Trim(),
+                     expectedText,
+                     StringComparison.Ordinal)))
             {
                 valuePattern.SetValue(string.Empty);
                 return true;
@@ -887,7 +902,8 @@ internal static class AutomationHelpers
         AutomationElement element,
         IntPtr chatWindow,
         AppSettings settings,
-        AppLogger logger)
+        AppLogger logger,
+        string? expectedText)
     {
         try
         {
@@ -899,6 +915,13 @@ internal static class AutomationHelpers
             if (!IsSafeKeyboardTarget(element, chatWindow, settings, logger))
             {
                 logger.Info("Keyboard clear skipped because focused element is not a safe ChatGPT input.");
+                return false;
+            }
+
+            if (expectedText is not null &&
+                !HasExpectedText(element, expectedText, logger))
+            {
+                logger.Info("Keyboard clear skipped because the composer changed before select-all dispatch.");
                 return false;
             }
 
@@ -919,6 +942,13 @@ internal static class AutomationHelpers
             return false;
         }
     }
+
+    private static bool HasExpectedText(
+        AutomationElement element,
+        string expectedText,
+        AppLogger logger) =>
+        TryReadText(element, logger, out var currentText) &&
+        string.Equals(currentText.Trim(), expectedText, StringComparison.Ordinal);
 
     private static bool IsSafeKeyboardTarget(
         AutomationElement expected,

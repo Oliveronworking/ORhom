@@ -15,6 +15,8 @@ internal sealed class AppSettings
     };
 
     public string ToggleHotkey { get; set; } = "F8";
+    public string DictationProvider { get; set; } = DictationProviders.LocalWhisper;
+    public string PreferredMicrophoneId { get; set; } = string.Empty;
     public string PreferredMicrophoneName { get; set; } = string.Empty;
     public bool SetupCompleted { get; set; } = false;
     public string ChatGptDictationHotkey { get; set; } = "Ctrl+Shift+D";
@@ -36,6 +38,9 @@ internal sealed class AppSettings
     public bool KeepChatGptWindowHidden { get; set; } = true;
     public bool ShowRecordingOverlay { get; set; } = true;
     public int RecordingOverlayBottomOffsetPx { get; set; } = 72;
+    public string RecordingOverlayMonitorDeviceName { get; set; } = string.Empty;
+    public double? RecordingOverlayRelativeX { get; set; }
+    public double? RecordingOverlayRelativeY { get; set; }
     public bool EnableHybridPushToTalk { get; set; } = true;
     public int PushToTalkHoldThresholdMs { get; set; } = 350;
     public bool RestoreTargetAfterStart { get; set; } = true;
@@ -50,6 +55,7 @@ internal sealed class AppSettings
     public int DictationSettleDelayMs { get; set; } = 0;
     public int DictationTextStableMs { get; set; } = 3000;
     public int DictationStopGracePeriodMs { get; set; } = 250;
+    public int LocalMaxRecordingSeconds { get; set; } = 300;
     public bool EnableAudioDucking { get; set; } = true;
     public int AudioDuckingVolumePercent { get; set; } = 10;
     public bool EnableChatGptInputDiagnostics { get; set; } = true;
@@ -194,7 +200,10 @@ internal sealed class AppSettings
     private void NormalizeDeserializedValues()
     {
         ToggleHotkey = string.IsNullOrWhiteSpace(ToggleHotkey) ? "F8" : ToggleHotkey.Trim();
+        DictationProvider = DictationProviders.Normalize(DictationProvider);
+        PreferredMicrophoneId ??= string.Empty;
         PreferredMicrophoneName ??= string.Empty;
+        LocalMaxRecordingSeconds = Math.Clamp(LocalMaxRecordingSeconds, 30, 600);
         ChatGptDictationHotkey = string.IsNullOrWhiteSpace(ChatGptDictationHotkey)
             ? "Ctrl+Shift+D"
             : ChatGptDictationHotkey.Trim();
@@ -216,5 +225,18 @@ internal sealed class AppSettings
         ChromeExecutablePath ??= string.Empty;
         ChromeUserDataDir ??= string.Empty;
         ChromeProfileDirectory ??= string.Empty;
+        RecordingOverlayMonitorDeviceName ??= string.Empty;
+        if (!IsValidRelativePosition(RecordingOverlayRelativeX) ||
+            !IsValidRelativePosition(RecordingOverlayRelativeY))
+        {
+            RecordingOverlayMonitorDeviceName = string.Empty;
+            RecordingOverlayRelativeX = null;
+            RecordingOverlayRelativeY = null;
+        }
     }
+
+    private static bool IsValidRelativePosition(double? value) =>
+        value is { } coordinate &&
+        !double.IsNaN(coordinate) &&
+        !double.IsInfinity(coordinate);
 }

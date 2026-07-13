@@ -309,13 +309,16 @@ internal sealed class ChatGptDictationController : IDisposable
                 return ChatGptStartResult.Fail(ChatGptFailure.InputNotFound, MessageFor(ChatGptFailure.InputNotFound));
             }
 
-            var oldTextLength = AutomationHelpers.ReadText(input, _logger).Trim().Length;
-            if (oldTextLength > 0)
+            var pendingText = AutomationHelpers.ReadText(input, _logger).Trim();
+            if (pendingText.Length > 0)
             {
-                _logger.Info($"New dictation blocked because the ChatGPT composer still contains unacknowledged text. TextLength={oldTextLength}");
+                _logger.Info($"New dictation blocked because the ChatGPT composer still contains unacknowledged text. TextLength={pendingText.Length}");
                 return ChatGptStartResult.Fail(
                     ChatGptFailure.PendingText,
-                    MessageFor(ChatGptFailure.PendingText));
+                    MessageFor(ChatGptFailure.PendingText),
+                    chatWindow: chatWindow,
+                    input: input,
+                    pendingText: pendingText);
             }
 
             var composerRect = input!.Current.BoundingRectangle;
@@ -924,7 +927,8 @@ internal sealed class ChatGptDictationController : IDisposable
     public async Task<bool> ClearPersistedDictationAsync(
         IntPtr chatWindow,
         AutomationElement? input,
-        Action? restoreTargetFocus = null)
+        Action? restoreTargetFocus = null,
+        string? expectedText = null)
     {
         await _gate.WaitAsync();
         try
@@ -950,7 +954,8 @@ internal sealed class ChatGptDictationController : IDisposable
                 chatWindow,
                 _settings,
                 _logger,
-                preferNonActivatingValuePattern: restoreTargetFocus is not null);
+                preferNonActivatingValuePattern: restoreTargetFocus is not null,
+                expectedText: expectedText);
             if (!cleared)
             {
                 _logger.Info("Persisted dictation cleanup was not confirmed; no page reset was attempted.");
@@ -1854,18 +1859,20 @@ internal sealed record ChatGptStartResult(
     string Message,
     IntPtr ChatWindow,
     AutomationElement? Input,
-    bool IsTerminationConfirmed)
+    bool IsTerminationConfirmed,
+    string PendingText)
 {
     public static ChatGptStartResult Success(IntPtr window, AutomationElement? input) =>
-        new(true, ChatGptFailure.None, string.Empty, window, input, true);
+        new(true, ChatGptFailure.None, string.Empty, window, input, true, string.Empty);
 
     public static ChatGptStartResult Fail(
         ChatGptFailure failure,
         string message,
         bool isTerminationConfirmed = true,
         IntPtr chatWindow = default,
-        AutomationElement? input = null) =>
-        new(false, failure, message, chatWindow, input, isTerminationConfirmed);
+        AutomationElement? input = null,
+        string pendingText = "") =>
+        new(false, failure, message, chatWindow, input, isTerminationConfirmed, pendingText);
 }
 
 internal sealed record ChatGptStopResult(

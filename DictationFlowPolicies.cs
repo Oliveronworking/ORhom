@@ -132,3 +132,50 @@ internal static class RecoveryTextPolicy
                !AutomationHelpers.IsUnsafeCapturedText(text);
     }
 }
+
+internal static class PendingComposerStartRecovery
+{
+    public static async Task<ChatGptStartResult> RetryKnownPersistedTextOnceAsync(
+        ChatGptStartResult initialResult,
+        Func<ChatGptStartResult, Task<bool>> tryClearKnownPersistedText,
+        Func<Task<ChatGptStartResult>> retryStart)
+    {
+        var pendingText = initialResult.PendingText.Trim();
+        if (initialResult.Failure != ChatGptFailure.PendingText ||
+            pendingText.Length == 0 ||
+            AutomationHelpers.IsUnsafeCapturedText(pendingText))
+        {
+            return initialResult;
+        }
+
+        if (!await tryClearKnownPersistedText(initialResult))
+        {
+            return initialResult;
+        }
+
+        // Deliberately retry exactly once. A second PendingText result remains a
+        // hard safety stop instead of turning into a cleanup loop.
+        return await retryStart();
+    }
+}
+
+internal static class UnexpectedFailureStatePolicy
+{
+    public static bool RecordingMayStillBeActive(
+        AppStatus status,
+        bool hasSession) =>
+        hasSession && status is
+            AppStatus.Starting or
+            AppStatus.Recording or
+            AppStatus.Stopping or
+            AppStatus.ReadingText;
+}
+
+internal static class FocusRestorationPolicy
+{
+    public static bool ShouldAvoidAutomationElementFocus(
+        string windowClass,
+        bool elementIsWebViewRoot) =>
+        elementIsWebViewRoot ||
+        windowClass.Equals("Chrome_WidgetWin_1", StringComparison.OrdinalIgnoreCase);
+}
