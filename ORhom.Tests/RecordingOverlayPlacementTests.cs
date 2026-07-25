@@ -5,7 +5,7 @@ namespace ORhom.Tests;
 
 public sealed class RecordingOverlayPlacementTests
 {
-    private static readonly Size OverlaySize = new(216, 48);
+    private static readonly Size OverlaySize = new(300, 56);
 
     [Fact]
     public void DefaultPlacementMatchesCompactBottomCenteredBar()
@@ -15,7 +15,7 @@ public sealed class RecordingOverlayPlacementTests
             OverlaySize,
             72);
 
-        Assert.Equal(new Point(852, 920), location);
+        Assert.Equal(new Point(810, 912), location);
     }
 
     [Fact]
@@ -26,7 +26,7 @@ public sealed class RecordingOverlayPlacementTests
             OverlaySize,
             72);
 
-        Assert.Equal(new Point(-1068, 920), location);
+        Assert.Equal(new Point(-1110, 912), location);
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public sealed class RecordingOverlayPlacementTests
             1,
             1);
 
-        Assert.Equal(new Point(-216, -48), location);
+        Assert.Equal(new Point(-300, -56), location);
     }
 
     [Fact]
@@ -72,11 +72,31 @@ public sealed class RecordingOverlayPlacementTests
             -5,
             4);
 
-        Assert.Equal(new Point(100, 852), location);
+        Assert.Equal(new Point(100, 844), location);
     }
 
     [Fact]
-    public void IdleBarStaysVisibleAndRendersAtCompactSize()
+    public void RecordingDurationUsesCompactClockFormat()
+    {
+        Assert.Equal(
+            "00:00",
+            RecordingOverlayForm.FormatRecordingDuration(TimeSpan.Zero));
+        Assert.Equal(
+            "01:05",
+            RecordingOverlayForm.FormatRecordingDuration(
+                TimeSpan.FromSeconds(65)));
+        Assert.Equal(
+            "1:02:03",
+            RecordingOverlayForm.FormatRecordingDuration(
+                new TimeSpan(1, 2, 3)));
+        Assert.Equal(
+            "00:00",
+            RecordingOverlayForm.FormatRecordingDuration(
+                TimeSpan.FromSeconds(-1)));
+    }
+
+    [Fact]
+    public void IdleBarStaysVisibleAndRendersAtFlowBarSize()
     {
         RunOnStaThread(() =>
         {
@@ -146,6 +166,71 @@ public sealed class RecordingOverlayPlacementTests
 
             form.HideOverlay();
             Assert.False(form.Visible);
+        });
+    }
+
+    [Fact]
+    public void RecordingActionsHaveIndependentHitTargets()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = new RecordingOverlayForm(72, "Ctrl+Space")
+            {
+                Opacity = 0
+            };
+            var toggleRequests = 0;
+            var abortRequests = 0;
+            form.ToggleRequested += (_, _) => toggleRequests++;
+            form.AbortRequested += (_, _) => abortRequests++;
+
+            form.ShowStatus(AppStatus.Recording);
+            Application.DoEvents();
+
+            var scale = Math.Max(form.DeviceDpi, 96) / 96f;
+            ClickAt(
+                form,
+                GetScaledCenter(
+                    RecordingOverlayForm.RecordingStopActionBounds,
+                    scale));
+            ClickAt(
+                form,
+                GetScaledCenter(
+                    RecordingOverlayForm.RecordingAbortActionBounds,
+                    scale));
+            ClickAt(form, new Point((int)(90 * scale), (int)(28 * scale)));
+
+            Assert.Equal(1, toggleRequests);
+            Assert.Equal(1, abortRequests);
+            Assert.Contains("Stopp", form.AccessibleDescription);
+            Assert.Contains("verwirft", form.AccessibleDescription);
+
+            var previewPath = Environment.GetEnvironmentVariable(
+                "ORHOM_OVERLAY_RECORDING_PREVIEW_PATH");
+            if (!string.IsNullOrWhiteSpace(previewPath))
+            {
+                using var bitmap = new Bitmap(form.Width, form.Height);
+                form.DrawToBitmap(
+                    bitmap,
+                    new Rectangle(Point.Empty, bitmap.Size));
+                Directory.CreateDirectory(
+                    Path.GetDirectoryName(Path.GetFullPath(previewPath))!);
+                bitmap.Save(previewPath);
+            }
+
+            form.SetInteractionEnabled(false);
+            ClickAt(
+                form,
+                GetScaledCenter(
+                    RecordingOverlayForm.RecordingStopActionBounds,
+                    scale));
+            ClickAt(
+                form,
+                GetScaledCenter(
+                    RecordingOverlayForm.RecordingAbortActionBounds,
+                    scale));
+
+            Assert.Equal(1, toggleRequests);
+            Assert.Equal(1, abortRequests);
         });
     }
 
@@ -253,15 +338,45 @@ public sealed class RecordingOverlayPlacementTests
     private static void InvokeMouse(
         RecordingOverlayForm form,
         string methodName,
-        MouseButtons button)
+        MouseButtons button,
+        Point? location = null)
     {
+        var clickLocation = location ?? new Point(20, 20);
         var method = typeof(RecordingOverlayForm).GetMethod(
             methodName,
             System.Reflection.BindingFlags.Instance |
             System.Reflection.BindingFlags.NonPublic);
         Assert.NotNull(method);
-        method.Invoke(form, [new MouseEventArgs(button, 1, 20, 20, 0)]);
+        method.Invoke(
+            form,
+            [
+                new MouseEventArgs(
+                    button,
+                    1,
+                    clickLocation.X,
+                    clickLocation.Y,
+                    0)
+            ]);
     }
+
+    private static void ClickAt(
+        RecordingOverlayForm form,
+        Point location)
+    {
+        InvokeMouse(form, "OnMouseDown", MouseButtons.Left, location);
+        InvokeMouse(form, "OnMouseUp", MouseButtons.Left, location);
+    }
+
+    private static Point GetScaledCenter(
+        RectangleF bounds,
+        float scale) =>
+        new(
+            (int)Math.Round(
+                (bounds.Left + bounds.Width / 2) * scale,
+                MidpointRounding.AwayFromZero),
+            (int)Math.Round(
+                (bounds.Top + bounds.Height / 2) * scale,
+                MidpointRounding.AwayFromZero));
 
     private static void InvokeNonPublic(
         RecordingOverlayForm form,
