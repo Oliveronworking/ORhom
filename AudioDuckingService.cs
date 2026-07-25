@@ -1,6 +1,6 @@
 using NAudio.CoreAudioApi;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 /// <summary>
 /// Temporarily lowers other applications' playback sessions during a confirmed dictation.

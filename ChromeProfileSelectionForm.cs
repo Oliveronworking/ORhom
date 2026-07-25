@@ -1,4 +1,4 @@
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed class ChromeProfileSelectionForm : Form
 {
@@ -35,7 +35,7 @@ internal sealed class ChromeProfileSelectionForm : Form
         });
         Controls.Add(new Label
         {
-            Text = "OpenAI Flow verwendet dieses Profil für ChatGPT. Du kannst es bei jedem Start neu auswählen.",
+            Text = "ORhom verwendet dieses Profil für ChatGPT. Du kannst es bei jedem Start neu auswählen.",
             Font = new Font("Segoe UI", 9.5f),
             Location = new Point(33, 70),
             Size = new Size(465, 45),

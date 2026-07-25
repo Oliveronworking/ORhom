@@ -1,10 +1,10 @@
 using System.Windows.Automation;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal static class ChatGptWindowFinder
 {
-    internal const string BackgroundWindowProperty = "OpenAIFlow.ChatGptBackgroundWindow";
+    internal const string BackgroundWindowProperty = "ORhom.ChatGptBackgroundWindow";
     private const byte HiddenAutomationOpacity = 1;
 
     public static async Task<IntPtr> LaunchConfiguredProfileAsync(
@@ -25,7 +25,7 @@ internal static class ChatGptWindowFinder
         }
 
         var markerUrl = CreateBackgroundLaunchMarkerUrl();
-        var correlationWindowProperty = $"OpenAIFlow.BackgroundLaunch.{Guid.NewGuid():N}";
+        var correlationWindowProperty = $"ORhom.BackgroundLaunch.{Guid.NewGuid():N}";
         var windowsBeforeLaunch = FindChromeWindows(excludedWindow).ToHashSet();
         if (!profileLauncher.TryOpenChatGptProfile(markerUrl, out var failureReason))
         {
@@ -200,7 +200,7 @@ internal static class ChatGptWindowFinder
         CreateBackgroundLaunchMarkerUrl(Guid.NewGuid());
 
     internal static string CreateBackgroundLaunchMarkerUrl(Guid correlationId) =>
-        $"https://openai-flow.invalid/background/{correlationId:D}";
+        $"https://orhom.invalid/background/{correlationId:D}";
 
     public static IntPtr FindOwnedBackgroundWindow(AppSettings settings, IntPtr excludedWindow = default)
     {

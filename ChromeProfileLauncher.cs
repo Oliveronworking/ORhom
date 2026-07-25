@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed class ChromeProfileLauncher
 {
@@ -161,7 +161,7 @@ internal sealed class ChromeProfileLauncher
         CreateMicrophoneMarkerUrl(Guid.NewGuid());
 
     internal static string CreateMicrophoneMarkerUrl(Guid correlationId) =>
-        $"https://openai-flow.invalid/microphone/{correlationId:D}";
+        $"https://orhom.invalid/microphone/{correlationId:D}";
 
     internal static ProcessStartInfo CreateChromeStartInfo(
         string chromeExecutablePath,

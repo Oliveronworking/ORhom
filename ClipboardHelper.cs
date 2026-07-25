@@ -1,35 +1,72 @@
 using System.Collections.Specialized;
 using System.IO;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal static class ClipboardHelper
 {
-    private const int ClipboardAttemptCount = 4;
+    private const int ClipboardCaptureAttemptCount = 5;
+    private const int ClipboardWriteAttemptCount = 4;
 
     public static bool TryCaptureStable(
         AppLogger logger,
         out IDataObject? snapshot,
         out uint sequenceNumber)
     {
-        for (var attempt = 0; attempt < 2; attempt++)
+        var captured = TryCaptureStableCore(
+            NativeMethods.GetClipboardSequenceNumber,
+            () => Capture(logger),
+            Thread.Sleep,
+            ClipboardCaptureAttemptCount,
+            out snapshot,
+            out sequenceNumber);
+        if (!captured)
         {
-            var before = NativeMethods.GetClipboardSequenceNumber();
-            snapshot = Capture(logger);
-            var after = NativeMethods.GetClipboardSequenceNumber();
-            if (snapshot is not null && before == after)
+            logger.Info($"Clipboard did not remain stable during snapshot capture. Attempts={ClipboardCaptureAttemptCount}");
+        }
+
+        return captured;
+    }
+
+    internal static bool TryCaptureStableCore<TSnapshot>(
+        Func<uint> readSequenceNumber,
+        Func<TSnapshot?> captureSnapshot,
+        Action<int> delay,
+        int maximumAttempts,
+        out TSnapshot? snapshot,
+        out uint sequenceNumber)
+        where TSnapshot : class
+    {
+        ArgumentNullException.ThrowIfNull(readSequenceNumber);
+        ArgumentNullException.ThrowIfNull(captureSnapshot);
+        ArgumentNullException.ThrowIfNull(delay);
+        maximumAttempts = Math.Max(maximumAttempts, 1);
+
+        for (var attempt = 1; attempt <= maximumAttempts; attempt++)
+        {
+            var before = readSequenceNumber();
+            var candidate = captureSnapshot();
+            var after = readSequenceNumber();
+            if (candidate is not null && before == after)
             {
+                snapshot = candidate;
                 sequenceNumber = after;
                 return true;
             }
 
-            Thread.Sleep(10);
+            if (attempt < maximumAttempts)
+            {
+                delay(GetClipboardCaptureRetryDelayMs(attempt));
+            }
         }
 
         snapshot = null;
         sequenceNumber = 0;
         return false;
     }
+
+    internal static int GetClipboardCaptureRetryDelayMs(int failedAttempt) =>
+        Math.Min(10 << Math.Clamp(failedAttempt - 1, 0, 3), 80);
 
     public static IDataObject? Capture(AppLogger logger)
     {
@@ -89,7 +126,7 @@ internal static class ClipboardHelper
             return ClipboardRestoreOutcome.Failed;
         }
 
-        for (var attempt = 1; attempt <= ClipboardAttemptCount; attempt++)
+        for (var attempt = 1; attempt <= ClipboardWriteAttemptCount; attempt++)
         {
             if (expectedSequenceNumber is not null &&
                 NativeMethods.GetClipboardSequenceNumber() != expectedSequenceNumber.Value)
@@ -121,7 +158,7 @@ internal static class ClipboardHelper
                     return ClipboardRestoreOutcome.Failed;
                 }
 
-                if (attempt == ClipboardAttemptCount)
+                if (attempt == ClipboardWriteAttemptCount)
                 {
                     logger.Error("Clipboard restore failed.", ex);
                     return ClipboardRestoreOutcome.Failed;
@@ -136,7 +173,7 @@ internal static class ClipboardHelper
 
     public static bool TrySetText(string text, AppLogger logger)
     {
-        for (var attempt = 1; attempt <= ClipboardAttemptCount; attempt++)
+        for (var attempt = 1; attempt <= ClipboardWriteAttemptCount; attempt++)
         {
             try
             {
@@ -145,7 +182,7 @@ internal static class ClipboardHelper
             }
             catch (Exception ex)
             {
-                if (attempt == ClipboardAttemptCount)
+                if (attempt == ClipboardWriteAttemptCount)
                 {
                     logger.Error("Clipboard text update failed.", ex);
                     return false;

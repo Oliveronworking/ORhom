@@ -1,3 +1,3 @@
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("OpenAIFlow.Tests")]
+[assembly: InternalsVisibleTo("ORhom.Tests")]

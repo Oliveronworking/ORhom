@@ -29,24 +29,28 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Restore
-        run: dotnet restore OpenAIFlow.sln
+        run: dotnet restore ORhom.sln
 
       - name: Verify formatting
-        run: dotnet format OpenAIFlow.sln --verify-no-changes --no-restore
+        run: dotnet format ORhom.sln --verify-no-changes --no-restore
 
       - name: Test release build
-        run: dotnet test OpenAIFlow.sln -c Release --no-restore --nologo -p:TreatWarningsAsErrors=true
+        run: dotnet test ORhom.sln -c Release --no-restore --nologo -p:TreatWarningsAsErrors=true
 
       - name: Verify self-contained Windows publish
         run: |
-          dotnet publish ChatGptDictationBridge.csproj -c Release -r win-x64 --self-contained true --nologo -p:TreatWarningsAsErrors=true -p:PublishProfile=WindowsSelfContained -o artifacts/ci-publish
-          if (-not (Test-Path -LiteralPath artifacts/ci-publish/OpenAIFlow.exe)) {
-            throw "The expected OpenAIFlow.exe publish artifact is missing."
+          dotnet publish ORhom.csproj -c Release -r win-x64 --self-contained true --nologo -p:TreatWarningsAsErrors=true -p:PublishProfile=WindowsSelfContained -o artifacts/ci-publish
+          if (-not (Test-Path -LiteralPath artifacts/ci-publish/ORhom.exe)) {
+            throw "The expected ORhom.exe publish artifact is missing."
           }
           $publishFiles = @(Get-ChildItem -LiteralPath artifacts/ci-publish -File -Recurse)
-          if ($publishFiles.Count -ne 1 -or $publishFiles[0].Name -ne "OpenAIFlow.exe") {
-            throw "The installer requires a single-file publish containing only OpenAIFlow.exe."
+          if ($publishFiles.Count -ne 1 -or $publishFiles[0].Name -ne "ORhom.exe") {
+            throw "The installer requires a single-file publish containing only ORhom.exe."
           }
           if ($publishFiles[0].Length -le 0) {
-            throw "The published OpenAIFlow.exe is empty."
+            throw "The published ORhom.exe is empty."
+          }
+          $versionInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($publishFiles[0].FullName)
+          if ($versionInfo.ProductName -ne "ORhom" -or $versionInfo.FileDescription -ne "ORhom") {
+            throw "The published executable metadata must use ORhom for ProductName and FileDescription."
           }

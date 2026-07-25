@@ -1,9 +1,14 @@
 using System.Windows.Automation;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed class PasteService
 {
+    private const int FocusConfirmationAttemptCount = 8;
+    private const int FocusConfirmationRequiredMatches = 2;
+    private const int FocusConfirmationDelayMs = 25;
+    private const int DispatchConfirmationAttemptCount = 6;
+    private const int DispatchConfirmationDelayMs = 15;
     private readonly AppLogger _logger;
 
     public PasteService(AppLogger logger)
@@ -93,7 +98,9 @@ internal sealed class PasteService
                 }
             }
 
-            _logger.Info($"Paste shortcut dispatched. Success={dispatched} Method={method} ForegroundVerified={dispatched} PreserveWebViewFocus={target.AvoidAutomationElementFocus} TextLength={text.Length}");
+            var foregroundVerified = NativeMethods.GetForegroundWindow() == target.WindowHandle &&
+                                     HasExpectedWindowIdentity(target);
+            _logger.Info($"Paste shortcut dispatched. Success={dispatched} Method={method} ForegroundVerified={foregroundVerified} PreserveWebViewFocus={target.AvoidAutomationElementFocus} TextLength={text.Length}");
             if (dispatched)
             {
                 Thread.Sleep(Math.Max(settings.RestoreClipboardDelayMs, 0));
@@ -141,17 +148,39 @@ internal sealed class PasteService
         string expectedText,
         uint ownedClipboardSequence)
     {
+        return TargetFocusConfirmationPolicy.TryConfirm(
+            () => ProbePasteDispatchSafety(
+                target,
+                settings,
+                expectedText,
+                ownedClipboardSequence),
+            DispatchConfirmationAttemptCount,
+            FocusConfirmationRequiredMatches,
+            DispatchConfirmationDelayMs);
+    }
+
+    private TargetFocusProbeResult ProbePasteDispatchSafety(
+        FocusTarget target,
+        AppSettings settings,
+        string expectedText,
+        uint ownedClipboardSequence)
+    {
         if (NativeMethods.GetForegroundWindow() != target.WindowHandle ||
+            !HasExpectedWindowIdentity(target) ||
             NativeMethods.GetClipboardSequenceNumber() != ownedClipboardSequence)
         {
-            return false;
+            return TargetFocusProbeResult.Unsafe;
         }
 
         var focused = AutomationHelpers.GetFocusedElement(_logger);
-        if (!IsExpectedTargetFocused(target, focused) ||
-            (settings.BlockPasswordFields && AutomationHelpers.IsPasswordElement(focused)))
+        if (settings.BlockPasswordFields && AutomationHelpers.IsPasswordElement(focused))
         {
-            return false;
+            return TargetFocusProbeResult.Unsafe;
+        }
+
+        if (!IsExpectedTargetFocused(target, focused))
+        {
+            return TargetFocusProbeResult.TransientMismatch;
         }
 
         try
@@ -159,15 +188,21 @@ internal sealed class PasteService
             if (!Clipboard.ContainsText() ||
                 !Clipboard.GetText().Equals(expectedText, StringComparison.Ordinal))
             {
-                return false;
+                return NativeMethods.GetClipboardSequenceNumber() == ownedClipboardSequence
+                    ? TargetFocusProbeResult.TransientMismatch
+                    : TargetFocusProbeResult.Unsafe;
             }
 
-            return NativeMethods.GetClipboardSequenceNumber() == ownedClipboardSequence;
+            return NativeMethods.GetClipboardSequenceNumber() == ownedClipboardSequence
+                ? TargetFocusProbeResult.Match
+                : TargetFocusProbeResult.Unsafe;
         }
         catch (Exception ex)
         {
             _logger.Error("Paste clipboard ownership verification failed.", ex);
-            return false;
+            return NativeMethods.GetClipboardSequenceNumber() == ownedClipboardSequence
+                ? TargetFocusProbeResult.TransientMismatch
+                : TargetFocusProbeResult.Unsafe;
         }
     }
 
@@ -197,54 +232,157 @@ internal sealed class PasteService
 
     public bool RestoreTargetFocus(FocusTarget target)
     {
-        if (target.WindowHandle == IntPtr.Zero || !NativeMethods.IsWindow(target.WindowHandle))
+        if (!RestoreTargetWindow(target))
         {
-            _logger.Info("Target focus restore failed because the original window no longer exists.");
-            return false;
-        }
-
-        if (!NativeMethods.ForceForegroundWindow(target.WindowHandle))
-        {
-            _logger.Info($"Target focus restore failed because foreground activation was not confirmed. TargetWindow=0x{target.WindowHandle.ToInt64():X} ActualForeground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
             return false;
         }
 
         var elementFocusAttempted = false;
         var elementFocusSucceeded = false;
-        if (!target.AvoidAutomationElementFocus && target.FocusedElement is not null)
+        var focusConfirmed = WaitForExpectedTargetFocus(
+            target,
+            out var focused,
+            out var focusProbeAttempts);
+        if (!focusConfirmed &&
+            NativeMethods.GetForegroundWindow() == target.WindowHandle &&
+            HasExpectedWindowIdentity(target) &&
+            !target.AvoidAutomationElementFocus &&
+            target.FocusedElement is not null)
         {
             elementFocusAttempted = true;
             elementFocusSucceeded = AutomationHelpers.TryFocusElement(target.FocusedElement, _logger);
+            focusConfirmed = WaitForExpectedTargetFocus(
+                target,
+                out focused,
+                out var postFocusProbeAttempts);
+            focusProbeAttempts += postFocusProbeAttempts;
         }
-        else if (target.AvoidAutomationElementFocus)
+        else if (!focusConfirmed && target.AvoidAutomationElementFocus)
         {
             _logger.Info("UI Automation focus restore skipped for WebView RootWebArea so the internal active element and caret are preserved.");
         }
 
-        var focused = AutomationHelpers.GetFocusedElement(_logger);
         var focusedMetadata = AutomationHelpers.GetSafeFocusMetadata(focused);
         var focusedInsideTarget = AutomationHelpers.IsElementInWindow(focused, target.WindowHandle);
         var foregroundConfirmed = NativeMethods.GetForegroundWindow() == target.WindowHandle;
-        var focusConfirmed = foregroundConfirmed && IsExpectedTargetFocused(target, focused);
-        _logger.Info($"Target focus restore completed. Success={focusConfirmed} ForegroundConfirmed={foregroundConfirmed} ElementFocusAttempted={elementFocusAttempted} ElementFocusSucceeded={elementFocusSucceeded} FocusedInsideTarget={focusedInsideTarget} FocusedControlType='{focusedMetadata.ControlType}' FocusedClass='{focusedMetadata.ClassName}' FocusedAutomationId='{focusedMetadata.AutomationId}'");
+        focusConfirmed = focusConfirmed && foregroundConfirmed && HasExpectedWindowIdentity(target);
+        _logger.Info($"Target focus restore completed. Success={focusConfirmed} ForegroundConfirmed={foregroundConfirmed} FocusProbeAttempts={focusProbeAttempts} ElementFocusAttempted={elementFocusAttempted} ElementFocusSucceeded={elementFocusSucceeded} FocusedInsideTarget={focusedInsideTarget} FocusedControlType='{focusedMetadata.ControlType}' FocusedClass='{focusedMetadata.ClassName}' FocusedAutomationId='{focusedMetadata.AutomationId}'");
         return focusConfirmed;
     }
 
-    private static bool IsExpectedTargetFocused(FocusTarget target, AutomationElement? focused)
+    private bool WaitForExpectedTargetFocus(
+        FocusTarget target,
+        out AutomationElement? lastFocused,
+        out int probeAttempts)
     {
-        if (target.FocusedElement is null ||
-            !AutomationHelpers.IsElementInWindow(target.FocusedElement, target.WindowHandle) ||
+        AutomationElement? focused = null;
+        var attempts = 0;
+        var confirmed = TargetFocusConfirmationPolicy.TryConfirm(
+            () =>
+            {
+                attempts++;
+                if (NativeMethods.GetForegroundWindow() != target.WindowHandle ||
+                    !HasExpectedWindowIdentity(target))
+                {
+                    return TargetFocusProbeResult.Unsafe;
+                }
+
+                focused = AutomationHelpers.GetFocusedElement(_logger);
+                return IsExpectedTargetFocused(target, focused)
+                    ? TargetFocusProbeResult.Match
+                    : TargetFocusProbeResult.TransientMismatch;
+            },
+            FocusConfirmationAttemptCount,
+            FocusConfirmationRequiredMatches,
+            FocusConfirmationDelayMs);
+        lastFocused = focused;
+        probeAttempts = attempts;
+        return confirmed;
+    }
+
+    public bool RestoreTargetWindow(FocusTarget target)
+    {
+        if (target.WindowHandle == IntPtr.Zero || !NativeMethods.IsWindow(target.WindowHandle))
+        {
+            _logger.Info("Target window restore failed because the original window no longer exists.");
+            return false;
+        }
+
+        if (!HasExpectedWindowIdentity(target))
+        {
+            _logger.Info($"Target window restore failed because the window handle no longer belongs to the captured process. TargetWindow=0x{target.WindowHandle.ToInt64():X} ExpectedProcessId={target.OwningProcessId} ActualProcessId={NativeMethods.GetOwningProcessId(target.WindowHandle)}");
+            return false;
+        }
+
+        if (!NativeMethods.ForceForegroundWindow(target.WindowHandle))
+        {
+            _logger.Info($"Target window restore failed because foreground activation was not confirmed. TargetWindow=0x{target.WindowHandle.ToInt64():X} ActualForeground=0x{NativeMethods.GetForegroundWindow().ToInt64():X}");
+            return false;
+        }
+
+        var foregroundConfirmed = NativeMethods.GetForegroundWindow() == target.WindowHandle;
+        var processConfirmed = HasExpectedWindowIdentity(target);
+        var success = foregroundConfirmed && processConfirmed;
+        _logger.Info($"Target window restore completed without UI Automation. Success={success} ForegroundConfirmed={foregroundConfirmed} ProcessConfirmed={processConfirmed} TargetWindow=0x{target.WindowHandle.ToInt64():X} ProcessId={target.OwningProcessId}");
+        return success;
+    }
+
+    private bool IsExpectedTargetFocused(FocusTarget target, AutomationElement? focused)
+    {
+        var candidateWindowClass = NativeMethods.GetWindowClass(target.WindowHandle);
+        if (!HasExpectedWindowIdentity(target) ||
             !AutomationHelpers.IsElementInWindow(focused, target.WindowHandle))
         {
             return false;
         }
 
-        return target.AvoidAutomationElementFocus
-            ? AutomationHelpers.IsSameElementOrWithinCapturedWebViewRoot(
-                focused,
-                target.FocusedElement)
-            : AutomationHelpers.AreSameElement(focused, target.FocusedElement);
+        if (target.FocusedElement is not null &&
+            AutomationHelpers.IsElementInWindow(target.FocusedElement, target.WindowHandle))
+        {
+            var exactOrCapturedRootMatch = target.AvoidAutomationElementFocus
+                ? AutomationHelpers.IsSameElementOrWithinCapturedWebViewRoot(
+                    focused,
+                    target.FocusedElement)
+                : AutomationHelpers.AreSameElement(focused, target.FocusedElement);
+            if (exactOrCapturedRootMatch)
+            {
+                return true;
+            }
+        }
+
+        var focusedMetadata = AutomationHelpers.GetSafeFocusMetadata(focused);
+        var focusedWebViewRootIdentity = AutomationHelpers.GetSafeWebViewRootIdentity(focused);
+        var focusedLayoutFingerprint = AutomationHelpers.GetSafeFocusLayoutFingerprint(
+            focused,
+            target.WindowHandle);
+        var semanticMatch = FocusTargetSafetyPolicy.CanAcceptSemanticEditorReplacement(
+            target.WindowHandle,
+            target.OwningProcessId,
+            target.WindowClass,
+            target.FocusMetadata,
+            target.WebViewRootIdentity,
+            target.LayoutFingerprint,
+            target.WindowHandle,
+            NativeMethods.GetOwningProcessId(target.WindowHandle),
+            candidateWindowClass,
+            focusedMetadata,
+            focusedWebViewRootIdentity,
+            focusedLayoutFingerprint,
+            AutomationHelpers.IsPasswordElement(focused));
+        if (semanticMatch)
+        {
+            _logger.Info($"Target focus accepted through a strong semantic editor fingerprint after the UI Automation runtime identity changed. AutomationId='{focusedMetadata.AutomationId}' Class='{focusedMetadata.ClassName}'");
+        }
+
+        return semanticMatch;
     }
+
+    private static bool HasExpectedWindowIdentity(FocusTarget target) =>
+        FocusTargetSafetyPolicy.HasSameWindowIdentity(
+            target.WindowHandle,
+            target.OwningProcessId,
+            target.WindowHandle,
+            NativeMethods.GetOwningProcessId(target.WindowHandle));
 }
 
 internal sealed record PasteResult(
@@ -253,6 +391,9 @@ internal sealed record PasteResult(
     ClipboardRestoreOutcome ClipboardRestoreOutcome,
     bool TextIsOnClipboard = false)
 {
+    public bool ShouldAttemptClipboardFallback =>
+        !Succeeded && AllowClipboardFallback && !TextIsOnClipboard;
+
     public static PasteResult FailedWithClipboardFallback { get; } =
         new(false, true, ClipboardRestoreOutcome.NotRequested);
 

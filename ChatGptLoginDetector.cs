@@ -1,6 +1,6 @@
 using System.Windows.Automation;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal enum ChatGptLoginStatus
 {

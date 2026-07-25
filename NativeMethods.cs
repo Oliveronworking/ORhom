@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal static class NativeMethods
 {
@@ -89,6 +89,9 @@ internal static class NativeMethods
     private static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
 
     [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hWnd, uint command);
+
+    [DllImport("user32.dll")]
     private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -99,6 +102,7 @@ internal static class NativeMethods
     private const uint InputKeyboard = 1;
     private const uint KeyEventKeyUp = 0x0002;
     private const uint GetAncestorRoot = 2;
+    private const uint GetWindowOwner = 4;
     private const int GwlExStyle = -20;
     private const int WsExToolWindow = 0x00000080;
     private const int WsExAppWindow = 0x00040000;
@@ -109,6 +113,8 @@ internal static class NativeMethods
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpFrameChanged = 0x0020;
+    private const uint SwpNoOwnerZOrder = 0x0200;
+    private static readonly IntPtr HwndTopMost = new(-1);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool SetProp(IntPtr hWnd, string lpString, IntPtr hData);
@@ -313,6 +319,57 @@ internal static class NativeMethods
         return SetLayeredWindowAttributes(hWnd, 0, alpha, LwaAlpha);
     }
 
+    public static bool ReassertWindowTopMost(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero || !IsWindow(hWnd))
+        {
+            return false;
+        }
+
+        return SetWindowPos(
+            hWnd,
+            HwndTopMost,
+            0,
+            0,
+            0,
+            0,
+            SwpNoSize | SwpNoMove | SwpNoActivate | SwpNoOwnerZOrder);
+    }
+
+    public static bool IsWindowCoveredAtProbePoints(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero ||
+            !IsWindow(hWnd) ||
+            !IsWindowVisible(hWnd) ||
+            !GetWindowRect(hWnd, out var bounds) ||
+            bounds.Width <= 0 ||
+            bounds.Height <= 0)
+        {
+            return false;
+        }
+
+        for (var xIndex = 1; xIndex <= 3; xIndex++)
+        {
+            var x = bounds.Left + bounds.Width * xIndex / 4;
+            for (var yIndex = 1; yIndex <= 3; yIndex++)
+            {
+                var y = bounds.Top + bounds.Height * yIndex / 4;
+                var windowAtPoint = WindowFromPoint(new NativePoint { X = x, Y = y });
+                var rootWindow = windowAtPoint == IntPtr.Zero
+                    ? IntPtr.Zero
+                    : GetAncestor(windowAtPoint, GetAncestorRoot);
+                if (rootWindow != IntPtr.Zero &&
+                    rootWindow != hWnd &&
+                    !IsWindowOwnedBy(rootWindow, hWnd))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     public static bool HideWindowFromTaskbar(IntPtr hWnd)
     {
         if (hWnd == IntPtr.Zero || !IsWindow(hWnd))
@@ -369,6 +426,20 @@ internal static class NativeMethods
             0,
             0,
             SwpNoSize | SwpNoMove | SwpNoZOrder | SwpNoActivate | SwpFrameChanged);
+    }
+
+    private static bool IsWindowOwnedBy(IntPtr candidate, IntPtr possibleOwner)
+    {
+        for (var depth = 0; depth < 32 && candidate != IntPtr.Zero; depth++)
+        {
+            candidate = GetWindow(candidate, GetWindowOwner);
+            if (candidate == possibleOwner)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static Input CreateKeyboardInput(ushort virtualKey, bool keyUp)

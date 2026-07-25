@@ -1,6 +1,6 @@
 using System.IO;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed record AppPaths(string DataDirectory, string SettingsPath, string LogDirectory)
 {
@@ -12,7 +12,32 @@ internal sealed record AppPaths(string DataDirectory, string SettingsPath, strin
             localAppData = AppContext.BaseDirectory;
         }
 
-        var dataDirectory = Path.Combine(localAppData, "OpenAIFlow");
+        var dataDirectory = Path.Combine(localAppData, "ORhom");
+        var legacyDataDirectories = new[]
+        {
+            Path.Combine(localAppData, "OliSpeechToText")
+        };
+
+        foreach (var legacyDataDirectory in legacyDataDirectories)
+        {
+            if (Directory.Exists(dataDirectory) || !Directory.Exists(legacyDataDirectory))
+            {
+                continue;
+            }
+
+            try
+            {
+                Directory.Move(legacyDataDirectory, dataDirectory);
+            }
+            catch (Exception)
+            {
+                // Keep using the existing data in place if Windows cannot move it yet.
+                dataDirectory = legacyDataDirectory;
+            }
+
+            break;
+        }
+
         return new AppPaths(
             dataDirectory,
             Path.Combine(dataDirectory, "settings.json"),

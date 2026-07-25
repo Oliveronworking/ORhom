@@ -1,11 +1,12 @@
 using System.IO;
 using System.Text.Json;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed class DictationHistoryStore
 {
     public const int MaximumEntries = 10;
+    internal static readonly TimeSpan PendingCleanupRecoveryWindow = TimeSpan.FromHours(24);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -55,6 +56,64 @@ internal sealed class DictationHistoryStore
             return _entries.Any(entry =>
                 string.Equals(entry.Text, text, StringComparison.Ordinal));
         }
+    }
+
+    public bool CanConsumeRecentRecoverableText(string text)
+    {
+        text = text.Trim();
+        if (text.Length == 0)
+        {
+            return false;
+        }
+
+        lock (_gate)
+        {
+            var latest = _entries.FirstOrDefault();
+            return IsConsumableRecovery(latest, text, DateTimeOffset.Now);
+        }
+    }
+
+    public bool TryConsumeRecentRecoverableText(string text)
+    {
+        text = text.Trim();
+        if (text.Length == 0)
+        {
+            return false;
+        }
+
+        var consumed = false;
+        lock (_gate)
+        {
+            if (!EnsurePersistenceAvailableLocked())
+            {
+                return false;
+            }
+
+            var latest = _entries.FirstOrDefault();
+            if (!IsConsumableRecovery(latest, text, DateTimeOffset.Now))
+            {
+                return false;
+            }
+
+            var previousEntry = latest!;
+            _entries[0] = previousEntry with
+            {
+                Outcome = DictationHistoryOutcomes.PendingCleanupConsumed
+            };
+            consumed = SaveLocked();
+            if (!consumed)
+            {
+                _entries[0] = previousEntry;
+            }
+        }
+
+        if (consumed)
+        {
+            _logger.Info("One-time pending composer cleanup authorization consumed.");
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+
+        return consumed;
     }
 
     public bool TryAdd(string text, string outcome, out Guid id)
@@ -220,6 +279,25 @@ internal sealed class DictationHistoryStore
         return true;
     }
 
+    private static bool IsConsumableRecovery(
+        DictationHistoryEntry? entry,
+        string expectedText,
+        DateTimeOffset now)
+    {
+        if (entry is null ||
+            !string.Equals(entry.Text, expectedText, StringComparison.Ordinal) ||
+            entry.Outcome is not (
+                DictationHistoryOutcomes.CancelledRecovered or
+                DictationHistoryOutcomes.PendingComposerCleanup))
+        {
+            return false;
+        }
+
+        var age = now - entry.CreatedAt;
+        return age >= TimeSpan.FromMinutes(-5) &&
+               age <= PendingCleanupRecoveryWindow;
+    }
+
     private bool TryQuarantineUnreadableHistory()
     {
         try
@@ -293,6 +371,10 @@ internal static class DictationHistoryOutcomes
     public const string StopFailed = "stop-failed";
     public const string TranscriptionFailed = "transcription-failed";
     public const string PreservedBeforeClose = "preserved-before-close";
+    public const string CancelledRecoveredCleared = "cancelled-recovered-cleared";
+    public const string FailureRecoveredCleared = "failure-recovered-cleared";
+    public const string PendingComposerCleanup = "pending-composer-cleanup";
+    public const string PendingCleanupConsumed = "pending-cleanup-consumed";
 
     public static string GetDisplayText(string outcome) => outcome switch
     {
@@ -304,6 +386,10 @@ internal static class DictationHistoryOutcomes
         StopFailed => "Stoppen fehlgeschlagen",
         TranscriptionFailed => "Kein Text erkannt",
         PreservedBeforeClose => "Vor dem Schließen gesichert",
+        CancelledRecoveredCleared => "Abgebrochen · Text gerettet",
+        FailureRecoveredCleared => "Fehler · Text gerettet",
+        PendingComposerCleanup => "Text gerettet · Entwurf offen",
+        PendingCleanupConsumed => "Text gerettet · Bereinigung versucht",
         Transcribed => "Transkribiert",
         _ => "Gespeichert"
     };

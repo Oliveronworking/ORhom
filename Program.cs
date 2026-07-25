@@ -1,105 +1,164 @@
 using System.IO;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal static class Program
 {
     [STAThread]
     private static void Main()
     {
-        using var mutex = new Mutex(initiallyOwned: true, "ChatGptDictationBridge.SingleInstance", out var createdNew);
+        // Keep the established mutex identity so ORhom and an older installed build
+        // cannot record or manipulate the same profile at the same time.
+        using var mutex = new Mutex(
+            initiallyOwned: true,
+            "ChatGptDictationBridge.SingleInstance",
+            out var createdNew);
         if (!createdNew)
         {
             MessageBox.Show(
-                "OpenAI Flow Dictation läuft bereits im Hintergrund.",
-                "OpenAI Flow Dictation",
+                "ORhom läuft bereits im Hintergrund.",
+                "ORhom",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
             return;
         }
 
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         ApplicationConfiguration.Initialize();
         var paths = AppPaths.Create();
         var logger = new AppLogger(paths.LogDirectory);
+        RegisterGlobalExceptionLogging(logger);
+        logger.Info($"Application bootstrap. Version={Application.ProductVersion} ProcessId={Environment.ProcessId} Executable='{Environment.ProcessPath ?? Application.ExecutablePath}'.");
         paths.MigrateLegacySettingsIfNeeded(logger);
         var settings = AppSettings.Load(paths.SettingsPath, logger);
         var discovery = new ChromeProfileDiscovery();
         var previousProfileIdentity = ChromeProfileIdentity.From(settings);
-        _ = ChatGptWindowFinder.ReleaseLegacyGenericWindowsToUser(
-            previousProfileIdentity,
-            logger);
+        if (!DictationProviders.IsLocal(settings.DictationProvider))
+        {
+            _ = ChatGptWindowFinder.ReleaseLegacyGenericWindowsToUser(
+                previousProfileIdentity,
+                logger);
+        }
         if (!settings.IsPersistenceAvailable)
         {
             MessageBox.Show(
-                "Die vorhandene Einstellungsdatei konnte nicht sicher gelesen werden und wurde nicht überschrieben. Ein bisheriges OpenAI-Flow-Hintergrundfenster wurde, soweit möglich, sichtbar freigegeben. Bitte Datei- oder Zugriffsproblem beheben und OpenAI Flow neu starten.",
-                "OpenAI Flow Dictation",
+                "Die vorhandene Einstellungsdatei konnte nicht sicher gelesen werden und wurde nicht überschrieben. Ein bisheriges ORhom-Hintergrundfenster wurde, soweit möglich, sichtbar freigegeben. Bitte Datei- oder Zugriffsproblem beheben und ORhom neu starten.",
+                "ORhom",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return;
         }
 
-        using var profileSelection = new ChromeProfileSelectionForm(settings, discovery);
-        if (profileSelection.ShowDialog() != DialogResult.OK || profileSelection.SelectedProfile is not { } profile)
+        if (!DictationProviders.IsLocal(settings.DictationProvider))
         {
-            return;
-        }
-
-        var profileChanged =
-            !settings.ChromeUserDataDir.Equals(profile.UserDataDirectory, StringComparison.OrdinalIgnoreCase) ||
-            !settings.ChromeProfileDirectory.Equals(profile.DirectoryName, StringComparison.OrdinalIgnoreCase);
-        if (profileChanged &&
-            previousProfileIdentity.IsConfigured)
-        {
-            if (!TryPreservePendingComposer(settings, paths, logger, out var preservationFailure))
+            using var profileSelection = new ChromeProfileSelectionForm(settings, discovery);
+            if (profileSelection.ShowDialog() != DialogResult.OK || profileSelection.SelectedProfile is not { } profile)
             {
-                var handedToUser = ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
+                return;
+            }
+
+            var profileChanged =
+                !settings.ChromeUserDataDir.Equals(profile.UserDataDirectory, StringComparison.OrdinalIgnoreCase) ||
+                !settings.ChromeProfileDirectory.Equals(profile.DirectoryName, StringComparison.OrdinalIgnoreCase);
+            if (profileChanged &&
+                previousProfileIdentity.IsConfigured)
+            {
+                if (!TryPreservePendingComposer(settings, paths, logger, out var preservationFailure))
+                {
+                    var handedToUser = ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
+                        previousProfileIdentity,
+                        logger);
+                    MessageBox.Show(
+                        handedToUser
+                            ? $"{preservationFailure} Das bisherige Hintergrundfenster wurde sichtbar zur manuellen Textrettung freigegeben."
+                            : preservationFailure,
+                        "ORhom",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+
+                var previousWindowReleased = ChatGptWindowFinder.CloseOwnedBackgroundWindowAndWait(
                     previousProfileIdentity,
                     logger);
+                if (!previousWindowReleased)
+                {
+                    previousWindowReleased = ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
+                        previousProfileIdentity,
+                        logger);
+                }
+
+                if (!previousWindowReleased)
+                {
+                    MessageBox.Show(
+                        "Das bisherige ORhom-Hintergrundfenster konnte weder geschlossen noch sicher sichtbar freigegeben werden. Die Profilauswahl wurde nicht übernommen.",
+                        "ORhom",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+            }
+
+            settings.ChromeExecutablePath = profile.ChromeExecutablePath;
+            settings.ChromeUserDataDir = profile.UserDataDirectory;
+            settings.ChromeProfileDirectory = profile.DirectoryName;
+            if (!settings.Save(logger))
+            {
                 MessageBox.Show(
-                    handedToUser
-                        ? $"{preservationFailure} Das bisherige Hintergrundfenster wurde sichtbar zur manuellen Textrettung freigegeben."
-                        : preservationFailure,
-                    "OpenAI Flow Dictation",
+                    "Das ausgewählte Chrome-Profil konnte nicht gespeichert werden. ORhom wurde nicht gestartet.",
+                    "ORhom",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 return;
             }
+        }
 
-            var previousWindowReleased = ChatGptWindowFinder.CloseOwnedBackgroundWindowAndWait(
-                previousProfileIdentity,
-                logger);
-            if (!previousWindowReleased)
+        try
+        {
+            using var applicationContext = new DictationTrayAppContext(
+                settings,
+                logger,
+                discovery);
+            Application.Run(applicationContext);
+        }
+        catch (Exception ex)
+        {
+            logger.Error("Application message loop terminated unexpectedly.", ex);
+            if (!DictationProviders.IsLocal(settings.DictationProvider))
             {
-                previousWindowReleased = ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
-                    previousProfileIdentity,
+                _ = ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
+                    ChromeProfileIdentity.From(settings),
                     logger);
             }
-
-            if (!previousWindowReleased)
+            try
             {
                 MessageBox.Show(
-                    "Das bisherige OpenAI-Flow-Hintergrundfenster konnte weder geschlossen noch sicher sichtbar freigegeben werden. Die Profilauswahl wurde nicht übernommen.",
-                    "OpenAI Flow Dictation",
+                    $"ORhom hat einen unerwarteten Fehler sicher abgefangen und beendet. Details stehen im Log:\n{logger.LogPath}",
+                    "ORhom",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
-                return;
+            }
+            catch (Exception notificationException)
+            {
+                logger.Error("Fatal error notification could not be displayed.", notificationException);
             }
         }
+    }
 
-        settings.ChromeExecutablePath = profile.ChromeExecutablePath;
-        settings.ChromeUserDataDir = profile.UserDataDirectory;
-        settings.ChromeProfileDirectory = profile.DirectoryName;
-        if (!settings.Save(logger))
+    private static void RegisterGlobalExceptionLogging(AppLogger logger)
+    {
+        Application.ThreadException += (_, e) =>
+            logger.Error("Unhandled Windows Forms thread exception was contained.", e.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            logger.Error(
+                $"Unhandled AppDomain exception. IsTerminating={e.IsTerminating}",
+                e.ExceptionObject as Exception ??
+                new InvalidOperationException(e.ExceptionObject?.ToString() ?? "Unknown exception"));
+        TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            MessageBox.Show(
-                "Das ausgewählte Chrome-Profil konnte nicht gespeichert werden. OpenAI Flow wurde nicht gestartet.",
-                "OpenAI Flow Dictation",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
-            return;
-        }
-
-        Application.Run(new DictationTrayAppContext(settings, logger, discovery));
+            logger.Error("Unobserved task exception was contained.", e.Exception);
+            e.SetObserved();
+        };
     }
 
     private static bool TryPreservePendingComposer(
@@ -144,7 +203,7 @@ internal static class Program
             return false;
         }
 
-        failureMessage = "Der bisherige ChatGPT-Entwurf konnte nicht sicher geprüft werden. Die Profilauswahl wurde zum Schutz möglicher Texte nicht übernommen; bitte OpenAI Flow erneut mit dem bisherigen Profil starten.";
+        failureMessage = "Der bisherige ChatGPT-Entwurf konnte nicht sicher geprüft werden. Die Profilauswahl wurde zum Schutz möglicher Texte nicht übernommen; bitte ORhom erneut mit dem bisherigen Profil starten.";
         return false;
     }
 }

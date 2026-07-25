@@ -1,4 +1,4 @@
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed class DictationHistoryForm : Form
 {
@@ -14,7 +14,7 @@ internal sealed class DictationHistoryForm : Form
     {
         _history = history;
 
-        Text = "Diktierverlauf · OpenAI Flow";
+        Text = "Diktierverlauf · ORhom";
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Color.FromArgb(17, 18, 22);
         ClientSize = new Size(760, 540);
