@@ -353,7 +353,611 @@ internal sealed class SettingsForm : Form
         footer.Controls.Add(buttonLayout, 0, 1);
 
         _saveButton = CreateButton(
-            "Speichern & losdiktiere€N˝∂âûÀk∫wµÁIë•πÖ±%ùπΩ…ïÖÕî§§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ•òÄ°µÖ—ç°•πùMï±ïç—•Ω∏Å•ÃÅπΩ–Åπ’±∞§(ÄÄÄÄÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ}µ•ç…Ω¡°ΩπïΩµâºπMï±ïç—ïë%—ï¥ÄÙÅµÖ—ç°•πùMï±ïç—•Ω∏Ï(ÄÄÄÄÄÄÄÄÄÄÄÅÙ(ÄÄÄÄÄÄÄÄÄÄÄÅï±ÕîÅ•òÄ°}µ•ç…Ω¡°ΩπïΩµâºπ%—ïµÃπΩ’π–Ä¯Ä¿§(ÄÄÄÄÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ}µ•ç…Ω¡°ΩπïΩµâºπMï±ïç—ïë%πëï‡ÄÙÄ¿Ï(ÄÄÄÄÄÄÄÄÄÄÄÅÙ(ÄÄÄÄÄÄÄÅÙ(ÄÄÄÄÄÄÄÅô•πÖ±±‰(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ}µ•ç…Ω¡°ΩπïΩµâºππëU¡ëÖ—î†§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ}…ï±ΩÖë•πù5•ç…Ω¡°ΩπïÃÄÙÅôÖ±ÕîÏ(ÄÄÄÄÄÄÄÅÙ((ÄÄÄÄÄÄÄÅ•òÄ°ëïŸ•çïÃπΩ’π–ÄÙÙÄ¿§(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅMï—M—Ö—’Ã†â-ï•∏ÅÖ≠—•ŸïÃÅ5•≠…ΩôΩ∏Åï…≠Öππ–∏Å	•——îÅï•∏ÅïÀë–ÅŸï…â•πëï∏∏à∞Å……Ω»§Ï(ÄÄÄÄÄÄÄÅÙ(ÄÄÄÄÄÄÄÅï±ÕîÅ•òÄ°Õ°Ω›M—Ö—’ÃÅÒÅëïŸ•çïÕ°Öπùïê§(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅŸÖ»ÅÕ’ôô•‡ÄÙÅëïŸ•çïÃπΩ’π–ÄÙÙÄƒÄ¸Äâ5•≠…ΩôΩ∏Åï…≠Öππ–∏àÄËÄâ5•≠…ΩôΩπîÅï…≠Öππ–∏àÏ(ÄÄÄÄÄÄÄÄÄÄÄÅMï—M—Ö—’Ã†êâÌëïŸ•çïÃπΩ’π—ÙÅÌÕ’ôô•·Ùà∞ÅM’ççïÕÃ§Ï(ÄÄÄÄÄÄÄÅÙ(ÄÄÄÅÙ((ÄÄÄÅ¡…•ŸÖ—îÅŸΩ•êÅIï±ΩÖë°…ΩµïA…Ωô•±ïÃ°âΩΩ∞ÅÕ°Ω›M—Ö—’Ã∞ÅâΩΩ∞Å¡…ïôï…Mï——•πùÃÄÙÅôÖ±Õî§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅŸÖ»ÅÕï±ïç—ïë•…ïç—Ω…‰ÄÙÅ¡…ïôï…Mï——•πùÃ(ÄÄÄÄÄÄÄÄÄÄÄÄ¸Å}Õï——•πùÃπ°…ΩµïA…Ωô•±ï•…ïç—Ω…‰(ÄÄÄÄÄÄÄÄÄÄÄÄËÄ°}ç°…ΩµïA…Ωô•±ïΩµâºπMï±ïç—ïë%—ï¥ÅÖÃÅ°…ΩµïA…Ωô•±ï%πôº§¸π•…ïç—Ω…Â9Öµî(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¸¸Å}Õï——•πùÃπ°…ΩµïA…Ωô•±ï•…ïç—Ω…‰Ï(ÄÄÄÄÄÄÄÅŸÖ»Å…ïÕ’±–ÄÙÅ}ç°…ΩµïA…Ωô•±ïÃπ•ÕçΩŸï»°}Õï——•πùÃπ°…Ωµï·ïç’—Öâ±ïAÖ—†∞Å}Õï——•πùÃπ°…ΩµïUÕï…Ö—Ö•»§Ï(ÄÄÄÄÄÄÄÅ}ç°…ΩµïA…Ωô•±ïΩµâºπ	ïù•πU¡ëÖ—î†§Ï(ÄÄÄÄÄÄÄÅ—…‰(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ}ç°…ΩµïA…Ωô•±ïΩµâºπ%—ïµÃπ±ïÖ»†§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅôΩ…ïÖç†Ä°ŸÖ»Å¡…Ωô•±îÅ•∏Å…ïÕ’±–πA…Ωô•±ïÃ§(ÄÄÄÄÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ}ç°…ΩµïA…Ωô•±ïΩµâºπ%—ïµÃπëê°¡…Ωô•±î§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅÙ((ÄÄÄÄÄÄÄÄÄÄÄÅ}ç°…ΩµïA…Ωô•±ïΩµâºπMï±ïç—ïë%—ï¥ÄÙÅ…ïÕ’±–πA…Ωô•±ïÃπ•…Õ—=…ïôÖ’±–°¡…Ωô•±îÄÙ¯(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπ•…ïç—Ω…Â9Öµîπ≈’Ö±Ã°Õï±ïç—ïë•…ïç—Ω…‰∞ÅM—…•πùΩµ¡Ö…•ÕΩ∏π=…ë•πÖ±%ùπΩ…ïÖÕî§§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ•òÄ°}ç°…ΩµïA…Ωô•±ïΩµâºπMï±ïç—ïë%πëï‡ÄÄ¿ÄòòÅ}ç°…ΩµïA…Ωô•±ïΩµâºπ%—ïµÃπΩ’π–Ä¯Ä¿§(ÄÄÄÄÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ}ç°…ΩµïA…Ωô•±ïΩµâºπMï±ïç—ïë%πëï‡ÄÙÄ¿Ï(ÄÄÄÄÄÄÄÄÄÄÄÅÙ(ÄÄÄÄÄÄÄÅÙ(ÄÄÄÄÄÄÄÅô•πÖ±±‰(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ}ç°…ΩµïA…Ωô•±ïΩµâºππëU¡ëÖ—î†§Ï(ÄÄÄÄÄÄÄÅÙ((ÄÄÄÄÄÄÄÅ•òÄ°Õ°Ω›M—Ö—’ÃÄòòÄÖ%Õ1ΩçÖ±A…ΩŸ•ëï»§(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅMï—M—Ö—’Ã†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ…ïÕ’±–πA…Ωô•±ïÃπΩ’π–ÄÙÙÄ¿(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¸Äâ-ï•πîÅ°…ΩµîµA…Ωô•±îÅùïô’πëï∏∏Å%Õ–ÅΩΩù±îÅ°…ΩµîÅ•πÕ—Ö±±•ï…–¸à(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄËÄêâÌ…ïÕ’±–πA…Ωô•±ïÃπΩ’π—ÙÅ°…ΩµîµA…Ωô•∞°î§Åùïô’πëï∏∏à∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ…ïÕ’±–πA…Ωô•±ïÃπΩ’π–ÄÙÙÄ¿Ä¸Å……Ω»ÄËÅQï·—5’—ïê§Ï(ÄÄÄÄÄÄÄÅÙ(ÄÄÄÅÙ((ÄÄÄÅ¡…•ŸÖ—îÅÖÕÂπåÅQÖÕ¨ÅMÖŸïÕÂπå†§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅ•òÄ°}µ•ç…Ω¡°ΩπïΩµâºπMï±ïç—ïë%—ï¥Å•ÃÅπΩ–Å’ë•Ω%π¡’—ïŸ•çï%πôºÅµ•ç…Ω¡°Ωπî§(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅMï—M—Ö—’Ã†â	•——îÅÈ’ï…Õ–Åï•∏ÅÖ≠—•ŸïÃÅ5•≠…ΩôΩ∏ÅÖ’Õﬂë°±ï∏∏à∞Å……Ω»§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ}µ•ç…Ω¡°ΩπïΩµâºπΩç’Ã†§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ…ï—’…∏Ï(ÄÄÄÄÄÄÄÅÙ((ÄÄÄÄÄÄÄÅŸÖ»Å¡…ΩŸ•ëï»ÄÙÄ°}¡…ΩŸ•ëï…ΩµâºπMï±ïç—ïë%—ï¥ÅÖÃÅ•ç—Ö—•ΩπA…ΩŸ•ëï…=¡—•Ω∏§¸πYÖ±’î(ÄÄÄÄÄÄÄÄÄÄÄÄ¸¸Å•ç—Ö—•ΩπA…ΩŸ•ëï…Ãπ1ΩçÖ±]°•Õ¡ï»Ï(ÄÄÄÄÄÄÄÅŸÖ»Åç°…ΩµïA…Ωô•±îÄÙÅ}ç°…ΩµïA…Ωô•±ïΩµâºπMï±ïç—ïë%—ï¥ÅÖÃÅ°…ΩµïA…Ωô•±ï%πôºÏ(ÄÄÄÄÄÄÄÅ•òÄ†Ö•ç—Ö—•ΩπA…ΩŸ•ëï…Ãπ%Õ1ΩçÖ∞°¡…ΩŸ•ëï»§ÄòòÅç°…ΩµïA…Ωô•±îÅ•ÃÅπ’±∞§(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅMï—M—Ö—’Ã†â	•——îÅõÒ»Åëï∏Å	…Ω›Õï»µÖ±±âÖç¨Åï•∏Å°…ΩµîµA…Ωô•∞ÅÖ’Õﬂë°±ï∏∏à∞Å……Ω»§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ}ç°…ΩµïA…Ωô•±ïΩµâºπΩç’Ã†§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ…ï—’…∏Ï(ÄÄÄÄÄÄÄÅÙ((ÄÄÄÄÄÄÄÅ}ÕÖŸï%πA…Ωù…ïÕÃÄÙÅ—…’îÏ(ÄÄÄÄÄÄÄÅ}µ•ç…Ω¡°ΩπïIïô…ïÕ°Q•µï»πM—Ω¿†§Ï(ÄÄÄÄÄÄÄÅMï—%π¡’—ÕπÖâ±ïê°ôÖ±Õî§Ï(ÄÄÄÄÄÄÄÅMï—M—Ö—’Ã†â•πÕ—ï±±’πùï∏Å›ï…ëï∏ÅÕ•ç°ï»ÉÒâï…πΩµµï∏Éäòà∞Å%πôº§Ï(ÄÄÄÄÄÄÄÅ—…‰(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅŸÖ»Å…ïÕ’±–ÄÙÅÖ›Ö•–Å}ÕÖŸïÕÂπå°πï‹ÅMï——•πùÕΩ…µYÖ±’ïÃ†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ¡…ΩŸ•ëï»∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅµ•ç…Ω¡°Ωπîπ%ê∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅµ•ç…Ω¡°Ωπîπ•Õ¡±ÖÂ9Öµî∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ}°Ω—≠ïÂ	Ω‡πQï·–πQ…•¥†§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅç°…ΩµïA…Ωô•±î§§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ•òÄ†Ö…ïÕ’±–π=¨§(ÄÄÄÄÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅMï—M—Ö—’Ã°…ïÕ’±–π5ïÕÕÖùî∞Å……Ω»§Ï(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ…ï—’…∏Ï(ÄÄÄÄÄÄÄÄÄÄÄÅÙ((ÄÄÄÄÄÄÄÄÄÄÄÅMï—M—Ö—’Ã†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄêâ	ï…ï•–É
-‹ÅÌ…ïÕ’±–π5•ç…Ω¡°Ωπï9ÖµïÙÉ
-‹ÅÌ…ïÕ’±–π!Ω—≠ïÂÙà∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅM’ççïÕÃ§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅÖ›Ö•–ÅQÖÕ¨πï±Ö‰†‘‘¿§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ!•ëî†§Ï(ÄÄÄÄÄÄÄÅÙ(ÄÄÄÄÄÄÄÅô•πÖ±±‰(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ}ÕÖŸï%πA…Ωù…ïÕÃÄÙÅôÖ±ÕîÏ(ÄÄÄÄÄÄÄÄÄÄÄÅMï—%π¡’—ÕπÖâ±ïê°—…’î§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅU¡ëÖ—ïA…ΩŸ•ëï…U§°’¡ëÖ—ïM—Ö—’ÃËÅôÖ±Õî§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ•òÄ°Y•Õ•â±î§(ÄÄÄÄÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ}µ•ç…Ω¡°ΩπïIïô…ïÕ°Q•µï»πM—Ö…–†§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅÙ(ÄÄÄÄÄÄÄÅÙ(ÄÄÄÅÙ((ÄÄÄÅ¡…•ŸÖ—îÅŸΩ•êÅMï—%π¡’—ÕπÖâ±ïê°âΩΩ∞ÅïπÖâ±ïê§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅ}ÕÖŸï	’——Ω∏ππÖâ±ïêÄÙÅïπÖâ±ïêÏ(ÄÄÄÄÄÄÄÅ}¡…ΩŸ•ëï…ΩµâºππÖâ±ïêÄÙÅïπÖâ±ïêÏ(ÄÄÄÄÄÄÄÅ}µ•ç…Ω¡°ΩπïΩµâºππÖâ±ïêÄÙÅïπÖâ±ïêÏ(ÄÄÄÄÄÄÄÅ}µ•ç…Ω¡°ΩπïIïô…ïÕ°	’——Ω∏ππÖâ±ïêÄÙÅïπÖâ±ïêÏ(ÄÄÄÄÄÄÄÅ}ç°…ΩµïA…Ωô•±ïΩµâºππÖâ±ïêÄÙÅïπÖâ±ïêÄòòÄÖ%Õ1ΩçÖ±A…ΩŸ•ëï»Ï(ÄÄÄÄÄÄÄÅ}¡…Ωô•±ïIïô…ïÕ°	’——Ω∏ππÖâ±ïêÄÙÅïπÖâ±ïêÄòòÄÖ%Õ1ΩçÖ±A…ΩŸ•ëï»Ï(ÄÄÄÄÄÄÄÅ}¡…Ωô•±ïÖ…êππÖâ±ïêÄÙÅïπÖâ±ïêÄòòÄÖ%Õ1ΩçÖ±A…ΩŸ•ëï»Ï(ÄÄÄÄÄÄÄÅ}°Ω—≠ïÂ	Ω‡ππÖâ±ïêÄÙÅïπÖâ±ïêÏ(ÄÄÄÅÙ((ÄÄÄÅ¡…•ŸÖ—îÅŸΩ•êÅÖ¡—’…ï!Ω—≠ï‰°Ωâ©ïç–¸ÅÕïπëï»∞Å-ïÂŸïπ—…ùÃÅî§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅîπM’¡¡…ïÕÕ-ïÂA…ïÕÃÄÙÅ—…’îÏ(ÄÄÄÄÄÄÄÅîπ!Öπë±ïêÄÙÅ—…’îÏ(ÄÄÄÄÄÄÄÅ•òÄ°îπ-ïÂΩëîÅ•ÃÅ-ïÂÃπΩπ—…Ω±-ï‰ÅΩ»Å-ïÂÃπM°•ô—-ï‰ÅΩ»Å-ïÂÃπ5ïπ‘ÅΩ»Å-ïÂÃπ1]•∏ÅΩ»Å-ïÂÃπI]•∏§(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ…ï—’…∏Ï(ÄÄÄÄÄÄÄÅÙ((ÄÄÄÄÄÄÄÅ•òÄ°îπ-ïÂΩëîÄÙÙÅ-ïÂÃπÕçÖ¡î§(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅMï—M—Ö—’Ã†âÕçÖ¡îÅ•Õ–ÅõÒ»Åëï∏Å’ôπÖ°µïÖââ…’ç†Å…ïÕï…Ÿ•ï…–∏à∞Å……Ω»§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ…ï—’…∏Ï(ÄÄÄÄÄÄÄÅÙ((ÄÄÄÄÄÄÄÅ•òÄ†Ö%ÕMÖôï!Ω—≠ïÂMï±ïç—•Ω∏°îπ-ïÂΩëî∞Åîπ5Ωë•ô•ï…Ã§§(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅMï—M—Ö—’Ã†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄâ•πÈï±πîÅ	’ç°Õ—Öâï∏∞ÅiÖ°±ï∏Å’πêÅ1ïï…—ÖÕ—îÅÕ•πêÅÖ±ÃÅù±ΩâÖ±ï»ÅM°Ω…—ç’–ÅÈ‘Å±ï•ç°–ÅÖ’Õ≥ŸÕâÖ»∏Å	•——îÅM—…ú∞Å±–ÅΩëï»ÅUµÕç°Ö±–ÅŸï…›ïπëï∏ÉäLÅΩëï»Åï•πîÅµQÖÕ—îÅﬂë°±ï∏∏à∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ……Ω»§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ…ï—’…∏Ï(ÄÄÄÄÄÄÄÅÙ((ÄÄÄÄÄÄÄÅŸÖ»Å¡Ö…—ÃÄÙÅπï‹Å1•Õ–ÒÕ—…•πú¯†§Ï(ÄÄÄÄÄÄÄÅ•òÄ°îπΩπ—…Ω∞§Å¡Ö…—Ãπëê†â—…∞à§Ï(ÄÄÄÄÄÄÄÅ•òÄ°îπ±–§Å¡Ö…—Ãπëê†â±–à§Ï(ÄÄÄÄÄÄÄÅ•òÄ°îπM°•ô–§Å¡Ö…—Ãπëê†âM°•ô–à§Ï(ÄÄÄÄÄÄÄÅ¡Ö…—Ãπëê°îπ-ïÂΩëîπQΩM—…•πú†§§Ï(ÄÄÄÄÄÄÄÅ}°Ω—≠ïÂ	Ω‡πQï·–ÄÙÅÕ—…•πúπ)Ω•∏†à¨à∞Å¡Ö…—Ã§Ï(ÄÄÄÄÄÄÄÅ}°Ω—≠ïÂ	Ω‡πççïÕÕ•â±ïïÕç…•¡—•Ω∏ÄÙ(ÄÄÄÄÄÄÄÄÄÄÄÄêâïﬂë°±—ï»Å’ôπÖ°µîµM°Ω…—ç’–ËÅÌ}°Ω—≠ïÂ	Ω‡πQï·—Ù∏Å-±•ç≠ï∏Å’πêÅëÀÒç≠ï∏∞Å’¥Å•°∏ÅÈ‘Éëπëï…∏∏àÏ(ÄÄÄÄÄÄÄÅMï—M—Ö—’Ã†â9ï’îÅQÖÕ—ïπ≠Ωµâ•πÖ—•Ω∏Åùïﬂë°±–∏Åi’¥Å≠—•Ÿ•ï…ï∏ÅÕ¡ï•ç°ï…∏∏à∞ÅQï·—5’—ïê§Ï(ÄÄÄÅÙ((ÄÄÄÅ•π—ï…πÖ∞ÅÕ—Ö—•åÅâΩΩ∞Å%ÕMÖôï!Ω—≠ïÂMï±ïç—•Ω∏†(ÄÄÄÄÄÄÄÅ-ïÂÃÅ≠ïÂΩëî∞(ÄÄÄÄÄÄÄÅ-ïÂÃÅµΩë•ô•ï…Ã§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅŸÖ»Å°ÖÕ5Ωë•ô•ï»ÄÙ(ÄÄÄÄÄÄÄÄÄÄÄÄ°µΩë•ô•ï…ÃÄòÄ°-ïÂÃπΩπ—…Ω∞ÅÅ-ïÂÃπ±–ÅÅ-ïÂÃπM°•ô–§§ÄÑÙÅ-ïÂÃπ9ΩπîÏ(ÄÄÄÄÄÄÄÅŸÖ»Å≠ïÂYÖ±’îÄÙÄ°•π–•≠ïÂΩëîÏ(ÄÄÄÄÄÄÄÅ…ï—’…∏Å°ÖÕ5Ωë•ô•ï»ÅÒ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ≠ïÂYÖ±’îÄ¯ÙÄ°•π–•-ïÂÃπƒÄòò(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ≠ïÂYÖ±’îÄÙÄ°•π–•-ïÂÃπ»–Ï(ÄÄÄÅÙ((ÄÄÄÅ¡…•ŸÖ—îÅŸΩ•êÅ=πΩ…µ±ΩÕ•πú°Ωâ©ïç–¸ÅÕïπëï»∞ÅΩ…µ±ΩÕ•πùŸïπ—…ùÃÅî§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅ•òÄ°}Ö±±Ω›±ΩÕîÅÒÅîπ±ΩÕïIïÖÕΩ∏ÄÙÙÅ±ΩÕïIïÖÕΩ∏π¡¡±•çÖ—•Ωπ·•—Ö±∞§(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ…ï—’…∏Ï(ÄÄÄÄÄÄÄÅÙ((ÄÄÄÄÄÄÄÅîπÖπçï∞ÄÙÅ—…’îÏ(ÄÄÄÄÄÄÄÅ!•ëî†§Ï(ÄÄÄÅÙ((ÄÄÄÅ¡…•ŸÖ—îÅŸΩ•êÅMï—M—Ö—’Ã°Õ—…•πúÅ—ï·–∞ÅΩ±Ω»ÅçΩ±Ω»§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅ}Õ—Ö—’Õ1Öâï∞πQï·–ÄÙÅ—ï·–Ï(ÄÄÄÄÄÄÄÅ}Õ—Ö—’Õ1Öâï∞πΩ…ïΩ±Ω»ÄÙÅçΩ±Ω»Ï(ÄÄÄÄÄÄÄÅ}Õ—Ö—’Õ1Öâï∞πççïÕÕ•â±ïïÕç…•¡—•Ω∏ÄÙÅ—ï·–Ï(ÄÄÄÅÙ((ÄÄÄÅ¡…•ŸÖ—îÅÕ—Ö—•åÅQÖâ±ï1ÖÂΩ’—AÖπï∞Å…ïÖ—ï!ïÖëï»†§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅŸÖ»Å°ïÖëï»ÄÙÅπï‹ÅQÖâ±ï1ÖÂΩ’—AÖπï∞(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅΩç¨ÄÙÅΩç≠M—Â±îπ•±∞∞(ÄÄÄÄÄÄÄÄÄÄÄÅ’—ΩM•ÈîÄÙÅ—…’î∞(ÄÄÄÄÄÄÄÄÄÄÄÅ’—ΩM•Èï5ΩëîÄÙÅ’—ΩM•Èï5Ωëîπ…Ω›πëM°…•π¨∞(ÄÄÄÄÄÄÄÄÄÄÄÅ	Öç≠Ω±Ω»ÄÙÅ]•πëΩ›	Öç≠ù…Ω’πê∞(ÄÄÄÄÄÄÄÄÄÄÄÅΩ±’µπΩ’π–ÄÙÄƒ∞(ÄÄÄÄÄÄÄÄÄÄÄÅIΩ›Ω’π–ÄÙÄÃ∞(ÄÄÄÄÄÄÄÄÄÄÄÅAÖëë•πúÄÙÅπï‹ÅAÖëë•πú†–¿∞Ä»»∞Ä–¿∞Äƒ‡§∞(ÄÄÄÄÄÄÄÄÄÄÄÅ5Ö…ù•∏ÄÙÅAÖëë•πúπµ¡—‰∞(ÄÄÄÄÄÄÄÄÄÄÄÅQÖâM—Ω¿ÄÙÅôÖ±Õî∞(ÄÄÄÄÄÄÄÄÄÄÄÅççïÕÕ•â±ïIΩ±îÄÙÅççïÕÕ•â±ïIΩ±îπ…Ω’¡•πú∞(ÄÄÄÄÄÄÄÄÄÄÄÅççïÕÕ•â±ï9ÖµîÄÙÄâ=I°Ω¥à∞(ÄÄÄÄÄÄÄÄÄÄÄÅççïÕÕ•â±ïïÕç…•¡—•Ω∏ÄÙÄâ•πôÖç°ïÃÅ•≠—•ï…ï∏Å•∏Å©ïëïÃÅQï·—ôï±ê∏à(ÄÄÄÄÄÄÄÅÙÏ(ÄÄÄÄÄÄÄÅ°ïÖëï»πΩ±’µπM—Â±ïÃπëê°πï‹ÅΩ±’µπM—Â±î°M•ÈïQÂ¡îπAï…çïπ–∞Äƒ¿¿§§Ï(ÄÄÄÄÄÄÄÅ°ïÖëï»πIΩ›M—Â±ïÃπëê°πï‹ÅIΩ›M—Â±î°M•ÈïQÂ¡îπ’—ΩM•Èî§§Ï(ÄÄÄÄÄÄÄÅ°ïÖëï»πIΩ›M—Â±ïÃπëê°πï‹ÅIΩ›M—Â±î°M•ÈïQÂ¡îπ’—ΩM•Èî§§Ï(ÄÄÄÄÄÄÄÅ°ïÖëï»πIΩ›M—Â±ïÃπëê°πï‹ÅIΩ›M—Â±î°M•ÈïQÂ¡îπ’—ΩM•Èî§§Ï((ÄÄÄÄÄÄÄÅŸÖ»Åâ…ÖπêÄÙÅ…ïÖ—ï	ΩëÂ1Öâï∞†(ÄÄÄÄÄÄÄÄÄÄÄÄâ=I!=4É
-‹Å%-Q%I8à∞(ÄÄÄÄÄÄÄÄÄÄÄÅ%πôº∞(ÄÄÄÄÄÄÄÄÄÄÄÅπï‹ÅΩπ–†âMïùΩîÅU$à∞Ä‡∏’ò∞ÅΩπ—M—Â±îπ	Ω±ê§§Ï(ÄÄÄÄÄÄÄÅâ…Öπêπ5Ö…ù•∏ÄÙÅπï‹ÅAÖëë•πú†¿∞Ä¿∞Ä¿∞Ä–§Ï(ÄÄÄÄÄÄÄÅ°ïÖëï»πΩπ—…Ω±Ãπëê°â…Öπê∞Ä¿∞Ä¿§Ï((ÄÄÄÄÄÄÄÅŸÖ»Å°ï…ºÄÙÅ…ïÖ—ï	ΩëÂ1Öâï∞†(ÄÄÄÄÄÄÄÄÄÄÄÄâM¡…•ç†∏Å=I°Ω¥ÅÕç°…ï•â–∏à∞(ÄÄÄÄÄÄÄÄÄÄÄÅQï·—A…•µÖ…‰∞(ÄÄÄÄÄÄÄÄÄÄÄÅπï‹ÅΩπ–†âMïùΩîÅU$à∞Ä»–∞ÅΩπ—M—Â±îπ	Ω±ê§§Ï(ÄÄÄÄÄÄÄÅ°ï…ºπ5Ö…ù•∏ÄÙÅπï‹ÅAÖëë•πú†¿§Ï(ÄÄÄÄÄÄÄÅ°ï…ºπççïÕÕ•â±ïIΩ±îÄÙÅççïÕÕ•â±ïIΩ±îπM—Ö—•çQï·–Ï(ÄÄÄÄÄÄÄÅ°ïÖëï»πΩπ—…Ω±Ãπëê°°ï…º∞Ä¿∞Äƒ§Ï((ÄÄÄÄÄÄÄÅŸÖ»ÅÕ’â—•—±îÄÙÅ…ïÖ—ï	ΩëÂ1Öâï∞†(ÄÄÄÄÄÄÄÄÄÄÄÄâ•≠—•ï…îÅë•…ï≠–Å•∏Å©ïëïÃÅQï·—ôï±êÉäLÅ±Ω≠Ö∞Å’πêÅΩ°πîÅïπÕ—ï…›ïç°Õï∞∏à∞(ÄÄÄÄÄÄÄÄÄÄÄÅQï·—MïçΩπëÖ…‰∞(ÄÄÄÄÄÄÄÄÄÄÄÅπï‹ÅΩπ–†âMïùΩîÅU$à∞Äƒ¿∏’ò§§Ï(ÄÄÄÄÄÄÄÅÕ’â—•—±îπ5Ö…ù•∏ÄÙÅπï‹ÅAÖëë•πú†»∞Ä‘∞Ä¿∞Ä¿§Ï(ÄÄÄÄÄÄÄÅ°ïÖëï»πΩπ—…Ω±Ãπëê°Õ’â—•—±î∞Ä¿∞Ä»§Ï(ÄÄÄÄÄÄÄÅ…ï—’…∏Å°ïÖëï»Ï(ÄÄÄÅÙ((ÄÄÄÅ¡…•ŸÖ—îÅÕ—Ö—•åÅQÖâ±ï1ÖÂΩ’—AÖπï∞Å…ïÖ—ïM—ï¡Ö…ê°Õ—…•πúÅπ’µâï»∞ÅÕ—…•πúÅ—•—±î∞ÅÕ—…•πúÅëïÕç…•¡—•Ω∏§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅŸÖ»ÅçÖ…êÄÙÅπï‹ÅQÖâ±ï1ÖÂΩ’—AÖπï∞(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ’—ΩM•ÈîÄÙÅ—…’î∞(ÄÄÄÄÄÄÄÄÄÄÄÅ’—ΩM•Èï5ΩëîÄÙÅ’—ΩM•Èï5Ωëîπ…Ω›πëM°…•π¨∞(ÄÄÄÄÄÄÄÄÄÄÄÅΩç¨ÄÙÅΩç≠M—Â±îπ•±∞∞(ÄÄÄÄÄÄÄÄÄÄÄÅ	Öç≠Ω±Ω»ÄÙÅM’…ôÖçî∞(ÄÄÄÄÄÄÄÄÄÄÄÅ	Ω…ëï…M—Â±îÄÙÅ	Ω…ëï…M—Â±îπ•·ïëM•πù±î∞(ÄÄÄÄÄÄÄÄÄÄÄÅΩ±’µπΩ’π–ÄÙÄ»∞(ÄÄÄÄÄÄÄÄÄÄÄÅIΩ›Ω’π–ÄÙÄ»∞(ÄÄÄÄÄÄÄÄÄÄÄÅAÖëë•πúÄÙÅπï‹ÅAÖëë•πú†»¿∞Äƒ‡∞Ä»¿∞Äƒ‡§∞(ÄÄÄÄÄÄÄÄÄÄÄÅ5Ö…ù•∏ÄÙÅAÖëë•πúπµ¡—‰∞(ÄÄÄÄÄÄÄÄÄÄÄÅQÖâM—Ω¿ÄÙÅôÖ±Õî∞(ÄÄÄÄÄÄÄÄÄÄÄÅççïÕÕ•â±ïIΩ±îÄÙÅççïÕÕ•â±ïIΩ±îπ…Ω’¡•πú∞(ÄÄÄÄÄÄÄÄÄÄÄÅççïÕÕ•â±ï9ÖµîÄÙÄêâMç°…•—–ÅÌπ’µâï…ÙËÅÌ—•—±ïÙà∞(ÄÄÄÄÄÄÄÄÄÄÄÅççïÕÕ•â±ïïÕç…•¡—•Ω∏ÄÙÅëïÕç…•¡—•Ω∏(ÄÄÄÄÄÄÄÅÙÏ(ÄÄÄÄÄÄÄÅçÖ…êπΩ±’µπM—Â±ïÃπëê°πï‹ÅΩ±’µπM—Â±î°M•ÈïQÂ¡îπâÕΩ±’—î∞Ä––§§Ï(ÄÄÄÄÄÄÄÅçÖ…êπΩ±’µπM—Â±ïÃπëê°πï‹ÅΩ±’µπM—Â±î°M•ÈïQÂ¡îπAï…çïπ–∞Äƒ¿¿§§Ï(ÄÄÄÄÄÄÄÅçÖ…êπIΩ›M—Â±ïÃπëê°πï‹ÅIΩ›M—Â±î°M•ÈïQÂ¡îπ’—ΩM•Èî§§Ï(ÄÄÄÄÄÄÄÅçÖ…êπIΩ›M—Â±ïÃπëê°πï‹ÅIΩ›M—Â±î°M•ÈïQÂ¡îπ’—ΩM•Èî§§Ï((ÄÄÄÄÄÄÄÅŸÖ»ÅâÖëùîÄÙÅπï‹Å1Öâï∞(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅQï·–ÄÙÅπ’µâï»∞(ÄÄÄÄÄÄÄÄÄÄÄÅ’—ΩM•ÈîÄÙÅôÖ±Õî∞(ÄÄÄÄÄÄÄÄÄÄÄÅM•ÈîÄÙÅπï‹ÅM•Èî†Ã»∞ÄÃ»§∞(ÄÄÄÄÄÄÄÄÄÄÄÅ5Ö…ù•∏ÄÙÅπï‹ÅAÖëë•πú†¿∞Äƒ∞Äƒ»∞Ä¿§∞(ÄÄÄÄÄÄÄÄÄÄÄÅ	Öç≠Ω±Ω»ÄÙÅA…•µÖ…‰∞(ÄÄÄÄÄÄÄÄÄÄÄÅΩ…ïΩ±Ω»ÄÙÅΩ±Ω»π]°•—î∞(ÄÄÄÄÄÄÄÄÄÄÄÅΩπ–ÄÙÅπï‹ÅΩπ–†âMïùΩîÅU$à∞Äƒ¿∞ÅΩπ—M—Â±îπ	Ω±ê§∞(ÄÄÄÄÄÄÄÄÄÄÄÅQï·—±•ù∏ÄÙÅΩπ—ïπ—±•ùπµïπ–π5•ëë±ïïπ—ï»∞(ÄÄÄÄÄÄÄÄÄÄÄÅQÖâM—Ω¿ÄÙÅôÖ±Õî∞(ÄÄÄÄÄÄÄÄÄÄÄÅççïÕÕ•â±ï9ÖµîÄÙÄêâMç°…•—–ÅÌπ’µâï…Ùà(ÄÄÄÄÄÄÄÅÙÏ(ÄÄÄÄÄÄÄÅçÖ…êπΩπ—…Ω±Ãπëê°âÖëùî∞Ä¿∞Ä¿§Ï(ÄÄÄÄÄÄÄÅçÖ…êπMï—IΩ›M¡Ö∏°âÖëùî∞Ä»§Ï((ÄÄÄÄÄÄÄÅŸÖ»Å—•—±ï1Öâï∞ÄÙÅ…ïÖ—ï	ΩëÂ1Öâï∞†(ÄÄÄÄÄÄÄÄÄÄÄÅ—•—±î∞(ÄÄÄÄÄÄÄÄÄÄÄÅQï·—A…•µÖ…‰∞(ÄÄÄÄÄÄÄÄÄÄÄÅπï‹ÅΩπ–†âMïùΩîÅU$à∞Äƒ»∏’ò∞ÅΩπ—M—Â±îπ	Ω±ê§§Ï(ÄÄÄÄÄÄÄÅ—•—±ï1Öâï∞π5Ö…ù•∏ÄÙÅAÖëë•πúπµ¡—‰Ï(ÄÄÄÄÄÄÄÅçÖ…êπΩπ—…Ω±Ãπëê°—•—±ï1Öâï∞∞Äƒ∞Ä¿§Ï((ÄÄÄÄÄÄÄÅŸÖ»ÅëïÕç…•¡—•Ωπ1Öâï∞ÄÙÅ…ïÖ—ï	ΩëÂ1Öâï∞°ëïÕç…•¡—•Ω∏∞ÅQï·—MïçΩπëÖ…‰§Ï(ÄÄÄÄÄÄÄÅëïÕç…•¡—•Ωπ1Öâï∞π5Ö…ù•∏ÄÙÅπï‹ÅAÖëë•πú†¿∞ÄÃ∞Ä¿∞Ä¿§Ï(ÄÄÄÄÄÄÄÅçÖ…êπΩπ—…Ω±Ãπëê°ëïÕç…•¡—•Ωπ1Öâï∞∞Äƒ∞Äƒ§Ï(ÄÄÄÄÄÄÄÅ…ï—’…∏ÅçÖ…êÏ(ÄÄÄÅÙ((ÄÄÄÅ¡…•ŸÖ—îÅÕ—Ö—•åÅQÖâ±ï1ÖÂΩ’—AÖπï∞Å…ïÖ—ï•ï±ëIΩ‹°Ωπ—…Ω∞Åô•ï±ê∞Å	’——Ω∏Å…ïô…ïÕ°	’——Ω∏§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅŸÖ»Å…Ω‹ÄÙÅπï‹ÅQÖâ±ï1ÖÂΩ’—AÖπï∞(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ’—ΩM•ÈîÄÙÅ—…’î∞(ÄÄÄÄÄÄÄÄÄÄÄÅ’—ΩM•Èï5ΩëîÄÙÅ’—ΩM•Èï5Ωëîπ…Ω›πëM°…•π¨∞(ÄÄÄÄÄÄÄÄÄÄÄÅΩç¨ÄÙÅΩç≠M—Â±îπ•±∞∞(ÄÄÄÄÄÄÄÄÄÄÄÅ	Öç≠Ω±Ω»ÄÙÅΩ±Ω»πQ…ÖπÕ¡Ö…ïπ–∞(ÄÄÄÄÄÄÄÄÄÄÄÅΩ±’µπΩ’π–ÄÙÄ»∞(ÄÄÄÄÄÄÄÄÄÄÄÅIΩ›Ω’π–ÄÙÄƒ∞(ÄÄÄÄÄÄÄÄÄÄÄÅAÖëë•πúÄÙÅAÖëë•πúπµ¡—‰∞(ÄÄÄÄÄÄÄÄÄÄÄÅ5Ö…ù•∏ÄÙÅAÖëë•πúπµ¡—‰∞(ÄÄÄÄÄÄÄÄÄÄÄÅQÖâM—Ω¿ÄÙÅôÖ±Õî(ÄÄÄÄÄÄÄÅÙÏ(ÄÄÄÄÄÄÄÅ…Ω‹πΩ±’µπM—Â±ïÃπëê°πï‹ÅΩ±’µπM—Â±î°M•ÈïQÂ¡îπAï…çïπ–∞Äƒ¿¿§§Ï(ÄÄÄÄÄÄÄÅ…Ω‹πΩ±’µπM—Â±ïÃπëê°πï‹ÅΩ±’µπM—Â±î°M•ÈïQÂ¡îπâÕΩ±’—î∞ÄƒÃ‡§§Ï(ÄÄÄÄÄÄÄÅ…Ω‹πIΩ›M—Â±ïÃπëê°πï‹ÅIΩ›M—Â±î°M•ÈïQÂ¡îπâÕΩ±’—î∞ÄÃ‡§§Ï(ÄÄÄÄÄÄÄÅô•ï±êπΩç¨ÄÙÅΩç≠M—Â±îπ•±∞Ï(ÄÄÄÄÄÄÄÅô•ï±êπ5Ö…ù•∏ÄÙÅπï‹ÅAÖëë•πú†¿∞Ä–∞Äƒ»∞ÄÃ§Ï(ÄÄÄÄÄÄÄÅ…ïô…ïÕ°	’——Ω∏πΩç¨ÄÙÅΩç≠M—Â±îπ•±∞Ï(ÄÄÄÄÄÄÄÅ…ïô…ïÕ°	’——Ω∏π5Ö…ù•∏ÄÙÅAÖëë•πúπµ¡—‰Ï(ÄÄÄÄÄÄÄÅ…Ω‹πΩπ—…Ω±Ãπëê°ô•ï±ê∞Ä¿∞Ä¿§Ï(ÄÄÄÄÄÄÄÅ…Ω‹πΩπ—…Ω±Ãπëê°…ïô…ïÕ°	’——Ω∏∞Äƒ∞Ä¿§Ï(ÄÄÄÄÄÄÄÅ…ï—’…∏Å…Ω‹Ï(ÄÄÄÅÙ((ÄÄÄÅ¡…•ŸÖ—îÅÕ—Ö—•åÅΩµâΩ	Ω‡Å…ïÖ—ïΩµâΩ	Ω‡°Õ—…•πúÅÖççïÕÕ•â±ï9Öµî∞ÅÕ—…•πúÅÖççïÕÕ•â±ïïÕç…•¡—•Ω∏§ÄÙ¯Åπï‹†§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅ…Ω¡Ω›πM—Â±îÄÙÅΩµâΩ	Ω·M—Â±îπ…Ω¡Ω›π1•Õ–∞(ÄÄÄÄÄÄÄÅ±Ö—M—Â±îÄÙÅ±Ö—M—Â±îπ±Ö–∞(ÄÄÄÄÄÄÄÅ	Öç≠Ω±Ω»ÄÙÅIÖ•ÕïëM’…ôÖçî∞(ÄÄÄÄÄÄÄÅΩ…ïΩ±Ω»ÄÙÅQï·—A…•µÖ…‰∞(ÄÄÄÄÄÄÄÅ%π—ïù…Ö±!ï•ù°–ÄÙÅôÖ±Õî∞(ÄÄÄÄÄÄÄÅ…Ω¡Ω›π!ï•ù°–ÄÙÄ»–¿∞(ÄÄÄÄÄÄÄÅ5Ö·…Ω¡Ω›π%—ïµÃÄÙÄƒ¿∞(ÄÄÄÄÄÄÄÅççïÕÕ•â±ï9ÖµîÄÙÅÖççïÕÕ•â±ï9Öµî∞(ÄÄÄÄÄÄÄÅççïÕÕ•â±ïïÕç…•¡—•Ω∏ÄÙÅÖççïÕÕ•â±ïïÕç…•¡—•Ω∏(ÄÄÄÅÙÏ((ÄÄÄÅ¡…•ŸÖ—îÅÕ—Ö—•åÅ1Öâï∞Å…ïÖ—ï	ΩëÂ1Öâï∞°Õ—…•πúÅ—ï·–∞ÅΩ±Ω»ÅçΩ±Ω»∞ÅΩπ–¸ÅôΩπ–ÄÙÅπ’±∞§ÄÙ¯Åπï‹†§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅQï·–ÄÙÅ—ï·–∞(ÄÄÄÄÄÄÄÅΩπ–ÄÙÅôΩπ–Ä¸¸Åπï‹ÅΩπ–†âMïùΩîÅU$à∞Ä‰∏»’ò§∞(ÄÄÄÄÄÄÄÅΩ…ïΩ±Ω»ÄÙÅçΩ±Ω»∞(ÄÄÄÄÄÄÄÅ	Öç≠Ω±Ω»ÄÙÅΩ±Ω»πQ…ÖπÕ¡Ö…ïπ–∞(ÄÄÄÄÄÄÄÅ’—ΩM•ÈîÄÙÅ—…’î∞(ÄÄÄÄÄÄÄÅ’—Ω±±•¡Õ•ÃÄÙÅôÖ±Õî∞(ÄÄÄÄÄÄÄÅΩç¨ÄÙÅΩç≠M—Â±îπ•±∞∞(ÄÄÄÄÄÄÄÅ5Ö…ù•∏ÄÙÅAÖëë•πúπµ¡—‰∞(ÄÄÄÄÄÄÄÅQï·—±•ù∏ÄÙÅΩπ—ïπ—±•ùπµïπ–π5•ëë±ï1ïô–∞(ÄÄÄÄÄÄÄÅQÖâM—Ω¿ÄÙÅôÖ±Õî(ÄÄÄÅÙÏ((ÄÄÄÅ¡…•ŸÖ—îÅÕ—Ö—•åÅ	’——Ω∏Å…ïÖ—ïIïô…ïÕ°	’——Ω∏†(ÄÄÄÄÄÄÄÅÕ—…•πúÅÖççïÕÕ•â±ï9Öµî∞(ÄÄÄÄÄÄÄÅÕ—…•πúÅÖççïÕÕ•â±ïïÕç…•¡—•Ω∏§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅŸÖ»Åâ’——Ω∏ÄÙÅ…ïÖ—ï	’——Ω∏†(ÄÄÄÄÄÄÄÄÄÄÄÄãäÏÅ≠—’Ö±•Õ•ï…ï∏à∞(ÄÄÄÄÄÄÄÄÄÄÄÅÕïçΩπëÖ…‰ËÅ—…’î∞(ÄÄÄÄÄÄÄÄÄÄÄÅÖççïÕÕ•â±ïïÕç…•¡—•Ω∏§Ï(ÄÄÄÄÄÄÄÅâ’——Ω∏πΩπ–ÄÙÅπï‹ÅΩπ–†âMïùΩîÅU$à∞Ä‡∏‹’ò∞ÅΩπ—M—Â±îπ	Ω±ê§Ï(ÄÄÄÄÄÄÄÅâ’——Ω∏πççïÕÕ•â±ï9ÖµîÄÙÅÖççïÕÕ•â±ï9ÖµîÏ(ÄÄÄÄÄÄÄÅ…ï—’…∏Åâ’——Ω∏Ï(ÄÄÄÅÙ((ÄÄÄÅ¡…•ŸÖ—îÅÕ—Ö—•åÅ	’——Ω∏Å…ïÖ—ï	’——Ω∏†(ÄÄÄÄÄÄÄÅÕ—…•πúÅ—ï·–∞(ÄÄÄÄÄÄÄÅâΩΩ∞ÅÕïçΩπëÖ…‰∞(ÄÄÄÄÄÄÄÅÕ—…•πúÅÖççïÕÕ•â±ïïÕç…•¡—•Ω∏§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅŸÖ»Åâ’——Ω∏ÄÙÅπï‹Å	’——Ω∏(ÄÄÄÄÄÄÄÅÏ(ÄÄÄÄÄÄÄÄÄÄÄÅQï·–ÄÙÅ—ï·–∞(ÄÄÄÄÄÄÄÄÄÄÄÅΩç¨ÄÙÅΩç≠M—Â±îπ•±∞∞(ÄÄÄÄÄÄÄÄÄÄÄÅ±Ö—M—Â±îÄÙÅ±Ö—M—Â±îπ±Ö–∞(ÄÄÄÄÄÄÄÄÄÄÄÅ	Öç≠Ω±Ω»ÄÙÅÕïçΩπëÖ…‰Ä¸ÅIÖ•ÕïëM’…ôÖçîÄËÅA…•µÖ…‰∞(ÄÄÄÄÄÄÄÄÄÄÄÅΩ…ïΩ±Ω»ÄÙÅQï·—A…•µÖ…‰∞(ÄÄÄÄÄÄÄÄÄÄÄÅ’…ÕΩ»ÄÙÅ’…ÕΩ…Ãπ!Öπê∞(ÄÄÄÄÄÄÄÄÄÄÄÅΩπ–ÄÙÅπï‹ÅΩπ–†âMïùΩîÅU$à∞Ä‰∏’ò∞ÅΩπ—M—Â±îπ	Ω±ê§∞(ÄÄÄÄÄÄÄÄÄÄÄÅUÕï5πïµΩπ•åÄÙÅôÖ±Õî∞(ÄÄÄÄÄÄÄÄÄÄÄÅUÕïY•Õ’Ö±M—Â±ï	Öç≠Ω±Ω»ÄÙÅôÖ±Õî∞(ÄÄÄÄÄÄÄÄÄÄÄÅççïÕÕ•â±ï9ÖµîÄÙÅ—ï·–∞(ÄÄÄÄÄÄÄÄÄÄÄÅççïÕÕ•â±ïïÕç…•¡—•Ω∏ÄÙÅÖççïÕÕ•â±ïïÕç…•¡—•Ω∏(ÄÄÄÄÄÄÄÅÙÏ(ÄÄÄÄÄÄÄÅâ’——Ω∏π±Ö—¡¡ïÖ…Öπçîπ	Ω…ëï…M•ÈîÄÙÅÕïçΩπëÖ…‰Ä¸ÄƒÄËÄ¿Ï(ÄÄÄÄÄÄÄÅâ’——Ω∏π±Ö—¡¡ïÖ…Öπçîπ	Ω…ëï…Ω±Ω»ÄÙÅ	Ω…ëï»Ï(ÄÄÄÄÄÄÄÅâ’——Ω∏π±Ö—¡¡ïÖ…Öπçîπ5Ω’Õï=Ÿï…	Öç≠Ω±Ω»ÄÙ(ÄÄÄÄÄÄÄÄÄÄÄÅÕïçΩπëÖ…‰Ä¸ÅΩ±Ω»π…Ωµ…ùà†–»∞Ä–‡∞Äÿ¿§ÄËÅA…•µÖ…Â!ΩŸï»Ï(ÄÄÄÄÄÄÄÅâ’——Ω∏π±Ö—¡¡ïÖ…Öπçîπ5Ω’ÕïΩ›π	Öç≠Ω±Ω»ÄÙ(ÄÄÄÄÄÄÄÄÄÄÄÅÕïçΩπëÖ…‰Ä¸ÅΩ±Ω»π…Ωµ…ùà†Ãÿ∞Ä–ƒ∞Ä‘»§ÄËÅA…•µÖ…ÂA…ïÕÕïêÏ(ÄÄÄÄÄÄÄÅ…ï—’…∏Åâ’——Ω∏Ï(ÄÄÄÅÙ((ÄÄÄÅ¡…•ŸÖ—îÅÕ—Ö—•åÅŸΩ•êÅëë’±±]•ë—°IΩ‹†(ÄÄÄÄÄÄÄÅQÖâ±ï1ÖÂΩ’—AÖπï∞Å—Öâ±î∞(ÄÄÄÄÄÄÄÅΩπ—…Ω∞ÅçΩπ—…Ω∞∞(ÄÄÄÄÄÄÄÅAÖëë•πúÅµÖ…ù•∏§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅŸÖ»Å…Ω‹ÄÙÅ—Öâ±îπIΩ›Ω’π–Ï(ÄÄÄÄÄÄÄÅ—Öâ±îπIΩ›Ω’π–¨¨Ï(ÄÄÄÄÄÄÄÅ—Öâ±îπIΩ›M—Â±ïÃπëê°πï‹ÅIΩ›M—Â±î°M•ÈïQÂ¡îπ’—ΩM•Èî§§Ï(ÄÄÄÄÄÄÄÅçΩπ—…Ω∞πΩç¨ÄÙÅΩç≠M—Â±îπ•±∞Ï(ÄÄÄÄÄÄÄÅçΩπ—…Ω∞π5Ö…ù•∏ÄÙÅµÖ…ù•∏Ï(ÄÄÄÄÄÄÄÅ—Öâ±îπΩπ—…Ω±Ãπëê°çΩπ—…Ω∞∞Ä¿∞Å…Ω‹§Ï(ÄÄÄÄÄÄÄÅ—Öâ±îπMï—Ω±’µπM¡Ö∏°çΩπ—…Ω∞∞Å—Öâ±îπΩ±’µπΩ’π–§Ï(ÄÄÄÅÙ((ÄÄÄÅ¡…•ŸÖ—îÅÕ—Ö—•åÅŸΩ•êÅëëM—Öç≠IΩ‹†(ÄÄÄÄÄÄÄÅQÖâ±ï1ÖÂΩ’—AÖπï∞Å—Öâ±î∞(ÄÄÄÄÄÄÄÅΩπ—…Ω∞ÅçΩπ—…Ω∞∞(ÄÄÄÄÄÄÄÅAÖëë•πú¸ÅµÖ…ù•∏ÄÙÅπ’±∞§(ÄÄÄÅÏ(ÄÄÄÄÄÄÄÅŸÖ»Å…Ω‹ÄÙÅ—Öâ±îπIΩ›Ω’π–Ï(ÄÄÄÄÄÄÄÅ—Öâ±îπIΩ›Ω’π–¨¨Ï(ÄÄÄÄÄÄÄÅ—Öâ±îπIΩ›M—Â±ïÃπëê°πï‹ÅIΩ›M—Â±î°M•ÈïQÂ¡îπ’—ΩM•Èî§§Ï(ÄÄÄÄÄÄÄÅçΩπ—…Ω∞πΩç¨ÄÙÅΩç≠M—Â±îπ•±∞Ï(ÄÄÄÄÄÄÄÅçΩπ—…Ω∞π5Ö…ù•∏ÄÙÅµÖ…ù•∏Ä¸¸Åπï‹ÅAÖëë•πú†¿∞Ä¿∞Ä¿∞Äƒ–§Ï(ÄÄÄÄÄÄÄÅ—Öâ±îπΩπ—…Ω±Ãπëê°çΩπ—…Ω∞∞Ä¿∞Å…Ω‹§Ï(ÄÄÄÅÙ)Ù()•π—ï…πÖ∞ÅÕïÖ±ïêÅ…ïçΩ…êÅMï——•πùÕΩ…µYÖ±’ïÃ†(ÄÄÄÅÕ—…•πúÅ•ç—Ö—•ΩπA…ΩŸ•ëï»∞(ÄÄÄÅÕ—…•πúÅ5•ç…Ω¡°Ωπï%ê∞(ÄÄÄÅÕ—…•πúÅ5•ç…Ω¡°Ωπï9Öµî∞(ÄÄÄÅÕ—…•πúÅ!Ω—≠ï‰∞(ÄÄÄÅ°…ΩµïA…Ωô•±ï%πôº¸Å°…ΩµïA…Ωô•±î§Ï()•π—ï…πÖ∞ÅÕïÖ±ïêÅ…ïçΩ…êÅMï——•πùÕ¡¡±ÂIïÕ’±–†(ÄÄÄÅâΩΩ∞Å=¨∞(ÄÄÄÅÕ—…•πúÅ5ïÕÕÖùî∞(ÄÄÄÅÕ—…•πúÅ5•ç…Ω¡°Ωπï9Öµî∞(ÄÄÄÅÕ—…•πúÅ!Ω—≠ï‰§)Ï(ÄÄÄÅ¡’â±•åÅÕ—Ö—•åÅMï——•πùÕ¡¡±ÂIïÕ’±–ÅM’ççïÕÃ°Õ—…•πúÅµ•ç…Ω¡°Ωπï9Öµî∞ÅÕ—…•πúÅ°Ω—≠ï‰§ÄÙ¯(ÄÄÄÄÄÄÄÅπï‹°—…’î∞ÅÕ—…•πúπµ¡—‰∞Åµ•ç…Ω¡°Ωπï9Öµî∞Å°Ω—≠ï‰§Ï((ÄÄÄÅ¡’â±•åÅÕ—Ö—•åÅMï——•πùÕ¡¡±ÂIïÕ’±–ÅÖ•∞°Õ—…•πúÅµïÕÕÖùî§ÄÙ¯(ÄÄÄÄÄÄÄÅπï‹°ôÖ±Õî∞ÅµïÕÕÖùî∞ÅÕ—…•πúπµ¡—‰∞ÅÕ—…•πúπµ¡—‰§Ï)Ù(
+            "Speichern & losdiktieren",
+            secondary: false,
+            "Einstellungen speichern und ORhom im Hintergrund zum Diktieren bereitstellen.");
+        _saveButton.Name = "saveAndStartButton";
+        _saveButton.Margin = new Padding(0, 0, 6, 0);
+        _saveButton.TabIndex = 0;
+        _saveButton.Click += async (_, _) => await SaveAsync();
+        buttonLayout.Controls.Add(_saveButton, 0, 0);
+
+        _hideButton = CreateButton(
+            "Im Hintergrund schlie√üen",
+            secondary: true,
+            "Fenster ausblenden; ORhom l√§uft im Infobereich weiter.");
+        _hideButton.Name = "hideToTrayButton";
+        _hideButton.Margin = new Padding(6, 0, 0, 0);
+        _hideButton.TabIndex = 1;
+        _hideButton.Click += (_, _) => Hide();
+        buttonLayout.Controls.Add(_hideButton, 1, 0);
+        AcceptButton = _saveButton;
+
+        _providerCombo.SelectedIndexChanged += (_, _) => UpdateProviderUi();
+
+        _microphoneRefreshTimer = new System.Windows.Forms.Timer { Interval = 2000 };
+        _microphoneRefreshTimer.Tick += (_, _) =>
+        {
+            if (Visible && !_saveInProgress)
+            {
+                ReloadMicrophones(showStatus: false);
+            }
+        };
+        VisibleChanged += (_, _) =>
+        {
+            if (Visible)
+            {
+                RefreshFromSettings(showMicrophoneStatus: true);
+                _microphoneRefreshTimer.Start();
+            }
+            else
+            {
+                _microphoneRefreshTimer.Stop();
+            }
+        };
+        FormClosing += OnFormClosing;
+        UpdateProviderUi(updateStatus: false);
+    }
+
+    public void ShowAndActivate()
+    {
+        if (!Visible)
+        {
+            Show();
+        }
+        else
+        {
+            RefreshFromSettings(showMicrophoneStatus: true);
+        }
+
+        WindowState = FormWindowState.Normal;
+        Activate();
+        BringToFront();
+    }
+
+    public void ClosePermanently()
+    {
+        _allowClose = true;
+        Close();
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+
+        var workingArea = Screen.FromControl(this).WorkingArea;
+        var maximumWidth = Math.Max(MinimumSize.Width, workingArea.Width - 32);
+        var maximumHeight = Math.Max(MinimumSize.Height, workingArea.Height - 32);
+        if (Width <= maximumWidth && Height <= maximumHeight)
+        {
+            return;
+        }
+
+        var fittedSize = new Size(
+            Math.Min(Width, maximumWidth),
+            Math.Min(Height, maximumHeight));
+        Bounds = new Rectangle(
+            workingArea.Left + ((workingArea.Width - fittedSize.Width) / 2),
+            workingArea.Top + ((workingArea.Height - fittedSize.Height) / 2),
+            fittedSize.Width,
+            fittedSize.Height);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _microphoneRefreshTimer.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
+
+    private bool IsLocalProvider =>
+        _providerCombo.SelectedItem is not DictationProviderOption option ||
+        DictationProviders.IsLocal(option.Value);
+
+    private void RefreshFromSettings(bool showMicrophoneStatus)
+    {
+        var configuredProvider = DictationProviders.Normalize(_settings.DictationProvider);
+        _providerCombo.SelectedItem = _providerCombo.Items
+            .Cast<DictationProviderOption>()
+            .First(option => option.Value.Equals(
+                configuredProvider,
+                StringComparison.OrdinalIgnoreCase));
+
+        _hotkeyBox.Text = _settings.ToggleHotkey;
+        _hotkeyBox.AccessibleDescription =
+            $"Gew√§hlter Aufnahme-Shortcut: {_hotkeyBox.Text}. Klicken und dr√ºcken, um ihn zu √§ndern.";
+
+        UpdateProviderUi(updateStatus: false);
+        ReloadChromeProfiles(showStatus: false, preferSettings: true);
+        ReloadMicrophones(showMicrophoneStatus, preferSettings: true);
+    }
+
+    private void UpdateProviderUi(bool updateStatus = true)
+    {
+        _profileCard.Visible = !IsLocalProvider;
+        _profileCard.Enabled = !_saveInProgress && !IsLocalProvider;
+        _providerHintLabel.Text = IsLocalProvider
+            ? "Empfohlen ¬∑ Die Audiodaten bleiben auf deinem PC."
+            : "Fallback ¬∑ ORhom verwendet dein angemeldetes ChatGPT-Chrome-Profil.";
+
+        if (updateStatus && !_saveInProgress)
+        {
+            SetStatus(
+                IsLocalProvider
+                    ? "Lokale deutsche Erkennung √ºber whisper.cpp und Vulkan ist ausgew√§hlt."
+                    : "Browser-Fallback ausgew√§hlt. Bitte darunter das passende Chrome-Profil pr√ºfen.",
+                TextMuted);
+        }
+    }
+
+    private void ReloadMicrophones(bool showStatus, bool preferSettings = false)
+    {
+        var selected = _microphoneCombo.SelectedItem as AudioInputDeviceInfo;
+        var devices = _audioDevices.GetActiveMicrophoneDevices();
+        var signatures = devices.Select(device => $"{device.Id}\u001e{device.DisplayName}").ToList();
+        var devicesChanged = !_knownMicrophones.SetEquals(signatures);
+        if (!devicesChanged && !showStatus && !preferSettings)
+        {
+            return;
+        }
+
+        _knownMicrophones.Clear();
+        _knownMicrophones.UnionWith(signatures);
+        _reloadingMicrophones = true;
+        _microphoneCombo.BeginUpdate();
+        try
+        {
+            _microphoneCombo.Items.Clear();
+            foreach (var device in devices)
+            {
+                _microphoneCombo.Items.Add(device);
+            }
+
+            var selectedId = preferSettings
+                ? _settings.PreferredMicrophoneId
+                : selected?.Id ?? _settings.PreferredMicrophoneId;
+            var selectedName = preferSettings
+                ? _settings.PreferredMicrophoneName
+                : selected?.DisplayName ?? _settings.PreferredMicrophoneName;
+            var matchingSelection = devices.FirstOrDefault(device =>
+                !string.IsNullOrWhiteSpace(selectedId) &&
+                device.Id.Equals(selectedId, StringComparison.OrdinalIgnoreCase));
+            matchingSelection ??= devices.FirstOrDefault(device =>
+                device.DisplayName.Equals(selectedName, StringComparison.OrdinalIgnoreCase));
+            if (matchingSelection is not null)
+            {
+                _microphoneCombo.SelectedItem = matchingSelection;
+            }
+            else if (_microphoneCombo.Items.Count > 0)
+            {
+                _microphoneCombo.SelectedIndex = 0;
+            }
+        }
+        finally
+        {
+            _microphoneCombo.EndUpdate();
+            _reloadingMicrophones = false;
+        }
+
+        if (devices.Count == 0)
+        {
+            SetStatus("Kein aktives Mikrofon erkannt. Bitte ein Ger√§t verbinden.", Error);
+        }
+        else if (showStatus || devicesChanged)
+        {
+            var suffix = devices.Count == 1 ? "Mikrofon erkannt." : "Mikrofone erkannt.";
+            SetStatus($"{devices.Count} {suffix}", Success);
+        }
+    }
+
+    private void ReloadChromeProfiles(bool showStatus, bool preferSettings = false)
+    {
+        var selectedDirectory = preferSettings
+            ? _settings.ChromeProfileDirectory
+            : (_chromeProfileCombo.SelectedItem as ChromeProfileInfo)?.DirectoryName
+                ?? _settings.ChromeProfileDirectory;
+        var result = _chromeProfiles.Discover(_settings.ChromeExecutablePath, _settings.ChromeUserDataDir);
+        _chromeProfileCombo.BeginUpdate();
+        try
+        {
+            _chromeProfileCombo.Items.Clear();
+            foreach (var profile in result.Profiles)
+            {
+                _chromeProfileCombo.Items.Add(profile);
+            }
+
+            _chromeProfileCombo.SelectedItem = result.Profiles.FirstOrDefault(profile =>
+                profile.DirectoryName.Equals(selectedDirectory, StringComparison.OrdinalIgnoreCase));
+            if (_chromeProfileCombo.SelectedIndex < 0 && _chromeProfileCombo.Items.Count > 0)
+            {
+                _chromeProfileCombo.SelectedIndex = 0;
+            }
+        }
+        finally
+        {
+            _chromeProfileCombo.EndUpdate();
+        }
+
+        if (showStatus && !IsLocalProvider)
+        {
+            SetStatus(
+                result.Profiles.Count == 0
+                    ? "Keine Chrome-Profile gefunden. Ist Google Chrome installiert?"
+                    : $"{result.Profiles.Count} Chrome-Profil(e) gefunden.",
+                result.Profiles.Count == 0 ? Error : TextMuted);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_microphoneCombo.SelectedItem is not AudioInputDeviceInfo microphone)
+        {
+            SetStatus("Bitte zuerst ein aktives Mikrofon ausw√§hlen.", Error);
+            _microphoneCombo.Focus();
+            return;
+        }
+
+        var provider = (_providerCombo.SelectedItem as DictationProviderOption)?.Value
+            ?? DictationProviders.LocalWhisper;
+        var chromeProfile = _chromeProfileCombo.SelectedItem as ChromeProfileInfo;
+        if (!DictationProviders.IsLocal(provider) && chromeProfile is null)
+        {
+            SetStatus("Bitte f√ºr den Browser-Fallback ein Chrome-Profil ausw√§hlen.", Error);
+            _chromeProfileCombo.Focus();
+            return;
+        }
+
+        _saveInProgress = true;
+        _microphoneRefreshTimer.Stop();
+        SetInputsEnabled(false);
+        SetStatus("Einstellungen werden sicher √ºbernommen ‚Ä¶", Info);
+        try
+        {
+            var result = await _saveAsync(new SettingsFormValues(
+                provider,
+                microphone.Id,
+                microphone.DisplayName,
+                _hotkeyBox.Text.Trim(),
+                chromeProfile));
+            if (!result.Ok)
+            {
+                SetStatus(result.Message, Error);
+                return;
+            }
+
+            SetStatus(
+                $"Bereit ¬∑ {result.MicrophoneName} ¬∑ {result.Hotkey}",
+                Success);
+            await Task.Delay(550);
+            Hide();
+        }
+        finally
+        {
+            _saveInProgress = false;
+            SetInputsEnabled(true);
+            UpdateProviderUi(updateStatus: false);
+            if (Visible)
+            {
+                _microphoneRefreshTimer.Start();
+            }
+        }
+    }
+
+    private void SetInputsEnabled(bool enabled)
+    {
+        _saveButton.Enabled = enabled;
+        _providerCombo.Enabled = enabled;
+        _microphoneCombo.Enabled = enabled;
+        _microphoneRefreshButton.Enabled = enabled;
+        _chromeProfileCombo.Enabled = enabled && !IsLocalProvider;
+        _profileRefreshButton.Enabled = enabled && !IsLocalProvider;
+        _profileCard.Enabled = enabled && !IsLocalProvider;
+        _hotkeyBox.Enabled = enabled;
+    }
+
+    private void CaptureHotkey(object? sender, KeyEventArgs e)
+    {
+        e.SuppressKeyPress = true;
+        e.Handled = true;
+        if (e.KeyCode is Keys.ControlKey or Keys.ShiftKey or Keys.Menu or Keys.LWin or Keys.RWin)
+        {
+            return;
+        }
+
+        if (e.KeyCode == Keys.Escape)
+        {
+            SetStatus("Escape ist f√ºr den Aufnahmeabbruch reserviert.", Error);
+            return;
+        }
+
+        if (!IsSafeHotkeySelection(e.KeyCode, e.Modifiers))
+        {
+            SetStatus(
+                "Einzelne Buchstaben, Zahlen und Leertaste sind als globaler Shortcut zu leicht ausl√∂sbar. Bitte Strg, Alt oder Umschalt verwenden ‚Äì oder eine F-Taste w√§hlen.",
+                Error);
+            return;
+        }
+
+        var parts = new List<string>();
+        if (e.Control) parts.Add("Ctrl");
+        if (e.Alt) parts.Add("Alt");
+        if (e.Shift) parts.Add("Shift");
+        parts.Add(e.KeyCode.ToString());
+        _hotkeyBox.Text = string.Join("+", parts);
+        _hotkeyBox.AccessibleDescription =
+            $"Gew√§hlter Aufnahme-Shortcut: {_hotkeyBox.Text}. Klicken und dr√ºcken, um ihn zu √§ndern.";
+        SetStatus("Neue Tastenkombination gew√§hlt. Zum Aktivieren speichern.", TextMuted);
+    }
+
+    internal static bool IsSafeHotkeySelection(
+        Keys keyCode,
+        Keys modifiers)
+    {
+        var hasModifier =
+            (modifiers & (Keys.Control | Keys.Alt | Keys.Shift)) != Keys.None;
+        var keyValue = (int)keyCode;
+        return hasModifier ||
+               keyValue >= (int)Keys.F1 &&
+               keyValue <= (int)Keys.F24;
+    }
+
+    private void OnFormClosing(object? sender, FormClosingEventArgs e)
+    {
+        if (_allowClose || e.CloseReason == CloseReason.ApplicationExitCall)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        Hide();
+    }
+
+    private void SetStatus(string text, Color color)
+    {
+        _statusLabel.Text = text;
+        _statusLabel.ForeColor = color;
+        _statusLabel.AccessibleDescription = text;
+    }
+
+    private static TableLayoutPanel CreateHeader()
+    {
+        var header = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            BackColor = WindowBackground,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(40, 22, 40, 18),
+            Margin = Padding.Empty,
+            TabStop = false,
+            AccessibleRole = AccessibleRole.Grouping,
+            AccessibleName = "ORhom",
+            AccessibleDescription = "Einfaches Diktieren in jedes Textfeld."
+        };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        header.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        header.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var brand = CreateBodyLabel(
+            "ORHOM ¬∑ DIKTIEREN",
+            Info,
+            new Font("Segoe UI", 8.5f, FontStyle.Bold));
+        brand.Margin = new Padding(0, 0, 0, 4);
+        header.Controls.Add(brand, 0, 0);
+
+        var hero = CreateBodyLabel(
+            "Sprich. ORhom schreibt.",
+            TextPrimary,
+            new Font("Segoe UI", 24, FontStyle.Bold));
+        hero.Margin = new Padding(0);
+        hero.AccessibleRole = AccessibleRole.StaticText;
+        header.Controls.Add(hero, 0, 1);
+
+        var subtitle = CreateBodyLabel(
+            "Diktiere direkt in jedes Textfeld ‚Äì lokal und ohne Fensterwechsel.",
+            TextSecondary,
+            new Font("Segoe UI", 10.5f));
+        subtitle.Margin = new Padding(2, 5, 0, 0);
+        header.Controls.Add(subtitle, 0, 2);
+        return header;
+    }
+
+    private static TableLayoutPanel CreateStepCard(string number, string title, string description)
+    {
+        var card = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Fill,
+            BackColor = Surface,
+            BorderStyle = BorderStyle.FixedSingle,
+            ColumnCount = 2,
+            RowCount = 2,
+            Padding = new Padding(20, 18, 20, 18),
+            Margin = Padding.Empty,
+            TabStop = false,
+            AccessibleRole = AccessibleRole.Grouping,
+            AccessibleName = $"Schritt {number}: {title}",
+            AccessibleDescription = description
+        };
+        card.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 44));
+        card.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var badge = new Label
+        {
+            Text = number,
+            AutoSize = false,
+            Size = new Size(32, 32),
+            Margin = new Padding(0, 1, 12, 0),
+            BackColor = Primary,
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI", 10, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleCenter,
+            TabStop = false,
+            AccessibleName = $"Schritt {number}"
+        };
+        card.Controls.Add(badge, 0, 0);
+        card.SetRowSpan(badge, 2);
+
+        var titleLabel = CreateBodyLabel(
+            title,
+            TextPrimary,
+            new Font("Segoe UI", 12.5f, FontStyle.Bold));
+        titleLabel.Margin = Padding.Empty;
+        card.Controls.Add(titleLabel, 1, 0);
+
+        var descriptionLabel = CreateBodyLabel(description, TextSecondary);
+        descriptionLabel.Margin = new Padding(0, 3, 0, 0);
+        card.Controls.Add(descriptionLabel, 1, 1);
+        return card;
+    }
+
+    private static TableLayoutPanel CreateFieldRow(Control field, Button refreshButton)
+    {
+        var row = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent,
+            ColumnCount = 2,
+            RowCount = 1,
+            Padding = Padding.Empty,
+            Margin = Padding.Empty,
+            TabStop = false
+        };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 138));
+        row.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        field.Dock = DockStyle.Fill;
+        field.Margin = new Padding(0, 4, 12, 3);
+        refreshButton.Dock = DockStyle.Fill;
+        refreshButton.Margin = Padding.Empty;
+        row.Controls.Add(field, 0, 0);
+        row.Controls.Add(refreshButton, 1, 0);
+        return row;
+    }
+
+    private static ComboBox CreateComboBox(string accessibleName, string accessibleDescription) => new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        FlatStyle = FlatStyle.Flat,
+        BackColor = RaisedSurface,
+        ForeColor = TextPrimary,
+        IntegralHeight = false,
+        DropDownHeight = 240,
+        MaxDropDownItems = 10,
+        AccessibleName = accessibleName,
+        AccessibleDescription = accessibleDescription
+    };
+
+    private static Label CreateBodyLabel(string text, Color color, Font? font = null) => new()
+    {
+        Text = text,
+        Font = font ?? new Font("Segoe UI", 9.25f),
+        ForeColor = color,
+        BackColor = Color.Transparent,
+        AutoSize = true,
+        AutoEllipsis = false,
+        Dock = DockStyle.Fill,
+        Margin = Padding.Empty,
+        TextAlign = ContentAlignment.MiddleLeft,
+        TabStop = false
+    };
+
+    private static Button CreateRefreshButton(
+        string accessibleName,
+        string accessibleDescription)
+    {
+        var button = CreateButton(
+            "‚Üª Aktualisieren",
+            secondary: true,
+            accessibleDescription);
+        button.Font = new Font("Segoe UI", 8.75f, FontStyle.Bold);
+        button.AccessibleName = accessibleName;
+        return button;
+    }
+
+    private static Button CreateButton(
+        string text,
+        bool secondary,
+        string accessibleDescription)
+    {
+        var button = new Button
+        {
+            Text = text,
+            Dock = DockStyle.Fill,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = secondary ? RaisedSurface : Primary,
+            ForeColor = TextPrimary,
+            Cursor = Cursors.Hand,
+            Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+            UseMnemonic = false,
+            UseVisualStyleBackColor = false,
+            AccessibleName = text,
+            AccessibleDescription = accessibleDescription
+        };
+        button.FlatAppearance.BorderSize = secondary ? 1 : 0;
+        button.FlatAppearance.BorderColor = Border;
+        button.FlatAppearance.MouseOverBackColor =
+            secondary ? Color.FromArgb(42, 48, 60) : PrimaryHover;
+        button.FlatAppearance.MouseDownBackColor =
+            secondary ? Color.FromArgb(36, 41, 52) : PrimaryPressed;
+        return button;
+    }
+
+    private static void AddFullWidthRow(
+        TableLayoutPanel table,
+        Control control,
+        Padding margin)
+    {
+        var row = table.RowCount;
+        table.RowCount++;
+        table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        control.Dock = DockStyle.Fill;
+        control.Margin = margin;
+        table.Controls.Add(control, 0, row);
+        table.SetColumnSpan(control, table.ColumnCount);
+    }
+
+    private static void AddStackRow(
+        TableLayoutPanel table,
+        Control control,
+        Padding? margin = null)
+    {
+        var row = table.RowCount;
+        table.RowCount++;
+        table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        control.Dock = DockStyle.Fill;
+        control.Margin = margin ?? new Padding(0, 0, 0, 14);
+        table.Controls.Add(control, 0, row);
+    }
+}
+
+internal sealed record SettingsFormValues(
+    string DictationProvider,
+    string MicrophoneId,
+    string MicrophoneName,
+    string Hotkey,
+    ChromeProfileInfo? ChromeProfile);
+
+internal sealed record SettingsApplyResult(
+    bool Ok,
+    string Message,
+    string MicrophoneName,
+    string Hotkey)
+{
+    public static SettingsApplyResult Success(string microphoneName, string hotkey) =>
+        new(true, string.Empty, microphoneName, hotkey);
+
+    public static SettingsApplyResult Fail(string message) =>
+        new(false, message, string.Empty, string.Empty);
+}

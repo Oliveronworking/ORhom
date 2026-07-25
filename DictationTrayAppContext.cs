@@ -366,4 +366,2503 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     {
         var presentation = UiStatePresentation.For(
             _status,
-            €Õ;Ó⁄$z{-ÆÈ‹j◊ù˜F∂Wì“w∂Ü˜F∂Wó“r‚"ì∞¢6Ü˜t÷W76vRÇB$∆ˆ∂∆RFWWG66ÜRFñ∑FñW'VÊrÃ:GVgB¶WGßB÷óB∂Ü˜F∂Wó“ñ“ÜñÁFW&w'VÊB‚"ì∞¢&WGW&‚6WGFñÊw4«ï&W7V«BÂ7V66W72Ü÷ñ7&˜ÜˆÊTÊ÷R¬Ü˜F∂Wíì∞¢–†¢&ófFRfˆñB˜VÂ6WGFñÊw2Çê¢∞–¢ñbÖ˜7FGW2“7FGW2‰ñF∆Rê–¢∞–¢6Ü˜t÷W76vRÇ$&óGFRßVW'7BFñR∆VfVÊFRVfÊÜ÷R&VVÊFV‚‚"ì∞–¢&WGW&„∞–¢––†–¢˜6WGFñÊw4f˜&“Â6Ü˜tÊD7FófFRÇì∞–¢––†–¢&ófFRfˆñB˜V‰Üó7F˜'íÇê–¢∞–¢ˆÜó7F˜'îf˜&“Â6Ü˜tÊD7FófFRÇì∞–¢––†–¢&ófFR7ñÊ2F6≥ƒFñ7FFñˆÂ&V6˜fW'ï&W7V«C‚G'ï&V6˜fW%FWáEFÙÜó7F˜'î7ñÊ2Ä–¢ñÁEG"6ÜEvñÊF˜r¿–¢WFˆ÷Fñˆ‰V∆V÷VÁCÚ&VfW'&VDñÁWB¿–¢7G&ñÊr˜WF6ˆ÷R¿–¢ñÁCÚFñ÷V˜WD˜fW'&ñFT◊2“ÁV∆¬¿–¢7Fñˆ„Ú&W7F˜&UF&vWDfˆ7W2“ÁV∆¬¿–¢&ˆˆ¬6∆V$6ˆ◊˜6W$gFW%W'6ó7FVÊ6R“G'VR¿–¢6Ê6V∆∆FñˆÂFˆ∂V‚6Ê6V∆∆FñˆÂFˆ∂V‚“FVfV«Bê–¢∞–¢f"&VE&W7V«B“vóBˆFñ7FFñˆ‰6ˆÁG&ˆ∆∆W"Â&VDFñ7FFVEFWáD7ñÊ2Ä–¢6ÜEvñÊF˜r¿–¢&VfW'&VDñÁWB¿–¢Fñ÷V˜WD˜fW'&ñFT◊3¢Fñ÷V˜WD˜fW'&ñFT◊2¿–¢&W7F˜&UF&vWDfˆ7W3¢&W7F˜&UF&vWDfˆ7W2¿–¢6Ê6V∆∆FñˆÂFˆ∂V„¢6Ê6V∆∆FñˆÂFˆ∂V‚ì∞–¢f"FWáB“&VE&W7V«BÂFWáBÂG&ñ“Çì∞–¢ˆ∆ˆvvW"‰ñÊfÚÇB$Fñ7FFñˆ‚&V6˜fW'í&VB6ˆ◊∆WFVB‚GFV◊G3◊∑&VE&W7V«B‰GFV◊G7“÷WFÜˆC◊∑&VE&W7V«B‰÷WFÜˆG“FWáD∆VÊwFÉ◊∑FWáB‰∆VÊwFá“"ì∞–¢ñbáFWáB‰∆VÊwFÇ”“«¬WFˆ÷Fñˆ‰ÜV«W'2‰ó5VÁ6fT6GW&VEFWáBáFWáBíê–¢∞–¢&WGW&‚ÊWrFñ7FFñˆÂ&V6˜fW'ï&W7V«BÄ¢f«6R¿¢&VE&W7V«B‰6∆ó&ˆ&E&W7F˜&Tfñ∆VB¿¢f«6R¿¢wVñB‰V◊Gí¿¢7G&ñÊr‰V◊Gí¿¢˜WF6ˆ÷Rì∞¢––†–¢f"W'6ó7FVB“ˆÜó7F˜'íÂG'îFBáFWáB¬˜WF6ˆ÷R¬˜WBf"Üó7F˜'îVÁG'îñBì∞¢f"6∆V&VB“W'6ó7FVBb`¢Ç6∆V$6ˆ◊˜6W$gFW%W'6ó7FVÊ6R«¿¢vóBˆFñ7FFñˆ‰6ˆÁG&ˆ∆∆W"‰6∆V%W'6ó7FVDFñ7FFñˆ‰7ñÊ2Ä¢6ÜEvñÊF˜r¿¢&VE&W7V«B‰ñÁWBÛÚ&VfW'&VDñÁWB¿¢&W7F˜&UF&vWDfˆ7W2¿¢FWáBíì∞¢ñbáW'6ó7FVBbb6∆V$6ˆ◊˜6W$gFW%W'6ó7FVÊ6Rê¢∞¢WFFU&V6˜fW&VD6∆VÁW˜WF6ˆ÷RÜÜó7F˜'îVÁG'îñB¬˜WF6ˆ÷R¬6∆V&VBì∞¢–†¢&WGW&‚ÊWrFñ7FFñˆÂ&V6˜fW'ï&W7V«BÄ¢W'6ó7FVB¿¢&VE&W7V«B‰6∆ó&ˆ&E&W7F˜&Tfñ∆VB¿¢W'6ó7FVBbb6∆V$6ˆ◊˜6W$gFW%W'6ó7FVÊ6Rbb6∆V&VB¿¢Üó7F˜'îVÁG'îñB¿¢FWáB¿¢˜WF6ˆ÷Rì∞¢––†–¢&ófFR7ñÊ2F6≤w&óFT6ÜDwDFñvÊ˜7Fñ747ñÊ2Çê–¢∞–¢ñbÇ˜6WGFñÊw2‰VÊ&∆T6ÜDwDñÁWDFñvÊ˜7Fñ72ê–¢∞–¢6Ü˜t÷W76vRÇ$6ÜDuB‘FñvÊ˜6Ró7Bñ‚FV‚VñÁ7FV∆«VÊvV‚FV∑FófñW'B‚"ì∞–¢&WGW&„∞–¢––†–¢ñbÇvóBˆ˜W&Fñˆ‰∆ˆ6≤ÂvóD7ñÊ2Éíê–¢∞–¢6Ü˜t÷W76vRÇ$ı&Üˆ“fW&&&VóFWBvW&FRVñÊRÊFW&R∑Fñˆ‚‚"ì∞–¢&WGW&„∞–¢––†–¢G'ê–¢∞–¢f"vñÊF˜r“˜6W76ñˆ„Ú‰6ÜEvñÊF˜rÛÚˆFñ7FFñˆ‰6ˆÁG&ˆ∆∆W"‰∂Ê˜v‰6ÜEvñÊF˜s∞–¢vóBˆFñ7FFñˆ‰6ˆÁG&ˆ∆∆W"‰FñvÊ˜6T6ÜDwEVî7ñÊ2ávñÊF˜rì∞–¢6Ü˜t÷W76vRÇ$6ÜDuBFñvÊ˜6RwW&FRñÁ2∆ˆrvW66á&ñV&V‚‚"ì∞–¢––¢fñÊ∆«ê–¢∞–¢ˆ˜W&Fñˆ‰∆ˆ6≤Â&V∆V6RÇì∞–¢––¢––†–¢&ófFRfˆñB˜V‰6á&ˆ÷U&ˆfñ∆TFó&V7F˜'íÇê–¢∞–¢f"f∆ñFFñˆ‚“ˆFñ7FFñˆ‰6ˆÁG&ˆ∆∆W"Âf∆ñFFT6ˆÊfñwW&VE&ˆfñ∆RÇì∞–¢ñbÇf∆ñFFñˆ‚‰ó5f∆ñBê–¢∞–¢6Ü˜t6ˆÊfñwW&VE&ˆfñ∆UVÊfñ∆&∆RÇì∞–¢&WGW&„∞–¢––†–¢˜VÂFÇáf∆ñFFñˆ‚Â&ˆfñ∆TFó&V7F˜'ïFÇì∞–¢––†–¢&ófFR&ˆˆ¬G'ï&W6W'fUVÊFñÊt6ˆ◊˜6W$&Vf˜&T6∆˜6RÜ˜WB7G&ñÊrfñ«W&T÷W76vRí”‡–¢G'ï&W6W'fUVÊFñÊt6ˆ◊˜6W$&Vf˜&T6∆˜6RÄ–¢˜WBfñ«W&T÷W76vR¿–¢˜WBÚì∞–†–¢&ófFR&ˆˆ¬G'ï&W6W'fUVÊFñÊt6ˆ◊˜6W$&Vf˜&T6∆˜6RÄ–¢˜WB7G&ñÊrfñ«W&T÷W76vR¿–¢˜WB7G&ñÊsÚ&W6W'fVD6ˆ◊˜6W%FWáBê–¢∞–¢f"ñÁ7V7Fñˆ‚“ˆFñ7FFñˆ‰6ˆÁG&ˆ∆∆W"‰ñÁ7V7EVÊFñÊt6ˆ◊˜6W"Çì∞–¢f"&W6W'fFñˆ‚“VÊFñÊt6ˆ◊˜6W%&W6W'fFñˆ‚Â&W6W'fRÄ–¢ñÁ7V7Fñˆ‚¿–¢ˆÜó7F˜'í‰6ˆÁFñÁ5FWáB¿–¢FWáB”‚ˆÜó7F˜'íÂG'îFBÄ–¢FWáB¿–¢Fñ7FFñˆ‰Üó7F˜'î˜WF6ˆ÷W2Â&W6W'fVD&Vf˜&T6∆˜6R¿–¢˜WBÚíì∞–¢ñbÖVÊFñÊt6ˆ◊˜6W%&W6W'fFñˆ‚‰ó56fUFÙ6∆˜6Rá&W6W'fFñˆ‚íê–¢∞–¢&W6W'fVD6ˆ◊˜6W%FWáB“ñÁ7V7Fñˆ‚Â7FFR”“VÊFñÊt6ˆ◊˜6W%7FFRÂFWá@–¢ÚñÁ7V7Fñˆ‚ÂFWá@–¢¢ÁV∆√∞–¢ñbÜñÁ7V7Fñˆ‚Â7FFR”“VÊFñÊt6ˆ◊˜6W%7FFRÂFWáBê–¢∞–¢ˆ∆ˆvvW"‰ñÊfÚÇB%VÊFñÊr6ˆ◊˜6W"FWáB&W6W'fVB&Vf˜&R˜vÊVB◊vñÊF˜r6∆˜6R‚FWáD∆VÊwFÉ◊∂ñÁ7V7Fñˆ‚ÂFWáB‰∆VÊwFá“˜WF6ˆ÷S◊∑&W6W'fFñˆÁ“"ì∞–¢––†–¢fñ«W&T÷W76vR“7G&ñÊr‰V◊Gì∞–¢&WGW&‚G'VS∞–¢––†–¢ñbá&W6W'fFñˆ‚”“VÊFñÊt6ˆ◊˜6W%&W6W'fFñˆ‰˜WF6ˆ÷RÂW'6ó7FVÊ6Tfñ∆VBê–¢∞–¢&W6W'fVD6ˆ◊˜6W%FWáB“ÁV∆√∞–¢fñ«W&T÷W76vR“$ñ“6ÜDuB‘VÁGwW&b∆ñVwBÊˆ6ÇFWáB¬FW"Êñ6áBñ“Fñ∑FñW'fW&∆VbvW7Vñ6ÜW'BvW&FV‚∂ˆÊÁFR‚F2&ˆfñ∆fVÁ7FW"&∆Vñ'BßV“66áWG¢FW2FWáFW2v\;fffÊWB‚#∞–¢&WGW&‚f«6S∞–¢––†–¢&W6W'fVD6ˆ◊˜6W%FWáB“ÁV∆√∞–¢fñ«W&T÷W76vR“$FW"6ÜDuB‘VÁGwW&b∂ˆÊÁFRÊñ6áB6ñ6ÜW"vW,;∆gBvW&FV‚‚F2&ˆfñ∆vV'VÊFVÊRÜñÁFW&w'VÊFfVÁ7FW"&∆Vñ'BßV“66áWG¢‹;fv∆ñ6ÜW"FWáFRv\;fffÊWC≤&óGFRFV‚f˜&vÊrW&ÊWWBfW'7V6ÜV‚‚#∞–¢&WGW&‚f«6S∞–¢––†–¢&ófFRfˆñB&W7F˜&UF&vWDfˆ7W2Ñfˆ7W5F&vWBF&vWBê¢∞–¢˜7FU6W'fñ6RÂ&W7F˜&UF&vWDfˆ7W2áF&vWBì∞¢–†¢&ófFRfˆñBWFFU&V6˜fW&VD6∆VÁW˜WF6ˆ÷RÄ¢wVñBÜó7F˜'îVÁG'îñB¿¢7G&ñÊr&V6˜fW'î˜WF6ˆ÷R¿¢&ˆˆ¬6∆VÁW6ˆ◊∆WFVBê¢∞¢ñbÜÜó7F˜'îVÁG'îñB”“wVñB‰V◊Gíê¢∞¢&WGW&„∞¢–†¢f"˜WF6ˆ÷R“6∆VÁW6ˆ◊∆WFV@¢Ú&V6˜fW'î˜WF6ˆ÷R”“Fñ7FFñˆ‰Üó7F˜'î˜WF6ˆ÷W2‰6Ê6V∆∆VE&V6˜fW&V@¢ÚFñ7FFñˆ‰Üó7F˜'î˜WF6ˆ÷W2‰6Ê6V∆∆VE&V6˜fW&VD6∆V&V@¢¢Fñ7FFñˆ‰Üó7F˜'î˜WF6ˆ÷W2‰fñ«W&U&V6˜fW&VD6∆V&V@¢¢Fñ7FFñˆ‰Üó7F˜'î˜WF6ˆ÷W2ÂVÊFñÊt6ˆ◊˜6W$6∆VÁW∞¢ˆÜó7F˜'íÂWFFT˜WF6ˆ÷RÜÜó7F˜'îVÁG'îñB¬˜WF6ˆ÷Rì∞¢–†¢&ófFRfˆñBˆ‰˜fW&∆ï∆6V÷VÁD6ˆ÷÷óGFVBÄ¢ˆ&¶V7CÚ6VÊFW"¿¢&V6˜&FñÊt˜fW&∆ï∆6V÷VÁDWfVÁD&w2Rê¢∞¢f"&Wfñ˜W4÷ˆÊóF˜"“˜6WGFñÊw2Â&V6˜&FñÊt˜fW&∆î÷ˆÊóF˜$FWfñ6TÊ÷S∞¢f"&Wfñ˜W5&V∆FófUÇ“˜6WGFñÊw2Â&V6˜&FñÊt˜fW&∆ï&V∆FófUÉ∞¢f"&Wfñ˜W5&V∆FófUí“˜6WGFñÊw2Â&V6˜&FñÊt˜fW&∆ï&V∆FófUì∞¢˜6WGFñÊw2Â&V6˜&FñÊt˜fW&∆î÷ˆÊóF˜$FWfñ6TÊ÷R“RÂ∆6V÷VÁB‰÷ˆÊóF˜$FWfñ6TÊ÷S∞¢˜6WGFñÊw2Â&V6˜&FñÊt˜fW&∆ï&V∆FófUÇ“RÂ∆6V÷VÁBÂ&V∆FófUÉ∞¢˜6WGFñÊw2Â&V6˜&FñÊt˜fW&∆ï&V∆FófUí“RÂ∆6V÷VÁBÂ&V∆FófUì∞¢ñbÖ˜6WGFñÊw2Â6fRÖˆ∆ˆvvW"íê¢∞¢ˆ∆ˆvvW"‰ñÊfÚÇB%&V6˜&FñÊr&"˜6óFñˆ‚6fVB‚÷ˆÊóF˜#“w∂RÂ∆6V÷VÁB‰÷ˆÊóF˜$FWfñ6TÊ÷W“r&V∆FófUÉ◊∂RÂ∆6V÷VÁBÂ&V∆FófUÉ§cG“&V∆FófUì◊∂RÂ∆6V÷VÁBÂ&V∆FófUì§cG“"ì∞¢&WGW&„∞¢–†¢˜6WGFñÊw2Â&V6˜&FñÊt˜fW&∆î÷ˆÊóF˜$FWfñ6TÊ÷R“&Wfñ˜W4÷ˆÊóF˜#∞¢˜6WGFñÊw2Â&V6˜&FñÊt˜fW&∆ï&V∆FófUÇ“&Wfñ˜W5&V∆FófUÉ∞¢˜6WGFñÊw2Â&V6˜&FñÊt˜fW&∆ï&V∆FófUí“&Wfñ˜W5&V∆FófUì∞¢6Ü˜tW'&˜$÷W76vRÇ$FñR˜6óFñˆ‚FW"Fñ∑FñW&∆Vó7FR∂ˆÊÁFRÊñ6áBvW7Vñ6ÜW'BvW&FV‚‚"ì∞¢–†–¢&ófFRfˆñB&W6WEFÙñF∆RÇê¢∞¢7F˜VFñÙGV6∂ñÊrÇì∞¢ñbÖˆ∆ˆ6≈6W76ñˆ‚ó2≤“∆ˆ6≈6W76ñˆ‚ê¢∞¢∆ˆ6≈6W76ñˆ‚‰6GW&RÂ&V6˜&FñÊt∆ñ÷óE&V6ÜVB”“ˆ‰∆ˆ6≈&V6˜&FñÊt∆ñ÷óE&V6ÜVC∞¢∆ˆ6≈6W76ñˆ‚‰6GW&RÂVÊWáV7FVF«ï7F˜VB”“ˆ‰∆ˆ6ƒ6GW&UVÊWáV7FVF«ï7F˜VC∞¢∆ˆ6≈6W76ñˆ‚‰6GW&R‰Fó7˜6RÇì∞¢ˆ∆ˆ6≈6W76ñˆ‚“ÁV∆√∞¢–¢˜6W76ñˆ‚“ÁV∆√∞¢˜VWVVE7F˜&WVW7FVB“f«6S∞–¢ˆÜ˜F∂WïvñÊF˜rÂ6WDW66TVÊ&∆VBÜf«6Rì∞¢6WE7FGW2Ñ7FGW2‰ñF∆Rì∞¢––†–¢&ófFRfˆñB7F˜VFñÙGV6∂ñÊrÇê–¢∞–¢ˆVFñÙGV6∂ñÊuFñ÷W"Â7F˜Çì∞–¢ˆVFñÙGV6∂ñÊrÂ&W7F˜&RÇì∞–¢––†–¢&ófFRfˆñB6WE7FGW2Ñ7FGW27FGW2ê¢∞¢˜7FGW2“7FGW3∞¢«ïG&ï7FFU&W6VÁFFñˆ‚Çì∞¢ñbÖ˜6WGFñÊw2Â6Ü˜u&V6˜&FñÊt˜fW&∆íê¢∞¢˜&V6˜&FñÊt˜fW&∆íÂ6Ü˜u7FGW2á7FGW2ì∞¢–¢V«6P¢∞¢˜&V6˜&FñÊt˜fW&∆í‰ÜñFT˜fW&∆íÇì∞¢–¢ˆ∆ˆvvW"‰ñÊfÚÇB%7FGW26ÜÊvVC¢∑7FGW7“"ì∞–¢––†–¢&ófFRfˆñB6Ü˜t÷W76vRá7G&ñÊr÷W76vRê¢∞–¢ˆÊ˜Fñgîñ6ˆ‚‰&∆∆ˆˆÂFóFóF∆R“$ı&Üˆ“#∞–¢ˆÊ˜Fñgîñ6ˆ‚‰&∆∆ˆˆÂFóFWáB“÷W76vS∞–¢ˆÊ˜Fñgîñ6ˆ‚Â6Ü˜t&∆∆ˆˆÂFóÉ3ì∞¢–†¢&ófFRfˆñB6Ü˜tW'&˜$÷W76vRá7G&ñÊr÷W76vRê¢∞¢6Ü˜t÷W76vRÜ÷W76vRì∞¢ñbÖ˜6WGFñÊw2Â6Ü˜u&V6˜&FñÊt˜fW&∆íê¢∞¢˜&V6˜&FñÊt˜fW&∆íÂ6Ü˜uG&Á6ñVÁDW'&˜"Ü÷W76vRì∞¢–¢–†–¢&ófFRfˆñB6Ü˜t6ˆÊfñwW&VE&ˆfñ∆UVÊfñ∆&∆RÇê¢∞¢6Ü˜tW'&˜$÷W76vRÇB$6á&ˆ÷R’&ˆfñ¬µ˜6WGFñÊw2‰6á&ˆ÷U&ˆfñ∆TFó&V7F˜'ó“Êñ6áBvVgVÊFV‚‚&óGFRı&Üˆ“;fffÊV‚VÊBVñ‚&ˆfñ¬W7|:FÜ∆V‚‚"ì∞¢––†–¢&ófFRfˆñB˜VÂFÇá7G&ñÊrFÇê–¢∞–¢G'ê–¢∞–¢W6ñÊrf"&ˆ6W72“&ˆ6W72Â7F'BÜÊWr&ˆ6W757F'DñÊfÚáFÇí≤W6U6ÜV∆ƒWÜV7WFR“G'VR“ì∞–¢––¢6F6ÇÑWÜ6WFñˆ‚WÇê–¢∞–¢ˆ∆ˆvvW"‰W'&˜"ÇB$6˜V∆BÊ˜B˜V‚FÉ¢∑Fá“"¬WÇì∞–¢6Ü˜tW'&˜$÷W76vRÇ$FFVí∂ˆÊÁFRÊñ6áBv\;fffÊWBvW&FV‚‚"ì∞¢––¢––†–¢&ófFR7ñÊ2F6≤WÜóD7ñÊ2Çê¢∞–¢ñbÖˆWÜóDñÂ&ˆw&W72ê–¢∞–¢&WGW&„∞–¢––†–¢ˆWÜóDñÂ&ˆw&W72“G'VS∞¢ˆÜ˜F∂WïvñÊF˜rÂ6WEFˆvv∆TVÊ&∆VBÜf«6Rì∞¢˜&V6˜&FñÊt˜fW&∆íÂ6WDñÁFW&7Fñˆ‰VÊ&∆VBÜf«6Rì∞¢«ïG&ï7FFU&W6VÁFFñˆ‚Çì∞¢ˆFñ7FFñˆÂ&VD6Ê6V∆∆Fñˆ„Ú‰6Ê6V¬Çì∞¢˜7F'GW6Ê6V∆∆Fñˆ‚‰6Ê6V¬Çì∞¢Ú“vóB7F˜∆ˆ6≈vÜó7W%&W&Fñˆ‰7ñÊ2áVÊ∆ˆD÷ˆFV√¢f«6Rì∞¢vóB˜7F'GW&W&FñˆÂF6≥∞¢f"WÜóD∆∆˜vVB“G'VS∞–¢f"WÜóDfñ«W&T÷W76vR“7G&ñÊr‰V◊Gì∞–¢vóBˆ˜W&Fñˆ‰∆ˆ6≤ÂvóD7ñÊ2Çì∞–¢G'ê–¢∞–¢f"6W76ñˆ‰7FófR“˜6W76ñˆ‚ó2Ê˜BÁV∆¬«¬ˆ∆ˆ6≈6W76ñˆ‚ó2Ê˜BÁV∆√∞¢ñbá6W76ñˆ‰7FófRbb˜7FGW2“7FGW2‰ñF∆Rê¢∞–¢WÜóD∆∆˜vVB“f«6S∞–¢WÜóDfñ«W&T÷W76vR“$ı&Üˆ“&∆Vñ'Bv\;fffÊWB¬6ˆ∆ÊvRVñÊRVfÊÜ÷RÊˆ6Ç∑FóbˆFW"Êñ6áB6ñ6ÜW"&vW66Ü∆˜76V‚ó7B‚&óGFRßVW'7BcÇˆFW"W66RG,;∆6∂V‚‚#∞–¢––¢V«6RñbÑFñ7FFñˆÂ&˜fñFW'2‰ó4∆ˆ6¬Ö˜6WGFñÊw2‰Fñ7FFñˆÂ&˜fñFW"íê¢∞¢ˆ∆ˆvvW"‰ñÊfÚÇ$∆ñ6Fñˆ‚WÜóFñÊrg&ˆ“∆ˆ6¬Fñ7FFñˆ‚÷ˆFS≤ÊÚ'&˜w6W"vñÊF˜r6∆VÁWó2&WVó&VB‚"ì∞¢–¢V«6RñbÇG'ï&W6W'fUVÊFñÊt6ˆ◊˜6W$&Vf˜&T6∆˜6RÜ˜WBWÜóDfñ«W&T÷W76vRíê¢∞–¢WÜóD∆∆˜vVB“f«6S∞–¢ñbÑ6ÜDwEvñÊF˜tfñÊFW"Â&V∆V6T˜vÊVD&6∂w&˜VÊEvñÊF˜uFıW6W"Ä–¢6á&ˆ÷U&ˆfñ∆TñFVÁFóGí‰g&ˆ“Ö˜6WGFñÊw2í¿–¢ˆ∆ˆvvW"íê–¢∞–¢WÜóDfñ«W&T÷W76vR≥“"F2ÜñÁFW&w'VÊFfVÁ7FW"wW&FR6ñ6áF&"ßW"÷ÁVV∆∆V‚FWáG&WGGVÊrg&VñvVvV&V„≤|:FÜ∆V‚6ñRFÊ6ÇW&ÊWWB&VVÊFV‚‚#∞–¢––¢––¢V«6P–¢∞–¢f"&ˆfñ∆TñFVÁFóGí“6á&ˆ÷U&ˆfñ∆TñFVÁFóGí‰g&ˆ“Ö˜6WGFñÊw2ì∞–¢f"&6∂w&˜VÊEvñÊF˜uv5&W6VÁB––¢6ÜDwEvñÊF˜tfñÊFW"‰fñÊD˜vÊVD&6∂w&˜VÊEvñÊF˜rÖ˜6WGFñÊw2í“ñÁEG"Â¶W&Û∞–¢f"&6∂w&˜VÊEvñÊF˜u&V∆V6VB“6ÜDwEvñÊF˜tfñÊFW"‰6∆˜6T˜vÊVD&6∂w&˜VÊEvñÊF˜tÊEvóBÄ–¢&ˆfñ∆TñFVÁFóGí¿–¢ˆ∆ˆvvW"ì∞–¢ñbÇ&6∂w&˜VÊEvñÊF˜u&V∆V6VBê–¢∞–¢&6∂w&˜VÊEvñÊF˜u&V∆V6VB“6ÜDwEvñÊF˜tfñÊFW"Â&V∆V6T˜vÊVD&6∂w&˜VÊEvñÊF˜uFıW6W"Ä–¢&ˆfñ∆TñFVÁFóGí¿–¢ˆ∆ˆvvW"ì∞–¢––†–¢ˆ∆ˆvvW"‰ñÊfÚÇ&6∂w&˜VÊEvñÊF˜uv5&W6VÁ@–¢Ú$∆ñ6Fñˆ‚WÜóFñÊs≤ÊÚ&ˆfñ∆R◊66˜VB&6∂w&˜VÊBvñÊF˜rÊVVFVB6∆˜6ñÊr‚ –¢¢&6∂w&˜VÊEvñÊF˜u&V∆V6V@–¢Ú$∆ñ6Fñˆ‚WÜóFñÊs≤&ˆfñ∆R◊66˜VB&6∂w&˜VÊB˜vÊW'6Üóv26fV«í&V∆V6VB‚ –¢¢$∆ñ6Fñˆ‚WÜóBW6VC≤&ˆfñ∆R◊66˜VB&6∂w&˜VÊBvñÊF˜r6∆˜7W&Rv2Ê˜B6ˆÊfó&÷VB‚"ì∞–¢ñbÇ&6∂w&˜VÊEvñÊF˜u&V∆V6VBê–¢∞–¢WÜóD∆∆˜vVB“f«6S∞–¢WÜóDfñ«W&T÷W76vR“$ı&Üˆ“&∆Vñ'Bv\;fffÊWB¬vVñ¬F2VñvVÊR6ÜDuB‘ÜñÁFW&w'VÊFfVÁ7FW"Êˆ6ÇÊñ6áB6ñ6ÜW"vW66Ü∆˜76V‚wW&FR‚&óGFR&VVÊFV‚W&ÊWWBfW'7V6ÜV‚‚#∞–¢––¢––¢––¢6F6ÇÑWÜ6WFñˆ‚WÇê–¢∞–¢WÜóD∆∆˜vVB“f«6S∞–¢WÜóDfñ«W&T÷W76vR“$ı&Üˆ“∂ˆÊÁFRÊñ6áB6ñ6ÜW"&VVÊFWBvW&FV‚‚&óGFRFV‚f˜&vÊrW&ÊWWBfW'7V6ÜV‚‚#∞–¢ˆ∆ˆvvW"‰W'&˜"Ç$∆ñ6Fñˆ‚WÜóB6fWGí6ÜV6∑2fñ∆VB‚"¬WÇì∞–¢––¢fñÊ∆«ê–¢∞–¢ˆ˜W&Fñˆ‰∆ˆ6≤Â&V∆V6RÇì∞–¢––†–¢ñbÇWÜóD∆∆˜vVBê–¢∞–¢ˆWÜóDñÂ&ˆw&W72“f«6S∞¢f"ñÁFW&7Fñˆ‰VÊ&∆VB“˜6WGFñÊw4f˜&“Âfó6ñ&∆S∞¢ˆÜ˜F∂WïvñÊF˜rÂ6WEFˆvv∆TVÊ&∆VBÜñÁFW&7Fñˆ‰VÊ&∆VBì∞¢˜&V6˜&FñÊt˜fW&∆íÂ6WDñÁFW&7Fñˆ‰VÊ&∆VBÜñÁFW&7Fñˆ‰VÊ&∆VBì∞¢ˆÜ˜F∂WïvñÊF˜rÂ6WDW66TVÊ&∆VBÖ˜7FGW2”“7FGW2Â&V6˜&FñÊrì∞¢«ïG&ï7FFU&W6VÁFFñˆ‚Çì∞¢6Ü˜t÷W76vRÜWÜóDfñ«W&T÷W76vRì∞¢&WGW&„∞–¢––†¢˜7F'GW6Ê6V∆∆Fñˆ‚‰6Ê6V¬Çì∞¢ˆ∆ñfWFñ÷T6Ê6V∆∆Fñˆ‚‰6Ê6V¬Çì∞¢WÜóEFá&VBÇì∞¢––†–¢&ófFR7FFñ2ñ6ˆ‚∆ˆD∆ñ6Fñˆ‰ñ6ˆ‚Çê–¢∞–¢G'ê–¢∞–¢f"WÜV7WF&∆UFÇ“VÁfó&ˆÊ÷VÁBÂ&ˆ6W75FÇÛÚ∆ñ6Fñˆ‚‰WÜV7WF&∆UFÉ∞–¢&WGW&‚ñ6ˆ‚‰WáG&7D76ˆ6ñFVDñ6ˆ‚ÜWÜV7WF&∆UFÇíÛÚÑñ6ˆ‚ï7ó7FV‘ñ6ˆÁ2‰∆ñ6Fñˆ‚‰6∆ˆÊRÇì∞–¢––¢6F6Ä–¢∞–¢&WGW&‚Ññ6ˆ‚ï7ó7FV‘ñ6ˆÁ2‰∆ñ6Fñˆ‚‰6∆ˆÊRÇì∞–¢––¢––†–¢&ófFR6V∆VB&V6˜&B&V6˜&FñÊu6W76ñˆ‚Ä¢fˆ7W5F&vWBF&vWB¿¢ñÁEG"6ÜEvñÊF˜r¿¢WFˆ÷Fñˆ‰V∆V÷VÁCÚ6ÜDñÁWBì∞†¢&ófFR6V∆VB&V6˜&B∆ˆ6≈&V6˜&FñÊu6W76ñˆ‚Ä¢fˆ7W5F&vWBF&vWB¿¢∆ˆ6ƒVFñÙ6GW&U6W76ñˆ‚6GW&Rì∞†–¢&ófFR6V∆VB&V6˜&BFñ7FFñˆÂ&V6˜fW'ï&W7V«BÄ¢&ˆˆ¬FWáE&V6˜fW&VB¿¢&ˆˆ¬6∆ó&ˆ&E&W7F˜&Tfñ∆VB¿¢&ˆˆ¬6ˆ◊˜6W$6∆VÁWfñ∆VB¿¢wVñBÜó7F˜'îVÁG'îñB¿¢7G&ñÊrFWáB¿¢7G&ñÊr˜WF6ˆ÷Rì∞ß––†–¶ñÁFW&Ê¬7FFñ26∆72&˜'E&V6˜fW'ïW'6ó7FVÊ6P–ß∞–¢V&∆ñ27FFñ27ñÊ2F6≥≈&V6˜fW'ïW'6ó7FVÊ6U&W7V«C‚6fUFÜV‰6∆V$7ñÊ2Ä–¢7G&ñÊrFWáB¿–¢gVÊ3«7G&ñÊr¬&ˆˆ√‚6fU7ñÊ6á&ˆÊ˜W6«í¿–¢gVÊ3≈F6≥∆&ˆˆ√„‚6∆V%W'6ó7FVD7ñÊ2ê–¢∞–¢ñbÇ6fU7ñÊ6á&ˆÊ˜W6«íáFWáBíê–¢∞–¢&WGW&‚ÊWr&V6˜fW'ïW'6ó7FVÊ6U&W7V«BÜf«6R¬f«6Rì∞–¢––†–¢&WGW&‚ÊWr&V6˜fW'ïW'6ó7FVÊ6U&W7V«BáG'VR¬vóB6∆V%W'6ó7FVD7ñÊ2Çíì∞–¢––ß––†–¶ñÁFW&Ê¬6V∆VB&V6˜&B&V6˜fW'ïW'6ó7FVÊ6U&W7V«BÜ&ˆˆ¬W'6ó7FVB¬&ˆˆ¬6∆V&VBì∞–
+            _settings.ToggleHotkey);
+        var hasReadinessOverride =
+            _status == AppStatus.Idle &&
+            !string.IsNullOrWhiteSpace(_idleReadinessTitle);
+        _statusItem.Text = hasReadinessOverride
+            ? string.IsNullOrWhiteSpace(_idleReadinessHint)
+                ? _idleReadinessTitle
+                : $"{_idleReadinessTitle} ¬∑ {_idleReadinessHint}"
+            : $"{presentation.VisibleStatus} ¬∑ {presentation.Hint}";
+        _primaryActionItem.Text = presentation.PrimaryAction;
+        _primaryActionItem.ShortcutKeyDisplayString = _settings.ToggleHotkey;
+        _primaryActionItem.Enabled =
+            presentation.CanToggle &&
+            !_exitInProgress &&
+            !_settingsForm.Visible;
+        _abortItem.ShortcutKeyDisplayString = "Esc";
+        _abortItem.Visible = presentation.CanAbort;
+        _abortItem.Enabled = presentation.CanAbort && !_exitInProgress;
+        var idleInteractionAvailable =
+            _status == AppStatus.Idle &&
+            !_exitInProgress &&
+            !_settingsForm.Visible;
+        _microphoneMenu.Enabled = idleInteractionAvailable;
+        _overlayVisibilityItem.Enabled = idleInteractionAvailable;
+        _lastDictationItem.Enabled =
+            idleInteractionAvailable &&
+            _history.GetEntries().Any(entry =>
+                !string.IsNullOrWhiteSpace(entry.Text));
+        var tooltip = hasReadinessOverride
+            ? $"ORhom ‚Äì {_idleReadinessTitle}"
+            : presentation.TrayTooltip;
+        _notifyIcon.Text = TruncateNotifyText(tooltip);
+    }
+
+    private void SetAdvancedItemState(string name, bool enabled)
+    {
+        if (_advancedMenu.DropDownItems[name] is ToolStripItem item)
+        {
+            item.Enabled = enabled;
+            item.Visible = enabled;
+        }
+    }
+
+    private void RefreshMicrophoneMenu()
+    {
+        while (_microphoneMenu.DropDownItems.Count > 0)
+        {
+            var oldItem = _microphoneMenu.DropDownItems[0];
+            _microphoneMenu.DropDownItems.RemoveAt(0);
+            oldItem.Dispose();
+        }
+
+        var devices = _audioInputDevices.GetActiveMicrophoneDevices();
+        if (devices.Count == 0)
+        {
+            _microphoneMenu.DropDownItems.Add(new ToolStripMenuItem(
+                "Kein aktives Mikrofon gefunden")
+            {
+                Enabled = false
+            });
+        }
+        else
+        {
+            foreach (var device in devices)
+            {
+                var item = new ToolStripMenuItem(device.DisplayName)
+                {
+                    Checked =
+                        device.Id.Equals(
+                            _settings.PreferredMicrophoneId,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        (string.IsNullOrWhiteSpace(
+                             _settings.PreferredMicrophoneId) &&
+                         device.DisplayName.Equals(
+                             _settings.PreferredMicrophoneName,
+                             StringComparison.OrdinalIgnoreCase)),
+                    ToolTipText = device.DisplayName
+                };
+                item.Click += (_, _) => RunUserOperation(
+                    () => SelectMicrophoneAsync(device),
+                    "tray-select-microphone");
+                _microphoneMenu.DropDownItems.Add(item);
+            }
+        }
+
+        _microphoneMenu.DropDownItems.Add(new ToolStripSeparator());
+        _microphoneMenu.DropDownItems.Add(new ToolStripMenuItem(
+            "Mikrofon & Einstellungen √∂ffnen ‚Ä¶",
+            null,
+            (_, _) => OpenSettings()));
+    }
+
+    private async Task ToggleFromTrayAsync(FocusTarget? target)
+    {
+        if (_settingsForm.Visible)
+        {
+            ShowMessage(
+                "Bitte das ORhom-Fenster zuerst im Hintergrund schlie√üen.");
+            return;
+        }
+
+        if (_status == AppStatus.Idle)
+        {
+            var capturedTarget = target;
+            if (capturedTarget is null ||
+                capturedTarget.WindowHandle == IntPtr.Zero ||
+                !_pasteService.RestoreTargetFocus(capturedTarget))
+            {
+                ShowErrorMessage(
+                    $"Kein sicheres Textfeld gefunden. Bitte in das gew√ºnschte Feld klicken und {_settings.ToggleHotkey} dr√ºcken.");
+                return;
+            }
+
+            await Task.Delay(75);
+            var foregroundWindow = NativeMethods.GetForegroundWindow();
+            if (!FocusTargetSafetyPolicy.HasSameWindowIdentity(
+                    capturedTarget.WindowHandle,
+                    capturedTarget.OwningProcessId,
+                    foregroundWindow,
+                    NativeMethods.GetOwningProcessId(foregroundWindow)))
+            {
+                ShowErrorMessage(
+                    "Das zuvor aktive Textfeld ist nicht mehr im Vordergrund. Die Aufnahme wurde nicht gestartet.");
+                return;
+            }
+        }
+
+        await ToggleAsync();
+    }
+
+    private async Task SelectMicrophoneAsync(AudioInputDeviceInfo device)
+    {
+        if (_status != AppStatus.Idle || _settingsForm.Visible)
+        {
+            ShowMessage(
+                "Das Mikrofon kann ge√§ndert werden, sobald ORhom bereit und das Einstellungsfenster geschlossen ist.");
+            return;
+        }
+
+        if (device.Id.Equals(
+                _settings.PreferredMicrophoneId,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            ShowMessage($"‚Äû{device.DisplayName}‚Äú ist bereits ausgew√§hlt.");
+            return;
+        }
+
+        ChromeProfileInfo? chromeProfile = null;
+        if (!DictationProviders.IsLocal(_settings.DictationProvider))
+        {
+            var profiles = _chromeProfileDiscovery.Discover(
+                _settings.ChromeExecutablePath,
+                _settings.ChromeUserDataDir);
+            chromeProfile = profiles.Profiles.FirstOrDefault(profile =>
+                profile.DirectoryName.Equals(
+                    _settings.ChromeProfileDirectory,
+                    StringComparison.OrdinalIgnoreCase));
+            if (chromeProfile is null)
+            {
+                ShowErrorMessage(
+                    "Das konfigurierte Chrome-Profil ist nicht verf√ºgbar. Bitte ORhom √∂ffnen.");
+                return;
+            }
+        }
+
+        var result = await ApplySettingsAsync(new SettingsFormValues(
+            _settings.DictationProvider,
+            device.Id,
+            device.DisplayName,
+            _settings.ToggleHotkey,
+            chromeProfile));
+        if (!result.Ok)
+        {
+            ShowErrorMessage(result.Message);
+            return;
+        }
+
+        RefreshTrayMenu();
+        ShowMessage($"Mikrofon gewechselt: {device.DisplayName}");
+    }
+
+    private async Task PasteLastDictationAsync(FocusTarget? target)
+    {
+        var latest = _history.GetEntries()
+            .FirstOrDefault(entry => !string.IsNullOrWhiteSpace(entry.Text));
+        if (latest is null)
+        {
+            ShowMessage("Im Diktierverlauf ist noch kein erkannter Text.");
+            return;
+        }
+
+        if (_settingsForm.Visible ||
+            _status != AppStatus.Idle ||
+            !await _operationLock.WaitAsync(0))
+        {
+            ShowMessage("ORhom verarbeitet gerade noch ein anderes Diktat.");
+            return;
+        }
+
+        try
+        {
+            SetStatus(AppStatus.Pasting);
+            var result = target is null ||
+                         target.WindowHandle == IntPtr.Zero
+                ? PasteResult.FailedWithClipboardFallback
+                : _pasteService.PasteIntoTarget(
+                    latest.Text,
+                    target,
+                    _settings);
+            if (result.Succeeded)
+            {
+                if (result.ClipboardRestoreOutcome ==
+                    ClipboardRestoreOutcome.Failed)
+                {
+                    ShowErrorMessage(
+                        "Letztes Diktat eingef√ºgt, aber die vorherige Zwischenablage konnte nicht wiederhergestellt werden.");
+                }
+                else
+                {
+                    ShowMessage("Letztes Diktat erneut eingef√ºgt.");
+                }
+
+                return;
+            }
+
+            var availableOnClipboard =
+                result.TextIsOnClipboard ||
+                (result.AllowClipboardFallback &&
+                 ClipboardHelper.TrySetText(latest.Text, _logger));
+            if (availableOnClipboard)
+            {
+                ShowMessage(
+                    "Automatisches Einf√ºgen war hier nicht sicher. Der Text ist kopiert ‚Äì mit Strg+V einf√ºgen.");
+            }
+            else
+            {
+                ShowErrorMessage(
+                    "Das letzte Diktat konnte nicht eingef√ºgt oder kopiert werden. Bitte den Verlauf √∂ffnen.");
+            }
+        }
+        finally
+        {
+            SetStatus(AppStatus.Idle);
+            _operationLock.Release();
+        }
+    }
+
+    private async Task ToggleRecordingOverlayVisibilityAsync()
+    {
+        if (_exitInProgress ||
+            _lifetimeCancellation.IsCancellationRequested ||
+            _status != AppStatus.Idle ||
+            _settingsForm.Visible)
+        {
+            ShowMessage(
+                "Die Diktierleiste kann ge√§ndert werden, sobald ORhom bereit ist.");
+            return;
+        }
+
+        if (!await _operationLock.WaitAsync(0))
+        {
+            ShowMessage("ORhom √ºbernimmt gerade noch eine andere √Ñnderung.");
+            return;
+        }
+
+        try
+        {
+            if (_exitInProgress ||
+                _lifetimeCancellation.IsCancellationRequested ||
+                _status != AppStatus.Idle ||
+                _settingsForm.Visible)
+            {
+                return;
+            }
+
+            var previous = _settings.ShowRecordingOverlay;
+            _settings.ShowRecordingOverlay = !previous;
+            if (!_settings.Save(_logger))
+            {
+                _settings.ShowRecordingOverlay = previous;
+                ShowErrorMessage(
+                    "Die Anzeige der Diktierleiste konnte nicht gespeichert werden.");
+                return;
+            }
+
+            if (_settings.ShowRecordingOverlay)
+            {
+                _recordingOverlay.ShowStatus(_status);
+                ShowMessage("Die Diktierleiste ist wieder sichtbar.");
+            }
+            else
+            {
+                _recordingOverlay.HideOverlay();
+                ShowMessage(
+                    $"Diktierleiste ausgeblendet. Diktieren funktioniert weiter mit {_settings.ToggleHotkey}.");
+            }
+
+            RefreshTrayMenu();
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    private static string Ellipsize(string value, int maximumLength) =>
+        value.Length <= maximumLength
+            ? value
+            : $"{value[..Math.Max(maximumLength - 1, 1)]}‚Ä¶";
+
+    protected override void Dispose(bool disposing)
+    {
+        if (!disposing)
+        {
+            base.Dispose(disposing);
+            return;
+        }
+
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0)
+        {
+            return;
+        }
+
+        _startupCancellation.Cancel();
+        _localPreparationCancellation?.Cancel();
+        _lifetimeCancellation.Cancel();
+        _notifyIcon.Visible = false;
+        _notifyIcon.Dispose();
+        _trayMenu.Dispose();
+        _historyForm.ClosePermanently();
+        _historyForm.Dispose();
+        _settingsForm.ClosePermanently();
+        _settingsForm.Dispose();
+        _hotkeyWindow.Dispose();
+        _recordingOverlay.Dispose();
+        _audioDuckingTimer.Stop();
+        _audioDuckingTimer.Dispose();
+        _audioDucking.Dispose();
+        _localSession?.Capture.Dispose();
+        _dictationController.Dispose();
+        _applicationIcon.Dispose();
+        var preparationTasks = Task.WhenAll(
+            _startupPreparationTask,
+            _localPreparationTask);
+        if (preparationTasks.IsCompleted)
+        {
+            _localWhisper.Dispose();
+            _localPreparationCancellation?.Dispose();
+            _startupCancellation.Dispose();
+            _lifetimeCancellation.Dispose();
+        }
+        else
+        {
+            var localPreparationCancellation = _localPreparationCancellation;
+            _ = preparationTasks.ContinueWith(
+                _ =>
+                {
+                    _localWhisper.Dispose();
+                    localPreparationCancellation?.Dispose();
+                    _startupCancellation.Dispose();
+                    _lifetimeCancellation.Dispose();
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+
+        base.Dispose(disposing);
+    }
+
+    private async void RunUserOperation(
+        Func<Task> operation,
+        string operationName)
+    {
+        try
+        {
+            await operation();
+        }
+        catch (OperationCanceledException) when (
+            _lifetimeCancellation.IsCancellationRequested ||
+            _startupCancellation.IsCancellationRequested)
+        {
+            _logger.Info($"User operation cancelled during shutdown. Operation={operationName}");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Unhandled user operation failure. Operation={operationName}", ex);
+            if (_lifetimeCancellation.IsCancellationRequested || _recordingOverlay.IsDisposed)
+            {
+                return;
+            }
+
+            _exitInProgress = false;
+            _recordingOverlay.SetInteractionEnabled(!_settingsForm.Visible);
+            _hotkeyWindow.SetToggleEnabled(!_settingsForm.Visible);
+            StopAudioDucking();
+            var recordingMayStillBeActive =
+                UnexpectedFailureStatePolicy.RecordingMayStillBeActive(
+                    _status,
+                    _session is not null || _localSession is not null);
+            if (!recordingMayStillBeActive)
+            {
+                ResetToIdle();
+            }
+            else
+            {
+                _queuedStopRequested = false;
+                _hotkeyWindow.SetEscapeEnabled(true);
+                SetStatus(AppStatus.Recording);
+            }
+
+            ShowErrorMessage("ORhom hat einen internen Fehler abgefangen. Es l√§uft weiter; bitte erneut versuchen oder das Log pr√ºfen.");
+        }
+    }
+
+    private async Task ToggleAsync()
+    {
+        if (_exitInProgress || _lifetimeCancellation.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (!await _operationLock.WaitAsync(0))
+        {
+            if (_status is AppStatus.Stopping or AppStatus.ReadingText &&
+                _dictationReadCancellation is not null)
+            {
+                _dictationReadCancellation.Cancel();
+                _logger.Info($"Dictation processing cancellation requested. Status={_status}");
+                ShowMessage(DictationProviders.IsLocal(_settings.DictationProvider)
+                    ? "Die lokale Verarbeitung wird abgebrochen; die Aufnahme wird verworfen."
+                    : "Die laufende Verarbeitung wird abgebrochen; der ChatGPT-Entwurf bleibt erhalten.");
+                return;
+            }
+
+            if (_status == AppStatus.Starting)
+            {
+                _queuedStopRequested = true;
+                _logger.Info("Toggle hotkey queued a stop while dictation is starting.");
+                RunUserOperation(StopAfterQueuedRequestAsync, "queued-stop");
+                return;
+            }
+
+            _logger.Info($"Toggle hotkey ignored while an operation is already running. Status={_status}");
+            ShowMessage("Das aktuelle Diktat wird noch verarbeitet.");
+            return;
+        }
+
+        try
+        {
+            if (_status == AppStatus.Idle)
+            {
+                _queuedStopRequested = false;
+                if (DictationProviders.IsLocal(_settings.DictationProvider))
+                {
+                    await BeginLocalDictationAsync();
+                }
+                else
+                {
+                    await BeginWebDictationAsync();
+                }
+            }
+            else if (_status == AppStatus.Recording)
+            {
+                _queuedStopRequested = false;
+                await FinishActiveDictationAsync();
+            }
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    private void OnToggleReleased(object? sender, HotkeyReleasedEventArgs e)
+    {
+        if (!HybridPushToTalkPolicy.ShouldStopOnRelease(
+                _settings.EnableHybridPushToTalk,
+                e.HeldForMs,
+                _settings.PushToTalkHoldThresholdMs))
+        {
+            return;
+        }
+
+        _queuedStopRequested = true;
+        _logger.Info($"Push-to-talk release detected. HeldForMs={e.HeldForMs}");
+        RunUserOperation(StopAfterQueuedRequestAsync, "push-to-talk-stop");
+    }
+
+    private async Task StopAfterQueuedRequestAsync()
+    {
+        await _operationLock.WaitAsync();
+        try
+        {
+            if (!_queuedStopRequested || _status != AppStatus.Recording)
+            {
+                _queuedStopRequested = false;
+                return;
+            }
+
+            _queuedStopRequested = false;
+            await FinishActiveDictationAsync();
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    private Task FinishActiveDictationAsync() =>
+        _localSession is not null
+            ? FinishLocalDictationAsync()
+            : FinishWebDictationAsync();
+
+    private async Task BeginLocalDictationAsync()
+    {
+        if (!_audioInputDevices.IsMicrophoneActive(
+                _settings.PreferredMicrophoneId,
+                _settings.PreferredMicrophoneName))
+        {
+            ShowErrorMessage(
+                $"Das eingestellte Mikrofon ‚Äû{_settings.PreferredMicrophoneName}‚Äú ist nicht verbunden oder nicht aktiv.");
+            return;
+        }
+
+        var target = _focusTracker.Capture(_settings);
+        if (target.IsPasswordField)
+        {
+            ShowErrorMessage("Ziel ist ein Passwortfeld. Aufnahme wurde nicht gestartet.");
+            ResetToIdle();
+            return;
+        }
+
+        SetStatus(AppStatus.Starting);
+        try
+        {
+            QueueLocalWhisperPreparation();
+            await _localPreparationTask;
+            if (_exitInProgress || _lifetimeCancellation.IsCancellationRequested)
+            {
+                ResetToIdle();
+                return;
+            }
+
+            if (_queuedStopRequested)
+            {
+                _logger.Info("Queued local stop consumed before microphone start after model preparation.");
+                _pasteService.RestoreTargetWindow(target);
+                ResetToIdle();
+                ShowMessage("Die lokale Aufnahme wurde vor dem Mikrofonstart abgebrochen; das Sprachmodell bleibt f√ºr den n√§chsten Versuch bereit.");
+                return;
+            }
+
+            if (!_localWhisper.IsReady)
+            {
+                throw new LocalWhisperRecognitionException(
+                    _localPreparationFailureMessage ??
+                    "Das lokale deutsche Sprachmodell konnte nicht vorbereitet werden. Bitte erneut versuchen oder den ChatGPT-Browser-Fallback ausw√§hlen.");
+            }
+
+            var capture = _localAudioCapture.Start(
+                _settings.PreferredMicrophoneId,
+                _settings.PreferredMicrophoneName,
+                TimeSpan.FromSeconds(_settings.LocalMaxRecordingSeconds),
+                OnLocalCaptureUnexpectedlyStopped);
+            capture.RecordingLimitReached += OnLocalRecordingLimitReached;
+            _localSession = new LocalRecordingSession(target, capture);
+            _audioDucking.Begin();
+
+            // Capture is already running before this second focus sample. Chromium
+            // can briefly expose the page's main group instead of the active
+            // contenteditable node; recording first prevents the re-probe from
+            // clipping the first spoken syllable.
+            var targetReprobe = await _focusTracker.ReprobeAfterLocalCaptureStartedAsync(
+                target,
+                _settings,
+                _lifetimeCancellation.Token);
+            if (targetReprobe.PasswordFieldDetected)
+            {
+                await StopLocalCaptureSafelyAsync(capture);
+                ShowErrorMessage("Ziel ist ein Passwortfeld. Die bereits gestartete Aufnahme wurde sofort verworfen.");
+                ResetToIdle();
+                return;
+            }
+
+            target = targetReprobe.Target;
+            if (targetReprobe.TargetPromoted)
+            {
+                _localSession = new LocalRecordingSession(target, capture);
+            }
+
+            _audioDuckingTimer.Start();
+            _hotkeyWindow.SetEscapeEnabled(true);
+            SetStatus(AppStatus.Recording);
+            _logger.Info($"Local recording session started. TargetClass='{target.WindowClass}' DeviceId='{capture.DeviceId}'.");
+            if (_settings.RestoreTargetAfterStart)
+            {
+                RestoreTargetFocus(target);
+            }
+        }
+        catch (OperationCanceledException) when (_lifetimeCancellation.IsCancellationRequested)
+        {
+            ResetToIdle();
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Local recording start failed.", ex);
+            _pasteService.RestoreTargetWindow(target);
+            ShowErrorMessage(GetLocalWhisperErrorMessage(ex));
+            ResetToIdle();
+        }
+    }
+
+    private void OnLocalRecordingLimitReached(object? sender, EventArgs e)
+    {
+        RunOnUiThread(() =>
+        {
+            if (_localSession?.Capture != sender || _status != AppStatus.Recording)
+            {
+                return;
+            }
+
+            _queuedStopRequested = true;
+            ShowMessage(
+                $"Die maximale lokale Aufnahmedauer von {_settings.LocalMaxRecordingSeconds / 60} Minuten ist erreicht. Das Diktat wird jetzt transkribiert.");
+            RunUserOperation(StopAfterQueuedRequestAsync, "local-duration-limit");
+        });
+    }
+
+    private void OnLocalCaptureUnexpectedlyStopped(
+        object? sender,
+        LocalAudioCaptureUnexpectedlyStoppedEventArgs e)
+    {
+        if (sender is not LocalAudioCaptureSession capture)
+        {
+            return;
+        }
+
+        RunOnUiThread(() => RunUserOperation(
+            () => HandleLocalCaptureUnexpectedlyStoppedAsync(capture, e.Error),
+            "local-capture-unexpected-stop"));
+    }
+
+    private async Task HandleLocalCaptureUnexpectedlyStoppedAsync(
+        LocalAudioCaptureSession capture,
+        Exception? error)
+    {
+        await _operationLock.WaitAsync();
+        try
+        {
+            var session = _localSession;
+            if (_exitInProgress ||
+                session?.Capture != capture ||
+                _status != AppStatus.Recording)
+            {
+                return;
+            }
+
+            if (error is null)
+            {
+                _logger.Error(
+                    "Local microphone capture stopped unexpectedly.",
+                    new LocalAudioCaptureException(
+                        "Windows hat den Audiostream ohne weitere Fehlerangabe beendet."));
+            }
+            else
+            {
+                _logger.Error("Local microphone capture stopped unexpectedly.", error);
+            }
+
+            StopAudioDucking();
+            RestoreTargetFocus(session.Target);
+            ResetToIdle();
+            ShowErrorMessage(
+                "Die lokale Mikrofonaufnahme wurde unerwartet beendet. " +
+                "Bitte pr√ºfen, ob das Mikrofon noch verbunden und in Windows aktiv ist, und versuchen Sie es erneut.");
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    private async Task FinishLocalDictationAsync()
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            _lifetimeCancellation.Token);
+        _dictationReadCancellation = cancellation;
+        try
+        {
+            await FinishLocalDictationCoreAsync(cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            StopAudioDucking();
+            var session = _localSession;
+            if (session is not null)
+            {
+                await StopLocalCaptureSafelyAsync(session.Capture);
+                RestoreTargetFocus(session.Target);
+            }
+
+            ResetToIdle();
+            if (!_exitInProgress && !_lifetimeCancellation.IsCancellationRequested)
+            {
+                ShowMessage("Lokale Verarbeitung abgebrochen; die Aufnahme wurde verworfen.");
+            }
+        }
+        catch (Exception ex)
+        {
+            StopAudioDucking();
+            var session = _localSession;
+            if (session is not null)
+            {
+                await StopLocalCaptureSafelyAsync(session.Capture);
+                RestoreTargetFocus(session.Target);
+            }
+
+            _logger.Error("Local stop/transcription failed.", ex);
+            ShowErrorMessage(GetLocalWhisperErrorMessage(ex));
+            ResetToIdle();
+        }
+        finally
+        {
+            if (ReferenceEquals(_dictationReadCancellation, cancellation))
+            {
+                _dictationReadCancellation = null;
+            }
+        }
+    }
+
+    private async Task FinishLocalDictationCoreAsync(CancellationToken cancellationToken)
+    {
+        var session = _localSession;
+        if (session is null)
+        {
+            ResetToIdle();
+            return;
+        }
+
+        SetStatus(AppStatus.Stopping);
+        if (session.Capture.IsRecording)
+        {
+            await Task.Delay(
+                Math.Clamp(_settings.DictationStopGracePeriodMs, 0, 1000),
+                cancellationToken);
+        }
+
+        var audio = await session.Capture.StopAndGetSamplesAsync(cancellationToken);
+        StopAudioDucking();
+        SetStatus(AppStatus.ReadingText);
+        var text = await _localWhisper.TranscribeGermanAsync(
+            audio.Samples,
+            cancellationToken);
+        if (string.IsNullOrWhiteSpace(text) ||
+            AutomationHelpers.IsUnsafeCapturedText(text))
+        {
+            _history.TryAdd(
+                string.Empty,
+                DictationHistoryOutcomes.TranscriptionFailed,
+                out _);
+            RestoreTargetFocus(session.Target);
+            ShowErrorMessage(
+                "Es wurde kein sicherer deutscher Text erkannt. Bitte n√§her am Mikrofon sprechen und erneut versuchen.");
+            ResetToIdle();
+            return;
+        }
+
+        await PasteLocalCompletedDictationAsync(session.Target, text);
+    }
+
+    private Task PasteLocalCompletedDictationAsync(FocusTarget target, string text)
+    {
+        SetStatus(AppStatus.Pasting);
+        var historyPersisted = _history.TryAdd(
+            text,
+            DictationHistoryOutcomes.Transcribed,
+            out var historyEntryId);
+        var pasteResult = _pasteService.PasteIntoTarget(text, target, _settings);
+        if (historyPersisted)
+        {
+            _history.UpdateOutcome(
+                historyEntryId,
+                pasteResult.Succeeded
+                    ? DictationHistoryOutcomes.Pasted
+                    : DictationHistoryOutcomes.PasteFailed);
+        }
+
+        var copied = !pasteResult.Succeeded &&
+                     (pasteResult.TextIsOnClipboard ||
+                      (pasteResult.ShouldAttemptClipboardFallback &&
+                       ClipboardHelper.TrySetText(text, _logger)));
+        _logger.Info($"Local dictation paste completed. Success={pasteResult.Succeeded} TextLength={text.Length} ClipboardRestoreOutcome={pasteResult.ClipboardRestoreOutcome}.");
+        if (!historyPersisted)
+        {
+            ShowMessage(pasteResult.Succeeded
+                ? "Text wurde eingef√ºgt, konnte aber nicht im Diktierverlauf gesichert werden."
+                : copied
+                    ? "Text konnte weder eingef√ºgt noch im Diktierverlauf gesichert werden. Er liegt als Rettung in der Zwischenablage."
+                    : "Text konnte weder eingef√ºgt noch sicher im Diktierverlauf oder in der Zwischenablage gesichert werden.");
+        }
+        else if (!pasteResult.Succeeded)
+        {
+            ShowMessage(copied
+                ? "Text konnte nicht eingef√ºgt werden. Er liegt im Clipboard und im Diktierverlauf."
+                : "Text konnte nicht eingef√ºgt werden, wurde aber im Diktierverlauf gesichert.");
+        }
+        else if (pasteResult.ClipboardRestoreOutcome == ClipboardRestoreOutcome.Failed)
+        {
+            ShowMessage(
+                "Text wurde eingef√ºgt, aber die vorherige Zwischenablage konnte nicht wiederhergestellt werden.");
+        }
+
+        ResetToIdle();
+        return Task.CompletedTask;
+    }
+
+    private async Task BeginWebDictationAsync()
+    {
+        if (!_audioInputDevices.IsMicrophoneActive(
+                _settings.PreferredMicrophoneId,
+                _settings.PreferredMicrophoneName))
+        {
+            _logger.Info("Recording blocked because the configured microphone is not active.");
+            ShowErrorMessage($"Das eingestellte Mikrofon ‚Äû{_settings.PreferredMicrophoneName}‚Äú ist nicht verbunden oder nicht aktiv.");
+            return;
+        }
+
+        var target = _focusTracker.Capture(_settings);
+        if (target.IsPasswordField)
+        {
+            _logger.Info("Recording blocked because target is a password field.");
+            ShowErrorMessage("Ziel ist ein Passwortfeld. Aufnahme wurde nicht gestartet.");
+            ResetToIdle();
+            return;
+        }
+
+        SetStatus(AppStatus.Starting);
+        var startResult = await _dictationController.StartDictationAsync(target.WindowHandle);
+        var initialStartResult = startResult;
+        startResult = await PendingComposerStartRecovery.RetryKnownPersistedTextOnceAsync(
+            startResult,
+            result => TryClearKnownPendingComposerAsync(result, target),
+            () => _dictationController.StartDictationAsync(target.WindowHandle));
+        if (initialStartResult.Failure == ChatGptFailure.PendingText &&
+            !ReferenceEquals(initialStartResult, startResult))
+        {
+            _logger.Info($"Known persisted composer text was cleared before a one-time start retry. RetrySuccess={startResult.Ok} RetryFailure={startResult.Failure}");
+        }
+
+        if (!startResult.Ok)
+        {
+            // No confirmed recording needs element-level focus restoration in a
+            // failed start path. Window-only restoration avoids stale UIA calls.
+            _pasteService.RestoreTargetWindow(target);
+            if (!startResult.IsTerminationConfirmed &&
+                startResult.ChatWindow != IntPtr.Zero &&
+                NativeMethods.IsWindow(startResult.ChatWindow))
+            {
+                _session = new RecordingSession(
+                    target,
+                    startResult.ChatWindow,
+                    startResult.Input);
+                _hotkeyWindow.SetEscapeEnabled(true);
+                SetStatus(AppStatus.Recording);
+                ShowErrorMessage("Die Aufnahme konnte nicht best√§tigt oder sicher beendet werden. Bitte F8 erneut dr√ºcken oder das ChatGPT-Fenster schlie√üen.");
+                return;
+            }
+
+            ShowErrorMessage(startResult.Message);
+            ResetToIdle();
+            return;
+        }
+
+        _session = new RecordingSession(target, startResult.ChatWindow, startResult.Input);
+        _audioDucking.Begin();
+        _audioDuckingTimer.Start();
+        _hotkeyWindow.SetEscapeEnabled(true);
+        SetStatus(AppStatus.Recording);
+        _logger.Info($"Recording session started. TargetClass='{target.WindowClass}' ChatWindow=0x{startResult.ChatWindow.ToInt64():X}");
+
+        if (_settings.RestoreTargetAfterStart)
+        {
+            _pasteService.RestoreTargetFocus(target);
+        }
+    }
+
+    private async Task<bool> TryClearKnownPendingComposerAsync(
+        ChatGptStartResult result,
+        FocusTarget target)
+    {
+        var expectedText = result.PendingText.Trim();
+        if (!_history.CanConsumeRecentRecoverableText(expectedText))
+        {
+            return false;
+        }
+
+        if (!await _dictationController.ConfirmRecordingInactiveAsync(
+                result.ChatWindow,
+                result.Input))
+        {
+            _logger.Info("Known pending composer cleanup skipped because inactive recording state was not confirmed.");
+            return false;
+        }
+
+        if (!_history.TryConsumeRecentRecoverableText(expectedText))
+        {
+            return false;
+        }
+
+        return await _dictationController.ClearPersistedDictationAsync(
+            result.ChatWindow,
+            result.Input,
+            () => _pasteService.RestoreTargetWindow(target),
+            expectedText);
+    }
+
+    private async Task FinishWebDictationAsync()
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            _lifetimeCancellation.Token);
+        _dictationReadCancellation = cancellation;
+        try
+        {
+            await FinishWebDictationCoreAsync(cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            StopAudioDucking();
+            var session = _session;
+            if (session is not null)
+            {
+                RestoreTargetFocus(session.Target);
+                var recordingInactive = await _dictationController.ConfirmRecordingInactiveAsync(
+                    session.ChatWindow,
+                    session.ChatInput);
+                if (recordingInactive)
+                {
+                    ResetToIdle();
+                }
+                else
+                {
+                    _hotkeyWindow.SetEscapeEnabled(true);
+                    SetStatus(AppStatus.Recording);
+                }
+            }
+            else
+            {
+                ResetToIdle();
+            }
+
+            _logger.Info("Dictation stop/transcription processing was cancelled; the ChatGPT composer was preserved.");
+            if (!_exitInProgress && !_lifetimeCancellation.IsCancellationRequested)
+            {
+                ShowMessage("Verarbeitung abgebrochen. Der ChatGPT-Entwurf bleibt erhalten; bitte F8 erneut dr√ºcken oder das ChatGPT-Profil √∂ffnen.");
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_dictationReadCancellation, cancellation))
+            {
+                _dictationReadCancellation = null;
+            }
+        }
+    }
+
+    private async Task FinishWebDictationCoreAsync(CancellationToken cancellationToken)
+    {
+        var session = _session;
+        if (session is null)
+        {
+            ResetToIdle();
+            return;
+        }
+
+        SetStatus(AppStatus.Stopping);
+        void RestoreFocus() => RestoreTargetFocus(session.Target);
+
+        var stopResult = await _dictationController.StopDictationAsync(
+            session.ChatWindow,
+            RestoreFocus,
+            cancellationToken);
+        StopAudioDucking();
+        ChatGptDictationReadResult? readResult = null;
+        var terminationConfirmed = stopResult.IsTerminationConfirmed;
+        var recoveryCompletedWithoutDestructiveCleanup =
+            stopResult.IsTerminationConfirmed && stopResult.CanRecoverText;
+
+        if (!stopResult.Ok)
+        {
+            SetStatus(AppStatus.ReadingText);
+            try
+            {
+                if (stopResult.CanRecoverText)
+                {
+                    readResult = await _dictationController.ReadDictatedTextAsync(
+                        session.ChatWindow,
+                        restoreTargetFocus: RestoreFocus,
+                        cancellationToken: cancellationToken);
+                    _logger.Info($"Dictation recovery read completed. Attempts={readResult.Attempts} Method={readResult.Method} TextLength={readResult.Text.Trim().Length} Stable={readResult.IsStable} ClipboardRestoreFailed={readResult.ClipboardRestoreFailed}");
+                }
+            }
+            finally
+            {
+                if (stopResult.RequiresDeferredCleanup)
+                {
+                    var cleanup = await _dictationController.CompleteDeferredStopCleanupAsync(
+                        session.ChatWindow);
+                    terminationConfirmed = cleanup.IsTerminationConfirmed;
+                    recoveryCompletedWithoutDestructiveCleanup =
+                        cleanup == RecordingFailureCleanupResult.Recoverable;
+                }
+            }
+
+            var recoveredText = readResult?.Text.Trim() ?? string.Empty;
+            var hasSafeRecoveredText = recoveredText.Length > 0 &&
+                                       !AutomationHelpers.IsUnsafeCapturedText(recoveredText);
+            if (RecoveryTextPolicy.CanUseNormalPastePath(
+                    recoveredText,
+                    readResult?.IsStable == true,
+                    recoveryCompletedWithoutDestructiveCleanup))
+            {
+                _logger.Info($"Stop transition recovered as a normal completion. TextLength={recoveredText.Length}");
+                await PasteCompletedDictationAsync(
+                    session,
+                    recoveredText,
+                    readResult!.ClipboardRestoreFailed,
+                    readResult.Input);
+                return;
+            }
+
+            RestoreTargetFocus(session.Target);
+            if (!terminationConfirmed)
+            {
+                var recoveredTextPersisted = hasSafeRecoveredText &&
+                                             _history.TryAdd(
+                                                 recoveredText,
+                                                 DictationHistoryOutcomes.FailureRecovered,
+                                                 out _);
+                if (!hasSafeRecoveredText)
+                {
+                    _ = _history.TryAdd(
+                        string.Empty,
+                        DictationHistoryOutcomes.StopFailed,
+                        out _);
+                }
+
+                _hotkeyWindow.SetEscapeEnabled(true);
+                SetStatus(AppStatus.Recording);
+                ShowMessage(recoveredTextPersisted
+                    ? "Das Mikrofon konnte nicht sicher beendet werden. Der bisherige Text liegt im Verlauf. Bitte F8 erneut dr√ºcken oder das ChatGPT-Fenster schlie√üen."
+                    : hasSafeRecoveredText
+                        ? "Das Mikrofon konnte nicht sicher beendet und der Text nicht im Verlauf gespeichert werden. Der ChatGPT-Entwurf bleibt erhalten. Bitte F8 erneut dr√ºcken oder das ChatGPT-Fenster schlie√üen."
+                        : "Das Mikrofon konnte nicht sicher beendet werden. Bitte F8 erneut dr√ºcken oder das ChatGPT-Fenster schlie√üen.");
+                return;
+            }
+
+            var recoveredPersistence = hasSafeRecoveredText
+                ? await SaveRecoveredTextThenClearAsync(
+                    session,
+                    recoveredText,
+                    readResult?.Input)
+                : null;
+            if (!hasSafeRecoveredText)
+            {
+                _ = _history.TryAdd(
+                    string.Empty,
+                    DictationHistoryOutcomes.StopFailed,
+                    out _);
+            }
+
+            ShowMessage(recoveredPersistence is { Persisted: false }
+                ? "Die Aufnahme wurde beendet, aber der letzte Textstand konnte nicht im Verlauf gespeichert werden. Der ChatGPT-Entwurf bleibt als Sicherung erhalten."
+                : recoveredPersistence is { Persisted: true, Cleared: false }
+                    ? "Der letzte Textstand liegt im Verlauf, aber der ChatGPT-Entwurf konnte nicht gel√∂scht werden. Bitte das ChatGPT-Profil √∂ffnen."
+                : readResult?.ClipboardRestoreFailed == true
+                ? "Die Aufnahme wurde beendet, aber die vorherige Zwischenablage konnte bei der Textrettung nicht wiederhergestellt werden."
+                : hasSafeRecoveredText
+                    ? "Die Transkription wurde nicht sicher fertig. Der letzte Textstand liegt im Verlauf."
+                    : stopResult.Message);
+            ResetToIdle();
+            return;
+        }
+
+        SetStatus(AppStatus.ReadingText);
+        readResult = await _dictationController.ReadDictatedTextAsync(
+            session.ChatWindow,
+            session.ChatInput,
+            restoreTargetFocus: RestoreFocus,
+            cancellationToken: cancellationToken);
+        var text = readResult.Text.Trim();
+        _logger.Info($"Dictation read completed. Attempts={readResult.Attempts} Method={readResult.Method} TextLength={text.Length} Stable={readResult.IsStable} ClipboardRestoreFailed={readResult.ClipboardRestoreFailed}");
+        if (!stopResult.IsTerminationConfirmed &&
+            !await _dictationController.ConfirmRecordingInactiveAsync(
+                session.ChatWindow,
+                readResult.Input ?? session.ChatInput,
+                cancellationToken))
+        {
+            var hasSafeText = text.Length > 0 && !AutomationHelpers.IsUnsafeCapturedText(text);
+            var textPersisted = hasSafeText &&
+                                _history.TryAdd(
+                                    text,
+                                    DictationHistoryOutcomes.FailureRecovered,
+                                    out _);
+            RestoreTargetFocus(session.Target);
+            _hotkeyWindow.SetEscapeEnabled(true);
+            SetStatus(AppStatus.Recording);
+            ShowMessage(textPersisted
+                ? "Der Stop-Befehl wurde gesendet, aber das Aufnahmeende nicht best√§tigt. Der bisherige Text liegt im Verlauf. Bitte F8 erneut dr√ºcken oder das ChatGPT-Fenster schlie√üen."
+                : "Der Stop-Befehl wurde gesendet, aber das Aufnahmeende nicht best√§tigt. Der ChatGPT-Entwurf bleibt erhalten. Bitte F8 erneut dr√ºcken oder das ChatGPT-Fenster schlie√üen.");
+            return;
+        }
+
+        if (text.Length == 0 || AutomationHelpers.IsUnsafeCapturedText(text) || !readResult.IsStable)
+        {
+            var recoveredIncompleteText = text.Length > 0 && !AutomationHelpers.IsUnsafeCapturedText(text);
+            var recoveredPersistence = recoveredIncompleteText
+                ? await SaveRecoveredTextThenClearAsync(
+                    session,
+                    text,
+                    readResult.Input)
+                : null;
+            if (!recoveredIncompleteText)
+            {
+                _ = _history.TryAdd(
+                    string.Empty,
+                    DictationHistoryOutcomes.TranscriptionFailed,
+                    out _);
+            }
+
+            RestoreTargetFocus(session.Target);
+            ShowMessage(recoveredPersistence is { Persisted: false }
+                ? "Die Transkription wurde nicht sicher fertig und der letzte Textstand konnte nicht im Verlauf gespeichert werden. Der ChatGPT-Entwurf bleibt als Sicherung erhalten."
+                : recoveredPersistence is { Persisted: true, Cleared: false }
+                    ? "Der letzte Textstand liegt im Verlauf, aber der ChatGPT-Entwurf konnte nicht gel√∂scht werden. Bitte das ChatGPT-Profil √∂ffnen."
+                : readResult.ClipboardRestoreFailed
+                ? "Die Transkription wurde abgebrochen, weil die vorherige Zwischenablage nicht wiederhergestellt werden konnte. Ein letzter Textstand liegt gegebenenfalls im Verlauf oder Clipboard."
+                : recoveredIncompleteText
+                    ? "Die Transkription wurde nicht sicher fertig. Der letzte Textstand liegt im Verlauf."
+                    : "Nach dem Stoppen wurde kein Text transkribiert.");
+            ResetToIdle();
+            return;
+        }
+
+        await PasteCompletedDictationAsync(
+            session,
+            text,
+            readResult.ClipboardRestoreFailed,
+            readResult.Input);
+    }
+
+    private async Task PasteCompletedDictationAsync(
+        RecordingSession session,
+        string text,
+        bool readClipboardRestoreFailed,
+        AutomationElement? capturedInput)
+    {
+        SetStatus(AppStatus.Pasting);
+        var historyPersisted = _history.TryAdd(
+            text,
+            DictationHistoryOutcomes.Transcribed,
+            out var historyEntryId);
+        var composerCleared = historyPersisted &&
+                              await _dictationController.ClearPersistedDictationAsync(
+                                  session.ChatWindow,
+                                  capturedInput,
+                                  () => RestoreTargetFocus(session.Target),
+                                  text);
+        var pasteResult = _pasteService.PasteIntoTarget(text, session.Target, _settings);
+        if (historyPersisted)
+        {
+            _history.UpdateOutcome(
+                historyEntryId,
+                !composerCleared
+                    ? DictationHistoryOutcomes.PendingComposerCleanup
+                    : pasteResult.Succeeded
+                        ? DictationHistoryOutcomes.Pasted
+                        : DictationHistoryOutcomes.PasteFailed);
+        }
+
+        _logger.Info($"Dictation paste completed. Success={pasteResult.Succeeded} TextLength={text.Length} ClipboardRestoreOutcome={pasteResult.ClipboardRestoreOutcome} TextIsOnClipboard={pasteResult.TextIsOnClipboard}");
+        if (!historyPersisted)
+        {
+            ShowMessage(pasteResult.Succeeded
+                ? "Text wurde eingef√ºgt, aber nicht im Verlauf gespeichert. Der ChatGPT-Entwurf bleibt als Sicherung erhalten."
+                : "Text konnte weder im Verlauf gespeichert noch sicher eingef√ºgt werden. Der ChatGPT-Entwurf bleibt als Sicherung erhalten.");
+        }
+        else if (!composerCleared)
+        {
+            ShowMessage(pasteResult.Succeeded
+                ? "Text wurde eingef√ºgt und im Verlauf gesichert, aber der ChatGPT-Entwurf konnte nicht gel√∂scht werden. Bitte das ChatGPT-Profil √∂ffnen und den Entwurf l√∂schen."
+                : "Text liegt sicher im Verlauf, aber Einf√ºgen und L√∂schen des ChatGPT-Entwurfs sind fehlgeschlagen. Bitte das ChatGPT-Profil √∂ffnen.");
+        }
+        else if (!pasteResult.Succeeded)
+        {
+            var copied = pasteResult.TextIsOnClipboard ||
+                         (pasteResult.AllowClipboardFallback && ClipboardHelper.TrySetText(text, _logger));
+            ShowMessage(pasteResult.ClipboardRestoreOutcome == ClipboardRestoreOutcome.Failed ||
+                        readClipboardRestoreFailed
+                ? copied
+                    ? "Text konnte nicht eingef√ºgt werden und die vorherige Zwischenablage nicht wiederhergestellt werden. Das Diktat liegt im Verlauf und aktuell auch im Clipboard."
+                    : "Text konnte nicht eingef√ºgt werden; au√üerdem lie√ü sich die vorherige Zwischenablage nicht wiederherstellen. Das Diktat liegt sicher im Verlauf."
+                : copied
+                    ? "Text konnte nicht eingef√ºgt werden. Er liegt in der Zwischenablage und im Verlauf ‚Äì Strg+V f√ºgt ihn ein."
+                    : "Text konnte nicht eingef√ºgt werden. Er wurde im Diktierverlauf gesichert.");
+        }
+        else if (pasteResult.ClipboardRestoreOutcome == ClipboardRestoreOutcome.Failed ||
+                 readClipboardRestoreFailed)
+        {
+            ShowMessage("Text wurde eingef√ºgt, aber die vorherige Zwischenablage konnte nicht wiederhergestellt werden.");
+        }
+
+        ResetToIdle();
+    }
+
+    private async Task<RecoveryPersistenceResult> SaveRecoveredTextThenClearAsync(
+        RecordingSession session,
+        string text,
+        AutomationElement? capturedInput)
+    {
+        var persisted = _history.TryAdd(
+            text,
+            DictationHistoryOutcomes.FailureRecovered,
+            out var historyEntryId);
+        if (!persisted)
+        {
+            return new RecoveryPersistenceResult(false, false);
+        }
+
+        var cleared = await _dictationController.ClearPersistedDictationAsync(
+            session.ChatWindow,
+            capturedInput,
+            () => RestoreTargetFocus(session.Target),
+            text);
+        UpdateRecoveredCleanupOutcome(
+            historyEntryId,
+            DictationHistoryOutcomes.FailureRecovered,
+            cleared);
+
+        return new RecoveryPersistenceResult(true, cleared);
+    }
+
+    private async Task AbortRecordingAsync()
+    {
+        if (!await _operationLock.WaitAsync(0))
+        {
+            if (_status is AppStatus.Stopping or AppStatus.ReadingText &&
+                _dictationReadCancellation is not null)
+            {
+                _dictationReadCancellation.Cancel();
+                _logger.Info($"Dictation processing cancellation requested by Escape. Status={_status}");
+            }
+
+            return;
+        }
+
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            _lifetimeCancellation.Token);
+        _dictationReadCancellation = cancellation;
+        try
+        {
+            if (_localSession is not null)
+            {
+                await AbortLocalRecordingAsync(cancellation.Token);
+                return;
+            }
+
+            var session = _session;
+            if (_status != AppStatus.Recording || session is null)
+            {
+                return;
+            }
+
+            _logger.Info("Recording abort requested.");
+            SetStatus(AppStatus.Stopping);
+            void RestoreFocus() => RestoreTargetFocus(session.Target);
+
+            var stopResult = await _dictationController.StopDictationAsync(
+                session.ChatWindow,
+                RestoreFocus,
+                cancellation.Token);
+            StopAudioDucking();
+            var textWasRecovered = false;
+            var recoveryClipboardRestoreFailed = false;
+            var recoveryComposerCleanupFailed = false;
+            var terminationConfirmed = stopResult.IsTerminationConfirmed;
+            DictationRecoveryResult? deferredRecovery = null;
+            try
+            {
+                if (stopResult.Ok)
+                {
+                    SetStatus(AppStatus.ReadingText);
+                    var readResult = await _dictationController.ReadDictatedTextAsync(
+                        session.ChatWindow,
+                        session.ChatInput,
+                        restoreTargetFocus: RestoreFocus,
+                        cancellationToken: cancellation.Token);
+                    recoveryClipboardRestoreFailed = readResult.ClipboardRestoreFailed;
+                    var text = readResult.Text.Trim();
+                    if (!terminationConfirmed)
+                    {
+                        terminationConfirmed = await _dictationController.ConfirmRecordingInactiveAsync(
+                            session.ChatWindow,
+                            readResult.Input ?? session.ChatInput,
+                            cancellation.Token);
+                    }
+
+                    if (text.Length > 0 && !AutomationHelpers.IsUnsafeCapturedText(text))
+                    {
+                        if (terminationConfirmed)
+                        {
+                            var historyEntryId = Guid.Empty;
+                            var persistence = await AbortRecoveryPersistence.SaveThenClearAsync(
+                                text,
+                                recoveredText => _history.TryAdd(
+                                    recoveredText,
+                                    DictationHistoryOutcomes.CancelledRecovered,
+                                    out historyEntryId),
+                                () => _dictationController.ClearPersistedDictationAsync(
+                                    session.ChatWindow,
+                                    readResult.Input ?? session.ChatInput,
+                                    RestoreFocus,
+                                    text));
+                            textWasRecovered = persistence.Persisted;
+                            recoveryComposerCleanupFailed =
+                                persistence.Persisted && !persistence.Cleared;
+                            UpdateRecoveredCleanupOutcome(
+                                historyEntryId,
+                                DictationHistoryOutcomes.CancelledRecovered,
+                                persistence.Cleared);
+                        }
+                        else
+                        {
+                            textWasRecovered = _history.TryAdd(
+                                text,
+                                DictationHistoryOutcomes.FailureRecovered,
+                                out _);
+                        }
+                    }
+                    else
+                    {
+                        _history.Add(string.Empty, DictationHistoryOutcomes.CancelledWithoutText);
+                    }
+                }
+                else if (stopResult.CanRecoverText)
+                {
+                    SetStatus(AppStatus.ReadingText);
+                    var recovery = await TryRecoverTextToHistoryAsync(
+                        session.ChatWindow,
+                        session.ChatInput,
+                        DictationHistoryOutcomes.CancelledRecovered,
+                        stopResult.RequiresDeferredCleanup ? 2500 : null,
+                        RestoreFocus,
+                        clearComposerAfterPersistence: !stopResult.RequiresDeferredCleanup,
+                        cancellationToken: cancellation.Token);
+                    deferredRecovery = stopResult.RequiresDeferredCleanup
+                        ? recovery
+                        : null;
+                    textWasRecovered = recovery.TextRecovered;
+                    recoveryClipboardRestoreFailed = recovery.ClipboardRestoreFailed;
+                    recoveryComposerCleanupFailed = recovery.ComposerCleanupFailed;
+                    if (!textWasRecovered)
+                    {
+                        _history.Add(string.Empty, DictationHistoryOutcomes.CancelledWithoutText);
+                    }
+                }
+                else
+                {
+                    _history.Add(string.Empty, DictationHistoryOutcomes.CancelledWithoutText);
+                }
+            }
+            finally
+            {
+                if (stopResult.RequiresDeferredCleanup)
+                {
+                    var cleanup = await _dictationController.CompleteDeferredStopCleanupAsync(
+                        session.ChatWindow);
+                    terminationConfirmed = cleanup.IsTerminationConfirmed;
+                }
+            }
+
+            if (stopResult.RequiresDeferredCleanup &&
+                terminationConfirmed &&
+                textWasRecovered &&
+                deferredRecovery is not null)
+            {
+                var ownedWindowAvailable =
+                    ChatGptWindowFinder.IsOwnedBackgroundWindow(session.ChatWindow, _settings);
+                var cleared = ownedWindowAvailable &&
+                              await _dictationController.ClearPersistedDictationAsync(
+                        session.ChatWindow,
+                        session.ChatInput,
+                        RestoreFocus,
+                        deferredRecovery.Text);
+                var cleanupCompleted = !ownedWindowAvailable || cleared;
+                recoveryComposerCleanupFailed = !cleanupCompleted;
+                UpdateRecoveredCleanupOutcome(
+                    deferredRecovery.HistoryEntryId,
+                    deferredRecovery.Outcome,
+                    cleanupCompleted);
+            }
+
+            RestoreTargetFocus(session.Target);
+            if (!terminationConfirmed)
+            {
+                _hotkeyWindow.SetEscapeEnabled(true);
+                SetStatus(AppStatus.Recording);
+                ShowMessage("Das Mikrofon konnte nicht sicher beendet werden. Bitte F8 erneut dr√ºcken oder das ChatGPT-Fenster schlie√üen.");
+                return;
+            }
+
+            ShowMessage(recoveryComposerCleanupFailed
+                ? "Aufnahme abgebrochen und Text im Verlauf gesichert, aber der ChatGPT-Entwurf konnte nicht gel√∂scht werden. Bitte das ChatGPT-Profil √∂ffnen und den Entwurf l√∂schen."
+                : recoveryClipboardRestoreFailed
+                ? "Aufnahme abgebrochen, aber die vorherige Zwischenablage konnte bei der Textrettung nicht wiederhergestellt werden."
+                : textWasRecovered
+                    ? "Aufnahme abgebrochen. Der gesprochene Text wurde im Verlauf gesichert."
+                    : "Aufnahme abgebrochen. Es konnte kein Text gesichert werden.");
+            ResetToIdle();
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            StopAudioDucking();
+            var localSession = _localSession;
+            if (localSession is not null)
+            {
+                await StopLocalCaptureSafelyAsync(localSession.Capture);
+                RestoreTargetFocus(localSession.Target);
+                ResetToIdle();
+                _logger.Info("Explicit local recording abort was cancelled.");
+                return;
+            }
+
+            var session = _session;
+            if (session is not null)
+            {
+                RestoreTargetFocus(session.Target);
+                var recordingInactive = await _dictationController.ConfirmRecordingInactiveAsync(
+                    session.ChatWindow,
+                    session.ChatInput);
+                if (recordingInactive)
+                {
+                    ResetToIdle();
+                }
+                else
+                {
+                    _hotkeyWindow.SetEscapeEnabled(true);
+                    SetStatus(AppStatus.Recording);
+                }
+            }
+
+            _logger.Info("Explicit abort processing was cancelled; the ChatGPT composer was preserved.");
+            if (!_exitInProgress && !_lifetimeCancellation.IsCancellationRequested)
+            {
+                ShowMessage("Abbruchverarbeitung beendet. Der ChatGPT-Entwurf bleibt erhalten; bitte F8 erneut dr√ºcken oder das ChatGPT-Profil √∂ffnen.");
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_dictationReadCancellation, cancellation))
+            {
+                _dictationReadCancellation = null;
+            }
+
+            _operationLock.Release();
+        }
+    }
+
+    private async Task AbortLocalRecordingAsync(CancellationToken cancellationToken)
+    {
+        var session = _localSession;
+        if (_status != AppStatus.Recording || session is null)
+        {
+            return;
+        }
+
+        _logger.Info("Local recording abort requested.");
+        SetStatus(AppStatus.Stopping);
+        try
+        {
+            var audio = await session.Capture.StopAndGetSamplesAsync(cancellationToken);
+            StopAudioDucking();
+            SetStatus(AppStatus.ReadingText);
+            var text = await _localWhisper.TranscribeGermanAsync(
+                audio.Samples,
+                cancellationToken);
+            var hasSafeText = !string.IsNullOrWhiteSpace(text) &&
+                              !AutomationHelpers.IsUnsafeCapturedText(text);
+            var historyRecovered = hasSafeText &&
+                                   _history.TryAdd(
+                                       text,
+                                       DictationHistoryOutcomes.CancelledRecovered,
+                                       out _);
+            var clipboardRecovered = hasSafeText &&
+                                     !historyRecovered &&
+                                     ClipboardHelper.TrySetText(text, _logger);
+            if (!hasSafeText)
+            {
+                _history.TryAdd(
+                    string.Empty,
+                    DictationHistoryOutcomes.CancelledWithoutText,
+                    out _);
+            }
+
+            RestoreTargetFocus(session.Target);
+            ShowMessage(historyRecovered
+                ? "Aufnahme abgebrochen. Der lokal erkannte Text wurde im Diktierverlauf gesichert."
+                : clipboardRecovered
+                    ? "Aufnahme abgebrochen. Der Verlauf war nicht beschreibbar; der erkannte Text liegt zur Rettung in der Zwischenablage."
+                    : "Aufnahme abgebrochen. Es konnte kein sicherer Text gesichert werden.");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Local text recovery after abort failed.", ex);
+            _history.TryAdd(
+                string.Empty,
+                DictationHistoryOutcomes.CancelledWithoutText,
+                out _);
+            RestoreTargetFocus(session.Target);
+            ShowMessage($"Aufnahme abgebrochen. {GetLocalWhisperErrorMessage(ex)}");
+        }
+        finally
+        {
+            ResetToIdle();
+        }
+    }
+
+    private async Task StopLocalCaptureSafelyAsync(LocalAudioCaptureSession capture)
+    {
+        try
+        {
+            await capture.StopAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Local microphone could not be cleanly stopped during recovery.", ex);
+        }
+    }
+
+    private void QueueLocalWhisperPreparation()
+    {
+        if (!DictationProviders.IsLocal(_settings.DictationProvider) ||
+            _localWhisper.IsReady ||
+            !_localPreparationTask.IsCompleted)
+        {
+            return;
+        }
+
+        _localPreparationCancellation?.Dispose();
+        _localPreparationCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            _lifetimeCancellation.Token);
+        _localPreparationFailureMessage = null;
+        _idleReadinessTitle = "Sprachmodell wird vorbereitet";
+        _idleReadinessHint = "whisper.cpp ¬∑ Vulkan ¬∑ Deutsch";
+        ApplyTrayStatePresentation();
+        var generation = Interlocked.Increment(ref _localPreparationGeneration);
+        _localPreparationTask = PrepareLocalWhisperAsync(
+            _localPreparationCancellation.Token,
+            generation);
+    }
+
+    private async Task<bool> StopLocalWhisperPreparationAsync(bool unloadModel)
+    {
+        Interlocked.Increment(ref _localPreparationGeneration);
+        var cancellation = _localPreparationCancellation;
+        var preparationTask = _localPreparationTask;
+        cancellation?.Cancel();
+        try
+        {
+            await preparationTask;
+        }
+        catch (OperationCanceledException) when (cancellation?.IsCancellationRequested == true)
+        {
+            // Preparation normally consumes cancellation itself. This also
+            // covers cancellation before its handler is entered.
+        }
+
+        if (ReferenceEquals(cancellation, _localPreparationCancellation))
+        {
+            _localPreparationCancellation = null;
+            _localPreparationTask = Task.CompletedTask;
+            cancellation?.Dispose();
+        }
+
+        _recordingOverlay.ClearOperationProgress();
+        if (!DictationProviders.IsLocal(_settings.DictationProvider))
+        {
+            _idleReadinessTitle = string.Empty;
+            _idleReadinessHint = string.Empty;
+            ApplyTrayStatePresentation();
+        }
+
+        if (!unloadModel)
+        {
+            return true;
+        }
+
+        try
+        {
+            await _localWhisper.UnloadAsync(_lifetimeCancellation.Token);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.Error("Local whisper.cpp model could not be unloaded after provider switch.", ex);
+            return false;
+        }
+    }
+
+    private async Task PrepareLocalWhisperAsync(
+        CancellationToken cancellationToken,
+        long generation)
+    {
+        try
+        {
+            var progress = new Progress<LocalWhisperModelProgress>(value =>
+                ReportLocalModelProgress(value, generation));
+            await _localWhisper.EnsureReadyAsync(progress, cancellationToken);
+            _logger.Info("Local whisper.cpp startup preparation completed with Vulkan.");
+            RunOnUiThread(() =>
+            {
+                if (!IsCurrentLocalPreparation(generation))
+                {
+                    return;
+                }
+
+                _recordingOverlay.ClearOperationProgress();
+                if (_status == AppStatus.Idle)
+                {
+                    _idleReadinessTitle = "Bereit ¬∑ Lokal ¬∑ Vulkan";
+                    _idleReadinessHint =
+                        $"{_settings.ToggleHotkey} dr√ºcken, um zu diktieren";
+                    ApplyTrayStatePresentation();
+                }
+            });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.Info("Local whisper.cpp startup preparation cancelled.");
+        }
+        catch (Exception ex)
+        {
+            _localPreparationFailureMessage = GetLocalWhisperErrorMessage(ex);
+            _logger.Error("Local whisper.cpp startup preparation failed.", ex);
+            RunOnUiThread(() =>
+            {
+                if (!IsCurrentLocalPreparation(generation))
+                {
+                    return;
+                }
+
+                _recordingOverlay.ClearOperationProgress();
+                _idleReadinessTitle = "Sprachmodell nicht bereit";
+                _idleReadinessHint = "ORhom √∂ffnen und Einstellungen pr√ºfen";
+                ApplyTrayStatePresentation();
+                ShowErrorMessage(GetLocalWhisperErrorMessage(ex));
+            });
+        }
+    }
+
+    private void ReportLocalModelProgress(
+        LocalWhisperModelProgress progress,
+        long generation)
+    {
+        RunOnUiThread(() =>
+        {
+            if (!IsCurrentLocalPreparation(generation))
+            {
+                return;
+            }
+
+            var title = progress.Stage switch
+            {
+                LocalWhisperModelProgressStage.CheckingCache => "Sprachmodell wird gepr√ºft",
+                LocalWhisperModelProgressStage.VerifyingCache => "Sprachmodell wird verifiziert",
+                LocalWhisperModelProgressStage.Downloading => $"Sprachmodell {progress.Percentage:F0} %",
+                LocalWhisperModelProgressStage.Ready => "Sprachmodell ist bereit",
+                _ => "Sprachmodell wird vorbereitet"
+            };
+            var hint = progress.Stage == LocalWhisperModelProgressStage.Downloading
+                ? $"{FormatBytes(progress.BytesProcessed)} von {FormatBytes(progress.TotalBytes)}"
+                : progress.FromCache
+                    ? "Lokaler Cache wird wiederverwendet"
+                    : "whisper.cpp ¬∑ Vulkan ¬∑ Deutsch";
+            _idleReadinessTitle = title;
+            _idleReadinessHint = hint;
+            ApplyTrayStatePresentation();
+            if (_settings.ShowRecordingOverlay)
+            {
+                _recordingOverlay.ShowOperationProgress(title, hint);
+            }
+        });
+    }
+
+    private bool IsCurrentLocalPreparation(long generation) =>
+        DictationProviders.IsLocal(_settings.DictationProvider) &&
+        Volatile.Read(ref _localPreparationGeneration) == generation;
+
+    private void RunOnUiThread(Action action)
+    {
+        if (_recordingOverlay.IsDisposed || _lifetimeCancellation.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (_recordingOverlay.InvokeRequired)
+        {
+            _recordingOverlay.BeginInvoke(action);
+            return;
+        }
+
+        action();
+    }
+
+    private static string FormatBytes(long bytes) =>
+        bytes >= 1024L * 1024 * 1024
+            ? $"{bytes / (1024d * 1024 * 1024):F1} GB"
+            : $"{bytes / (1024d * 1024):F0} MB";
+
+    private static string TruncateNotifyText(string text) =>
+        text.Length <= 63 ? text : text[..63];
+
+    private static string GetLocalWhisperErrorMessage(Exception exception) =>
+        exception switch
+        {
+            LocalWhisperModelException modelException => modelException.Message,
+            LocalWhisperRecognitionException recognitionException => recognitionException.Message,
+            LocalAudioCaptureException captureException => captureException.Message,
+            _ => "Die lokale deutsche Spracherkennung konnte nicht vorbereitet werden. Bitte Log und AMD-Treiber pr√ºfen oder den ChatGPT-Browser-Fallback ausw√§hlen."
+        };
+
+    private void QueueChatGptStartupPreparation()
+    {
+        if (!_settings.PrepareChatGptOnStartup || !_settings.LaunchChatGptIfMissing)
+        {
+            return;
+        }
+
+        _startupPreparationTask = Task.Run(
+            () => PrepareChatGptOnStartupAsync(_startupCancellation.Token));
+    }
+
+    private async Task PrepareChatGptOnStartupAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(800, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            var foregroundBeforeLaunch = NativeMethods.GetForegroundWindow();
+            var prepareResult = await _dictationController.PrepareBackgroundWindowAsync(
+                IntPtr.Zero,
+                cancellationToken);
+
+            if (!prepareResult.Ok)
+            {
+                _logger.Info($"ChatGPT startup preparation failed. Failure={prepareResult.Failure}");
+                return;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            if (foregroundBeforeLaunch != IntPtr.Zero && NativeMethods.IsWindow(foregroundBeforeLaunch))
+            {
+                NativeMethods.SetForegroundWindow(foregroundBeforeLaunch);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.Info("ChatGPT startup preparation cancelled during application shutdown.");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("ChatGPT startup preparation failed.", ex);
+        }
+    }
+
+    private async Task OpenChatGptProfileAsync()
+    {
+        if (!await _operationLock.WaitAsync(0))
+        {
+            ShowMessage("ORhom verarbeitet gerade eine andere Aktion.");
+            return;
+        }
+
+        try
+        {
+            var result = await _dictationController.OpenConfiguredProfileAsync();
+            if (!result.Ok)
+            {
+                ShowMessage(result.Message);
+                return;
+            }
+
+            ShowMessage($"ChatGPT wurde im Chrome-Profil {_settings.ChromeProfileDirectory} ge√∂ffnet.");
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    private void CheckChromeProfile()
+    {
+        var validation = _dictationController.ValidateConfiguredProfile();
+        if (validation.IsValid)
+        {
+            _logger.Info("Chrome profile check completed successfully.");
+            ShowMessage($"Konfiguriertes Chrome-Profil {_settings.ChromeProfileDirectory} wurde gefunden.");
+            return;
+        }
+
+        _logger.Info($"Chrome profile check failed. Reason={validation.FailureReason}");
+        ShowConfiguredProfileUnavailable();
+    }
+
+    private async Task<SettingsApplyResult> ApplySettingsAsync(SettingsFormValues values)
+    {
+        if (_status != AppStatus.Idle)
+        {
+            return SettingsApplyResult.Fail("Bitte zuerst die laufende Aufnahme beenden.");
+        }
+
+        if (!DictationProviders.IsLocal(_settings.DictationProvider))
+        {
+            await _startupPreparationTask;
+        }
+        if (_exitInProgress)
+        {
+            return SettingsApplyResult.Fail("ORhom wird gerade beendet.");
+        }
+
+        await _operationLock.WaitAsync();
+        try
+        {
+            if (_exitInProgress || _status != AppStatus.Idle)
+            {
+                return SettingsApplyResult.Fail("ORhom wird gerade beendet oder verarbeitet noch eine Aufnahme.");
+            }
+
+            return await ApplySettingsCoreAsync(values);
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    private async Task<SettingsApplyResult> ApplySettingsCoreAsync(SettingsFormValues values)
+    {
+        var microphoneName = values.MicrophoneName;
+        var microphoneId = values.MicrophoneId;
+        var hotkey = values.Hotkey;
+        var provider = DictationProviders.Normalize(values.DictationProvider);
+        if (DictationProviders.IsLocal(provider))
+        {
+            return await ApplyLocalSettingsCoreAsync(
+                microphoneId,
+                microphoneName,
+                hotkey);
+        }
+
+        if (values.ChromeProfile is not { } chromeProfile)
+        {
+            return SettingsApplyResult.Fail(
+                "Bitte f√ºr die Browser-Diktierung ein Chrome-Profil ausw√§hlen.");
+        }
+
+        var previousExecutablePath = _settings.ChromeExecutablePath;
+        var previousUserDataDirectory = _settings.ChromeUserDataDir;
+        var previousProfileDirectory = _settings.ChromeProfileDirectory;
+        var previousProfileIdentity = ChromeProfileIdentity.Create(
+            previousUserDataDirectory,
+            previousProfileDirectory);
+        var previousProvider = _settings.DictationProvider;
+        var previousMicrophoneId = _settings.PreferredMicrophoneId;
+        var previousMicrophoneName = _settings.PreferredMicrophoneName;
+        var previousHotkey = _settings.ToggleHotkey;
+        var previousSetupCompleted = _settings.SetupCompleted;
+        var profileChanged =
+            !previousUserDataDirectory.Equals(chromeProfile.UserDataDirectory, StringComparison.OrdinalIgnoreCase) ||
+            !previousProfileDirectory.Equals(chromeProfile.DirectoryName, StringComparison.OrdinalIgnoreCase);
+        if (profileChanged &&
+            !TryPreservePendingComposerBeforeClose(out var pendingComposerFailure))
+        {
+            var handedToUser = ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
+                previousProfileIdentity,
+                _logger);
+            return SettingsApplyResult.Fail(handedToUser
+                ? $"{pendingComposerFailure} Das bisherige Hintergrundfenster wurde sichtbar zur manuellen Textrettung freigegeben. Bitte Speichern danach erneut w√§hlen."
+                : pendingComposerFailure);
+        }
+
+        void RestorePreviousChromeProfile()
+        {
+            _settings.ChromeExecutablePath = previousExecutablePath;
+            _settings.ChromeUserDataDir = previousUserDataDirectory;
+            _settings.ChromeProfileDirectory = previousProfileDirectory;
+        }
+
+        async Task<bool> TryRollbackSwitchedProfileAsync()
+        {
+            if (profileChanged)
+            {
+                if (!TryPreservePendingComposerBeforeClose(
+                        out _,
+                        out var preservedComposerText))
+                {
+                    if (!ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
+                            ChromeProfileIdentity.From(_settings),
+                            _logger))
+                    {
+                        return false;
+                    }
+
+                    RestorePreviousChromeProfile();
+                    return true;
+                }
+
+                if (!await _dictationController.ReleaseKnownBackgroundWindowAsync(
+                        preservedComposerText) &&
+                    !ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
+                        ChromeProfileIdentity.From(_settings),
+                        _logger))
+                {
+                    return false;
+                }
+            }
+
+            RestorePreviousChromeProfile();
+            return true;
+        }
+
+        _settings.ChromeExecutablePath = chromeProfile.ChromeExecutablePath;
+        _settings.ChromeUserDataDir = chromeProfile.UserDataDirectory;
+        _settings.ChromeProfileDirectory = chromeProfile.DirectoryName;
+        var profileValidation = _chromeProfileLauncher.ValidateConfiguredProfile();
+        if (!profileValidation.IsValid)
+        {
+            RestorePreviousChromeProfile();
+            return SettingsApplyResult.Fail($"Das Chrome-Profil ist nicht verf√ºgbar: {profileValidation.FailureReason}");
+        }
+
+        if (!_audioInputDevices.IsMicrophoneActive(microphoneId, microphoneName))
+        {
+            RestorePreviousChromeProfile();
+            return SettingsApplyResult.Fail("Das ausgew√§hlte Mikrofon ist nicht mehr verbunden.");
+        }
+
+        var microphoneResult = await _microphoneConfigurator.ApplyAsync(microphoneName);
+        if (!microphoneResult.Ok)
+        {
+            RestorePreviousChromeProfile();
+            return SettingsApplyResult.Fail(microphoneResult.Message);
+        }
+
+        var pageReset = await _dictationController.ResetChatGptPageAsync(
+            _settingsForm.Handle,
+            forceNewProfileWindow: profileChanged,
+            previousProfileIdentity: previousProfileIdentity);
+        if (!pageReset.Ok)
+        {
+            if (!await TryRollbackSwitchedProfileAsync())
+            {
+                return SettingsApplyResult.Fail(
+                    "ChatGPT konnte nicht vorbereitet und das neue Chrome-Profil nicht sicher zur√ºckgerollt werden. Bitte ORhom neu starten.");
+            }
+
+            return SettingsApplyResult.Fail("Mikrofon gespeichert, aber ChatGPT konnte nicht vorbereitet werden. Bitte ChatGPT Profil √∂ffnen und Anmeldung pr√ºfen.");
+        }
+
+        if (!_hotkeyWindow.TryUpdateToggleHotkey(hotkey, out var hotkeyFailure))
+        {
+            if (!await TryRollbackSwitchedProfileAsync())
+            {
+                return SettingsApplyResult.Fail(
+                    $"{hotkeyFailure} Das neue Chrome-Profil konnte nicht sicher zur√ºckgerollt werden; bitte ORhom neu starten.");
+            }
+
+            return SettingsApplyResult.Fail(hotkeyFailure);
+        }
+
+        _settings.DictationProvider = DictationProviders.ChatGptBrowser;
+        _settings.PreferredMicrophoneId = microphoneId;
+        _settings.PreferredMicrophoneName = microphoneName;
+        _settings.ToggleHotkey = hotkey;
+        _settings.SetupCompleted = true;
+        if (!_settings.Save(_logger))
+        {
+            _settings.DictationProvider = previousProvider;
+            _settings.PreferredMicrophoneId = previousMicrophoneId;
+            _settings.PreferredMicrophoneName = previousMicrophoneName;
+            _settings.ToggleHotkey = previousHotkey;
+            _settings.SetupCompleted = previousSetupCompleted;
+            if (!_hotkeyWindow.TryUpdateToggleHotkey(previousHotkey, out var rollbackFailure))
+            {
+                _logger.Info($"Hotkey rollback failed after settings persistence error. Reason={rollbackFailure}");
+            }
+
+            if (!await TryRollbackSwitchedProfileAsync())
+            {
+                return SettingsApplyResult.Fail(
+                    "Die Einstellungen konnten nicht gespeichert und das neue Chrome-Profil nicht sicher zur√ºckgerollt werden. Bitte ORhom neu starten.");
+            }
+
+            return SettingsApplyResult.Fail("Die Einstellungen konnten nicht sicher gespeichert werden. Bitte Schreibrechte und freien Speicherplatz pr√ºfen.");
+        }
+
+        var localResourcesReleased = true;
+        if (DictationProviders.IsLocal(previousProvider))
+        {
+            localResourcesReleased = await StopLocalWhisperPreparationAsync(unloadModel: true);
+            SetStatus(AppStatus.Idle);
+        }
+
+        _recordingOverlay.SetToggleHotkey(hotkey);
+        _logger.Info($"Settings applied from UI. ChromeProfileDirectory='{chromeProfile.DirectoryName}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}'.");
+        ShowMessage(localResourcesReleased
+            ? $"ORhom l√§uft jetzt mit {hotkey} im Hintergrund."
+            : "Die Browser-Diktierung ist aktiv, aber das lokale GPU-Modell konnte nicht freigegeben werden. Ein Neustart von ORhom gibt die Ressourcen frei.");
+        return SettingsApplyResult.Success(microphoneName, hotkey);
+    }
+
+    private async Task<SettingsApplyResult> ApplyLocalSettingsCoreAsync(
+        string microphoneId,
+        string microphoneName,
+        string hotkey)
+    {
+        if (!_audioInputDevices.IsMicrophoneActive(microphoneId, microphoneName))
+        {
+            return SettingsApplyResult.Fail("Das ausgew√§hlte Mikrofon ist nicht mehr verbunden.");
+        }
+
+        var previousProvider = _settings.DictationProvider;
+        var previousMicrophoneId = _settings.PreferredMicrophoneId;
+        var previousMicrophoneName = _settings.PreferredMicrophoneName;
+        var previousHotkey = _settings.ToggleHotkey;
+        var previousSetupCompleted = _settings.SetupCompleted;
+
+        if (!_hotkeyWindow.TryUpdateToggleHotkey(hotkey, out var hotkeyFailure))
+        {
+            return SettingsApplyResult.Fail(hotkeyFailure);
+        }
+
+        if (!DictationProviders.IsLocal(previousProvider) &&
+            ChromeProfileIdentity.From(_settings).IsConfigured)
+        {
+            if (!TryPreservePendingComposerBeforeClose(
+                    out var preservationFailure,
+                    out var preservedComposerText))
+            {
+                _ = _hotkeyWindow.TryUpdateToggleHotkey(previousHotkey, out _);
+                return SettingsApplyResult.Fail(preservationFailure);
+            }
+
+            if (!await _dictationController.ReleaseKnownBackgroundWindowAsync(
+                    preservedComposerText) &&
+                !ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
+                    ChromeProfileIdentity.From(_settings),
+                    _logger))
+            {
+                _ = _hotkeyWindow.TryUpdateToggleHotkey(previousHotkey, out _);
+                return SettingsApplyResult.Fail(
+                    "Das ChatGPT-Hintergrundfenster konnte vor dem Wechsel zur lokalen Erkennung nicht sicher freigegeben werden.");
+            }
+        }
+
+        _settings.DictationProvider = DictationProviders.LocalWhisper;
+        _settings.PreferredMicrophoneId = microphoneId;
+        _settings.PreferredMicrophoneName = microphoneName;
+        _settings.ToggleHotkey = hotkey;
+        _settings.SetupCompleted = true;
+        if (!_settings.Save(_logger))
+        {
+            _settings.DictationProvider = previousProvider;
+            _settings.PreferredMicrophoneId = previousMicrophoneId;
+            _settings.PreferredMicrophoneName = previousMicrophoneName;
+            _settings.ToggleHotkey = previousHotkey;
+            _settings.SetupCompleted = previousSetupCompleted;
+            _ = _hotkeyWindow.TryUpdateToggleHotkey(previousHotkey, out _);
+            return SettingsApplyResult.Fail(
+                "Die Einstellungen konnten nicht sicher gespeichert werden. Bitte Schreibrechte und freien Speicherplatz pr√ºfen.");
+        }
+
+        _recordingOverlay.SetToggleHotkey(hotkey);
+        QueueLocalWhisperPreparation();
+        _logger.Info($"Local settings applied. MicrophoneId='{microphoneId}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}'.");
+        ShowMessage($"Lokale deutsche Diktierung l√§uft jetzt mit {hotkey} im Hintergrund.");
+        return SettingsApplyResult.Success(microphoneName, hotkey);
+    }
+
+    private void OpenSettings()
+    {
+        if (_status != AppStatus.Idle)
+        {
+            ShowMessage("Bitte zuerst die laufende Aufnahme beenden.");
+            return;
+        }
+
+        _settingsForm.ShowAndActivate();
+    }
+
+    private void OpenHistory()
+    {
+        _historyForm.ShowAndActivate();
+    }
+
+    private async Task<DictationRecoveryResult> TryRecoverTextToHistoryAsync(
+        IntPtr chatWindow,
+        AutomationElement? preferredInput,
+        string outcome,
+        int? timeoutOverrideMs = null,
+        Action? restoreTargetFocus = null,
+        bool clearComposerAfterPersistence = true,
+        CancellationToken cancellationToken = default)
+    {
+        var readResult = await _dictationController.ReadDictatedTextAsync(
+            chatWindow,
+            preferredInput,
+            timeoutOverrideMs: timeoutOverrideMs,
+            restoreTargetFocus: restoreTargetFocus,
+            cancellationToken: cancellationToken);
+        var text = readResult.Text.Trim();
+        _logger.Info($"Dictation recovery read completed. Attempts={readResult.Attempts} Method={readResult.Method} TextLength={text.Length}");
+        if (text.Length == 0 || AutomationHelpers.IsUnsafeCapturedText(text))
+        {
+            return new DictationRecoveryResult(
+                false,
+                readResult.ClipboardRestoreFailed,
+                false,
+                Guid.Empty,
+                string.Empty,
+                outcome);
+        }
+
+        var persisted = _history.TryAdd(text, outcome, out var historyEntryId);
+        var cleared = persisted &&
+                      (!clearComposerAfterPersistence ||
+                       await _dictationController.ClearPersistedDictationAsync(
+                           chatWindow,
+                           readResult.Input ?? preferredInput,
+                           restoreTargetFocus,
+                           text));
+        if (persisted && clearComposerAfterPersistence)
+        {
+            UpdateRecoveredCleanupOutcome(historyEntryId, outcome, cleared);
+        }
+
+        return new DictationRecoveryResult(
+            persisted,
+            readResult.ClipboardRestoreFailed,
+            persisted && clearComposerAfterPersistence && !cleared,
+            historyEntryId,
+            text,
+            outcome);
+    }
+
+    private async Task WriteChatGptDiagnosticsAsync()
+    {
+        if (!_settings.EnableChatGptInputDiagnostics)
+        {
+            ShowMessage("ChatGPT-Diagnose ist in den Einstellungen deaktiviert.");
+            return;
+        }
+
+        if (!await _operationLock.WaitAsync(0))
+        {
+            ShowMessage("ORhom verarbeitet gerade eine andere Aktion.");
+            return;
+        }
+
+        try
+        {
+            var window = _session?.ChatWindow ?? _dictationController.KnownChatWindow;
+            await _dictationController.DiagnoseChatGptUiAsync(window);
+            ShowMessage("ChatGPT Diagnose wurde ins Log geschrieben.");
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    private void OpenChromeProfileDirectory()
+    {
+        var validation = _dictationController.ValidateConfiguredProfile();
+        if (!validation.IsValid)
+        {
+            ShowConfiguredProfileUnavailable();
+            return;
+        }
+
+        OpenPath(validation.ProfileDirectoryPath);
+    }
+
+    private bool TryPreservePendingComposerBeforeClose(out string failureMessage) =>
+        TryPreservePendingComposerBeforeClose(
+            out failureMessage,
+            out _);
+
+    private bool TryPreservePendingComposerBeforeClose(
+        out string failureMessage,
+        out string? preservedComposerText)
+    {
+        var inspection = _dictationController.InspectPendingComposer();
+        var preservation = PendingComposerPreservation.Preserve(
+            inspection,
+            _history.ContainsText,
+            text => _history.TryAdd(
+                text,
+                DictationHistoryOutcomes.PreservedBeforeClose,
+                out _));
+        if (PendingComposerPreservation.IsSafeToClose(preservation))
+        {
+            preservedComposerText = inspection.State == PendingComposerState.Text
+                ? inspection.Text
+                : null;
+            if (inspection.State == PendingComposerState.Text)
+            {
+                _logger.Info($"Pending composer text preserved before owned-window close. TextLength={inspection.Text.Length} Outcome={preservation}");
+            }
+
+            failureMessage = string.Empty;
+            return true;
+        }
+
+        if (preservation == PendingComposerPreservationOutcome.PersistenceFailed)
+        {
+            preservedComposerText = null;
+            failureMessage = "Im ChatGPT-Entwurf liegt noch Text, der nicht im Diktierverlauf gespeichert werden konnte. Das Profilfenster bleibt zum Schutz des Textes ge√∂ffnet.";
+            return false;
+        }
+
+        preservedComposerText = null;
+        failureMessage = "Der ChatGPT-Entwurf konnte nicht sicher gepr√ºft werden. Das profilgebundene Hintergrundfenster bleibt zum Schutz m√∂glicher Texte ge√∂ffnet; bitte den Vorgang erneut versuchen.";
+        return false;
+    }
+
+    private void RestoreTargetFocus(FocusTarget target)
+    {
+        _pasteService.RestoreTargetFocus(target);
+    }
+
+    private void UpdateRecoveredCleanupOutcome(
+        Guid historyEntryId,
+        string recoveryOutcome,
+        bool cleanupCompleted)
+    {
+        if (historyEntryId == Guid.Empty)
+        {
+            return;
+        }
+
+        var outcome = cleanupCompleted
+            ? recoveryOutcome == DictationHistoryOutcomes.CancelledRecovered
+                ? DictationHistoryOutcomes.CancelledRecoveredCleared
+                : DictationHistoryOutcomes.FailureRecoveredCleared
+            : DictationHistoryOutcomes.PendingComposerCleanup;
+        _history.UpdateOutcome(historyEntryId, outcome);
+    }
+
+    private void OnOverlayPlacementCommitted(
+        object? sender,
+        RecordingOverlayPlacementEventArgs e)
+    {
+        var previousMonitor = _settings.RecordingOverlayMonitorDeviceName;
+        var previousRelativeX = _settings.RecordingOverlayRelativeX;
+        var previousRelativeY = _settings.RecordingOverlayRelativeY;
+        _settings.RecordingOverlayMonitorDeviceName = e.Placement.MonitorDeviceName;
+        _settings.RecordingOverlayRelativeX = e.Placement.RelativeX;
+        _settings.RecordingOverlayRelativeY = e.Placement.RelativeY;
+        if (_settings.Save(_logger))
+        {
+            _logger.Info($"Recording bar position saved. Monitor='{e.Placement.MonitorDeviceName}' RelativeX={e.Placement.RelativeX:F4} RelativeY={e.Placement.RelativeY:F4}");
+            return;
+        }
+
+        _settings.RecordingOverlayMonitorDeviceName = previousMonitor;
+        _settings.RecordingOverlayRelativeX = previousRelativeX;
+        _settings.RecordingOverlayRelativeY = previousRelativeY;
+        ShowErrorMessage("Die Position der Diktierleiste konnte nicht gespeichert werden.");
+    }
+
+    private void ResetToIdle()
+    {
+        StopAudioDucking();
+        if (_localSession is { } localSession)
+        {
+            localSession.Capture.RecordingLimitReached -= OnLocalRecordingLimitReached;
+            localSession.Capture.UnexpectedlyStopped -= OnLocalCaptureUnexpectedlyStopped;
+            localSession.Capture.Dispose();
+            _localSession = null;
+        }
+        _session = null;
+        _queuedStopRequested = false;
+        _hotkeyWindow.SetEscapeEnabled(false);
+        SetStatus(AppStatus.Idle);
+    }
+
+    private void StopAudioDucking()
+    {
+        _audioDuckingTimer.Stop();
+        _audioDucking.Restore();
+    }
+
+    private void SetStatus(AppStatus status)
+    {
+        _status = status;
+        ApplyTrayStatePresentation();
+        if (_settings.ShowRecordingOverlay)
+        {
+            _recordingOverlay.ShowStatus(status);
+        }
+        else
+        {
+            _recordingOverlay.HideOverlay();
+        }
+        _logger.Info($"Status changed: {status}");
+    }
+
+    private void ShowMessage(string message)
+    {
+        _notifyIcon.BalloonTipTitle = "ORhom";
+        _notifyIcon.BalloonTipText = message;
+        _notifyIcon.ShowBalloonTip(3000);
+    }
+
+    private void ShowErrorMessage(string message)
+    {
+        ShowMessage(message);
+        if (_settings.ShowRecordingOverlay)
+        {
+            _recordingOverlay.ShowTransientError(message);
+        }
+    }
+
+    private void ShowConfiguredProfileUnavailable()
+    {
+        ShowErrorMessage($"Chrome-Profil {_settings.ChromeProfileDirectory} nicht gefunden. Bitte ORhom √∂ffnen und ein Profil ausw√§hlen.");
+    }
+
+    private void OpenPath(string path)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Could not open path: {path}", ex);
+            ShowErrorMessage("Datei konnte nicht ge√∂ffnet werden.");
+        }
+    }
+
+    private async Task ExitAsync()
+    {
+        if (_exitInProgress)
+        {
+            return;
+        }
+
+        _exitInProgress = true;
+        _hotkeyWindow.SetToggleEnabled(false);
+        _recordingOverlay.SetInteractionEnabled(false);
+        ApplyTrayStatePresentation();
+        _dictationReadCancellation?.Cancel();
+        _startupCancellation.Cancel();
+        _ = await StopLocalWhisperPreparationAsync(unloadModel: false);
+        await _startupPreparationTask;
+        var exitAllowed = true;
+        var exitFailureMessage = string.Empty;
+        await _operationLock.WaitAsync();
+        try
+        {
+            var sessionActive = _session is not null || _localSession is not null;
+            if (sessionActive && _status != AppStatus.Idle)
+            {
+                exitAllowed = false;
+                exitFailureMessage = "ORhom bleibt ge√∂ffnet, solange eine Aufnahme noch aktiv oder nicht sicher abgeschlossen ist. Bitte zuerst F8 oder Escape dr√ºcken.";
+            }
+            else if (DictationProviders.IsLocal(_settings.DictationProvider))
+            {
+                _logger.Info("Application exiting from local dictation mode; no browser window cleanup is required.");
+            }
+            else if (!TryPreservePendingComposerBeforeClose(out exitFailureMessage))
+            {
+                exitAllowed = false;
+                if (ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
+                        ChromeProfileIdentity.From(_settings),
+                        _logger))
+                {
+                    exitFailureMessage += " Das Hintergrundfenster wurde sichtbar zur manuellen Textrettung freigegeben; w√§hlen Sie danach erneut Beenden.";
+                }
+            }
+            else
+            {
+                var profileIdentity = ChromeProfileIdentity.From(_settings);
+                var backgroundWindowWasPresent =
+                    ChatGptWindowFinder.FindOwnedBackgroundWindow(_settings) != IntPtr.Zero;
+                var backgroundWindowReleased = ChatGptWindowFinder.CloseOwnedBackgroundWindowAndWait(
+                    profileIdentity,
+                    _logger);
+                if (!backgroundWindowReleased)
+                {
+                    backgroundWindowReleased = ChatGptWindowFinder.ReleaseOwnedBackgroundWindowToUser(
+                        profileIdentity,
+                        _logger);
+                }
+
+                _logger.Info(!backgroundWindowWasPresent
+                    ? "Application exiting; no profile-scoped background window needed closing."
+                    : backgroundWindowReleased
+                        ? "Application exiting; profile-scoped background ownership was safely released."
+                        : "Application exit paused; profile-scoped background window closure was not confirmed.");
+                if (!backgroundWindowReleased)
+                {
+                    exitAllowed = false;
+                    exitFailureMessage = "ORhom bleibt ge√∂ffnet, weil das eigene ChatGPT-Hintergrundfenster noch nicht sicher geschlossen wurde. Bitte Beenden erneut versuchen.";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            exitAllowed = false;
+            exitFailureMessage = "ORhom konnte nicht sicher beendet werden. Bitte den Vorgang erneut versuchen.";
+            _logger.Error("Application exit safety checks failed.", ex);
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+
+        if (!exitAllowed)
+        {
+            _exitInProgress = false;
+            var interactionEnabled = !_settingsForm.Visible;
+            _hotkeyWindow.SetToggleEnabled(interactionEnabled);
+            _recordingOverlay.SetInteractionEnabled(interactionEnabled);
+            _hotkeyWindow.SetEscapeEnabled(_status == AppStatus.Recording);
+            ApplyTrayStatePresentation();
+            ShowMessage(exitFailureMessage);
+            return;
+        }
+
+        _startupCancellation.Cancel();
+        _lifetimeCancellation.Cancel();
+        ExitThread();
+    }
+
+    private static Icon LoadApplicationIcon()
+    {
+        try
+        {
+            var executablePath = Environment.ProcessPath ?? Application.ExecutablePath;
+            return Icon.ExtractAssociatedIcon(executablePath) ?? (Icon)SystemIcons.Application.Clone();
+        }
+        catch
+        {
+            return (Icon)SystemIcons.Application.Clone();
+        }
+    }
+
+    private sealed record RecordingSession(
+        FocusTarget Target,
+        IntPtr ChatWindow,
+        AutomationElement? ChatInput);
+
+    private sealed record LocalRecordingSession(
+        FocusTarget Target,
+        LocalAudioCaptureSession Capture);
+
+    private sealed record DictationRecoveryResult(
+        bool TextRecovered,
+        bool ClipboardRestoreFailed,
+        bool ComposerCleanupFailed,
+        Guid HistoryEntryId,
+        string Text,
+        string Outcome);
+}
+
+internal static class AbortRecoveryPersistence
+{
+    public static async Task<RecoveryPersistenceResult> SaveThenClearAsync(
+        string text,
+        Func<string, bool> saveSynchronously,
+        Func<Task<bool>> clearPersistedAsync)
+    {
+        if (!saveSynchronously(text))
+        {
+            return new RecoveryPersistenceResult(false, false);
+        }
+
+        return new RecoveryPersistenceResult(true, await clearPersistedAsync());
+    }
+}
+
+internal sealed record RecoveryPersistenceResult(bool Persisted, bool Cleared);
