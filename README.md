@@ -7,6 +7,7 @@ Die Spracherkennung läuft standardmäßig vollständig lokal, fest auf Deutsch 
 ## Bedienung auf einen Blick
 
 - Das Hauptfenster führt in drei Schritten durch **Modus wählen**, **Mikrofon auswählen** und **Shortcut festlegen**.
+- Unter **Größe des Sprachfelds** lässt sich die Diktierleiste jederzeit auf **Klein**, **Mittel** oder **Groß** stellen. Neue und bisherige Installationen starten platzsparend mit **Klein**.
 - Im Bereitschaftszustand startet ein Klick auf die Diktierleiste das Diktat; der konfigurierte Hotkey funktioniert app-übergreifend.
 - Während der Aufnahme beendet **Stopp & einfügen** das Diktat regulär. Das separate **X** beziehungsweise Escape bricht ohne Einfügen ab.
 - Das Tray-Menü zeigt Status und Hinweise auf Deutsch. Seine Primäraktion passt sich dem Zustand an, etwa **Diktieren**, **Aufnahme stoppen** oder **Verarbeitung abbrechen**.
@@ -154,6 +155,7 @@ Die mitgelieferte `settings.json` enthält insbesondere:
   "allowTemporaryProfile": false,
   "keepChatGptWindowHidden": true,
   "showRecordingOverlay": true,
+  "recordingOverlaySize": "Small",
   "recordingOverlayBottomOffsetPx": 72,
   "recordingOverlayMonitorDeviceName": "",
   "recordingOverlayRelativeX": null,
@@ -175,6 +177,8 @@ Die mitgelieferte `settings.json` enthält insbesondere:
 ```
 
 `dictationProvider` akzeptiert `LocalWhisper` (Standard) oder `ChatGptBrowser`. Unbekannte beziehungsweise fehlende Werte werden datenschutzfreundlich auf die lokale Engine normalisiert. Die Sprache ist absichtlich keine frei editierbare Einstellung, sondern im Inferenzpfad fest auf `de` verdrahtet. `preferredMicrophoneId` ist die stabile WASAPI-Geräte-ID; für bestehende Installationen bleibt der Anzeigename als Migrations-Fallback erhalten.
+
+`recordingOverlaySize` akzeptiert `Small`, `Medium` oder `Large` und kann bequem im Einstellungsfenster geändert werden. Fehlende oder ungültige Werte werden sicher auf die kompakte Größe `Small` gesetzt.
 
 `recordingStateTimeoutMs` bleibt die kurze Bestätigungsfrist für den Aufnahmestart. Für die Transkription gilt unabhängig von älteren lokalen Einstellungen eine Sicherheitsuntergrenze von fünf Minuten; konfigurierbar sind bis zu 15 Minuten. Ein einzelnes leeres Ergebnis beendet die Suche nicht. Für `dictationTextStableMs` gilt eine Sicherheitsuntergrenze von drei Sekunden, damit Verarbeitungspausen bei langen Texten nicht als Fertigstellung gelten. `dictationStopGracePeriodMs` schützt das letzte gesprochene Wort vor einem zu harten Aufnahmeende.
 

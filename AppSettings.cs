@@ -37,6 +37,8 @@ internal sealed class AppSettings
     public bool MinimizeChatGptAfterStartup { get; set; } = true;
     public bool KeepChatGptWindowHidden { get; set; } = true;
     public bool ShowRecordingOverlay { get; set; } = true;
+    public RecordingOverlaySize RecordingOverlaySize { get; set; } =
+        global::ORhom.RecordingOverlaySize.Small;
     public int RecordingOverlayBottomOffsetPx { get; set; } = 72;
     public string RecordingOverlayMonitorDeviceName { get; set; } = string.Empty;
     public double? RecordingOverlayRelativeX { get; set; }
@@ -225,6 +227,11 @@ internal sealed class AppSettings
         ChromeExecutablePath ??= string.Empty;
         ChromeUserDataDir ??= string.Empty;
         ChromeProfileDirectory ??= string.Empty;
+        if (!Enum.IsDefined(RecordingOverlaySize))
+        {
+            RecordingOverlaySize = global::ORhom.RecordingOverlaySize.Small;
+        }
+
         RecordingOverlayMonitorDeviceName ??= string.Empty;
         if (!IsValidRelativePosition(RecordingOverlayRelativeX) ||
             !IsValidRelativePosition(RecordingOverlayRelativeY))

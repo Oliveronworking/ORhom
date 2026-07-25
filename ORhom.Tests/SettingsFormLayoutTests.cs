@@ -65,11 +65,26 @@ public sealed class SettingsFormLayoutTests
                     FindControl(form, "saveAndStartButton"));
                 var hideButton = Assert.IsType<Button>(
                     FindControl(form, "hideToTrayButton"));
+                var overlaySizeCombo = Assert.IsType<ComboBox>(
+                    FindControl(form, "recordingOverlaySizeCombo"));
 
                 Assert.True(scrollPanel.AutoScroll);
                 Assert.NotNull(FindControl(form, "providerStepCard"));
                 Assert.NotNull(FindControl(form, "microphoneStepCard"));
                 Assert.NotNull(FindControl(form, "hotkeyStepCard"));
+                Assert.Equal(
+                    ["Klein", "Mittel", "Groß"],
+                    overlaySizeCombo.Items
+                        .Cast<object>()
+                        .Select(item => item.ToString()!)
+                        .ToArray());
+                Assert.Equal("Klein", overlaySizeCombo.Text);
+                Assert.Equal(
+                    "Größe des Sprachfelds",
+                    overlaySizeCombo.AccessibleName);
+                Assert.Contains(
+                    "Klein, Mittel und Groß",
+                    overlaySizeCombo.AccessibleDescription ?? string.Empty);
                 Assert.Equal("Speichern & losdiktieren", saveButton.Text);
                 Assert.Equal("Im Hintergrund schließen", hideButton.Text);
                 Assert.False(string.IsNullOrWhiteSpace(
@@ -97,6 +112,87 @@ public sealed class SettingsFormLayoutTests
                             Path.GetFullPath(previewPath))!);
                     bitmap.Save(previewPath);
                 }
+
+                form.ClosePermanently();
+            }
+            finally
+            {
+                Directory.Delete(temporaryDirectory, recursive: true);
+            }
+        });
+    }
+
+    [Fact]
+    public void RecordingBarSizeSynchronizesFromSettingsAndIsPassedToSave()
+    {
+        RunOnStaThread(() =>
+        {
+            var temporaryDirectory = Path.Combine(
+                Path.GetTempPath(),
+                $"orhom-settings-size-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(temporaryDirectory);
+            try
+            {
+                var logger = new AppLogger(
+                    Path.Combine(temporaryDirectory, "logs"));
+                var settings = AppSettings.Load(
+                    Path.Combine(temporaryDirectory, "settings.json"),
+                    logger);
+                settings.ToggleHotkey = "F8";
+                settings.DictationProvider = DictationProviders.LocalWhisper;
+                settings.RecordingOverlaySize = RecordingOverlaySize.Medium;
+
+                SettingsFormValues? savedValues = null;
+                using var form = new SettingsForm(
+                    settings,
+                    new AudioInputDeviceService(logger),
+                    new ChromeProfileDiscovery(),
+                    values =>
+                    {
+                        savedValues = values;
+                        settings.RecordingOverlaySize = values.RecordingOverlaySize;
+                        return Task.FromResult(
+                            SettingsApplyResult.Fail("Test beendet."));
+                    })
+                {
+                    Opacity = 0,
+                    ShowInTaskbar = false
+                };
+
+                form.Show();
+                Application.DoEvents();
+
+                var overlaySizeCombo = Assert.IsType<ComboBox>(
+                    FindControl(form, "recordingOverlaySizeCombo"));
+                Assert.Equal("Mittel", overlaySizeCombo.Text);
+
+                settings.RecordingOverlaySize = RecordingOverlaySize.Large;
+                form.ShowAndActivate();
+                Application.DoEvents();
+                Assert.Equal("Groß", overlaySizeCombo.Text);
+
+                overlaySizeCombo.SelectedIndex = 0;
+                var microphoneCombo = Assert.IsType<ComboBox>(
+                    FindControl(form, "microphoneCombo"));
+                var microphone = new AudioInputDeviceInfo(
+                    "settings-size-test",
+                    "Testmikrofon");
+                microphoneCombo.Items.Clear();
+                microphoneCombo.Items.Add(microphone);
+                microphoneCombo.SelectedItem = microphone;
+
+                var saveButton = Assert.IsType<Button>(
+                    FindControl(form, "saveAndStartButton"));
+                saveButton.PerformClick();
+                Application.DoEvents();
+
+                Assert.NotNull(savedValues);
+                Assert.Equal(
+                    RecordingOverlaySize.Small,
+                    savedValues.RecordingOverlaySize);
+                Assert.Equal(
+                    RecordingOverlaySize.Small,
+                    settings.RecordingOverlaySize);
 
                 form.ClosePermanently();
             }

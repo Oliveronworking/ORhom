@@ -90,6 +90,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _settings.RecordingOverlayBottomOffsetPx,
             _settings.ToggleHotkey,
             overlayPlacement);
+        _recordingOverlay.ApplySizePreset(_settings.RecordingOverlaySize);
         _focusTracker = new FocusTracker(_logger);
         _pasteService = new PasteService(_logger);
         var historyDirectory = Path.Combine(
@@ -536,7 +537,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             device.Id,
             device.DisplayName,
             _settings.ToggleHotkey,
-            chromeProfile));
+            chromeProfile,
+            _settings.RecordingOverlaySize));
         if (!result.Ok)
         {
             ShowErrorMessage(result.Message);
@@ -2223,12 +2225,16 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var microphoneId = values.MicrophoneId;
         var hotkey = values.Hotkey;
         var provider = DictationProviders.Normalize(values.DictationProvider);
+        var recordingOverlaySize = Enum.IsDefined(values.RecordingOverlaySize)
+            ? values.RecordingOverlaySize
+            : RecordingOverlaySize.Small;
         if (DictationProviders.IsLocal(provider))
         {
             return await ApplyLocalSettingsCoreAsync(
                 microphoneId,
                 microphoneName,
-                hotkey);
+                hotkey,
+                recordingOverlaySize);
         }
 
         if (values.ChromeProfile is not { } chromeProfile)
@@ -2247,6 +2253,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var previousMicrophoneId = _settings.PreferredMicrophoneId;
         var previousMicrophoneName = _settings.PreferredMicrophoneName;
         var previousHotkey = _settings.ToggleHotkey;
+        var previousRecordingOverlaySize = _settings.RecordingOverlaySize;
         var previousSetupCompleted = _settings.SetupCompleted;
         var profileChanged =
             !previousUserDataDirectory.Equals(chromeProfile.UserDataDirectory, StringComparison.OrdinalIgnoreCase) ||
@@ -2355,6 +2362,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _settings.PreferredMicrophoneId = microphoneId;
         _settings.PreferredMicrophoneName = microphoneName;
         _settings.ToggleHotkey = hotkey;
+        _settings.RecordingOverlaySize = recordingOverlaySize;
         _settings.SetupCompleted = true;
         if (!_settings.Save(_logger))
         {
@@ -2362,6 +2370,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _settings.PreferredMicrophoneId = previousMicrophoneId;
             _settings.PreferredMicrophoneName = previousMicrophoneName;
             _settings.ToggleHotkey = previousHotkey;
+            _settings.RecordingOverlaySize = previousRecordingOverlaySize;
             _settings.SetupCompleted = previousSetupCompleted;
             if (!_hotkeyWindow.TryUpdateToggleHotkey(previousHotkey, out var rollbackFailure))
             {
@@ -2385,7 +2394,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
 
         _recordingOverlay.SetToggleHotkey(hotkey);
-        _logger.Info($"Settings applied from UI. ChromeProfileDirectory='{chromeProfile.DirectoryName}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}'.");
+        _recordingOverlay.ApplySizePreset(recordingOverlaySize);
+        _logger.Info($"Settings applied from UI. ChromeProfileDirectory='{chromeProfile.DirectoryName}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}' RecordingOverlaySize='{recordingOverlaySize}'.");
         ShowMessage(localResourcesReleased
             ? $"ORhom läuft jetzt mit {hotkey} im Hintergrund."
             : "Die Browser-Diktierung ist aktiv, aber das lokale GPU-Modell konnte nicht freigegeben werden. Ein Neustart von ORhom gibt die Ressourcen frei.");
@@ -2395,7 +2405,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private async Task<SettingsApplyResult> ApplyLocalSettingsCoreAsync(
         string microphoneId,
         string microphoneName,
-        string hotkey)
+        string hotkey,
+        RecordingOverlaySize recordingOverlaySize)
     {
         if (!_audioInputDevices.IsMicrophoneActive(microphoneId, microphoneName))
         {
@@ -2406,6 +2417,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var previousMicrophoneId = _settings.PreferredMicrophoneId;
         var previousMicrophoneName = _settings.PreferredMicrophoneName;
         var previousHotkey = _settings.ToggleHotkey;
+        var previousRecordingOverlaySize = _settings.RecordingOverlaySize;
         var previousSetupCompleted = _settings.SetupCompleted;
 
         if (!_hotkeyWindow.TryUpdateToggleHotkey(hotkey, out var hotkeyFailure))
@@ -2440,6 +2452,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _settings.PreferredMicrophoneId = microphoneId;
         _settings.PreferredMicrophoneName = microphoneName;
         _settings.ToggleHotkey = hotkey;
+        _settings.RecordingOverlaySize = recordingOverlaySize;
         _settings.SetupCompleted = true;
         if (!_settings.Save(_logger))
         {
@@ -2447,6 +2460,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _settings.PreferredMicrophoneId = previousMicrophoneId;
             _settings.PreferredMicrophoneName = previousMicrophoneName;
             _settings.ToggleHotkey = previousHotkey;
+            _settings.RecordingOverlaySize = previousRecordingOverlaySize;
             _settings.SetupCompleted = previousSetupCompleted;
             _ = _hotkeyWindow.TryUpdateToggleHotkey(previousHotkey, out _);
             return SettingsApplyResult.Fail(
@@ -2454,8 +2468,9 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
 
         _recordingOverlay.SetToggleHotkey(hotkey);
+        _recordingOverlay.ApplySizePreset(recordingOverlaySize);
         QueueLocalWhisperPreparation();
-        _logger.Info($"Local settings applied. MicrophoneId='{microphoneId}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}'.");
+        _logger.Info($"Local settings applied. MicrophoneId='{microphoneId}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}' RecordingOverlaySize='{recordingOverlaySize}'.");
         ShowMessage($"Lokale deutsche Diktierung läuft jetzt mit {hotkey} im Hintergrund.");
         return SettingsApplyResult.Success(microphoneName, hotkey);
     }

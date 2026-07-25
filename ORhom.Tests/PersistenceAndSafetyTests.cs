@@ -119,6 +119,76 @@ public sealed class AppSettingsPersistenceTests : IDisposable
     }
 
     [Fact]
+    public void ExistingSettingsWithoutRecordingBarSizeDefaultToSmall()
+    {
+        Directory.CreateDirectory(_directory);
+        var settingsPath = Path.Combine(_directory, "settings.json");
+        File.WriteAllText(
+            settingsPath,
+            """
+            {
+              "toggleHotkey": "Ctrl+F10"
+            }
+            """);
+
+        var settings = AppSettings.Load(settingsPath, CreateLogger());
+
+        Assert.Equal(RecordingOverlaySize.Small, settings.RecordingOverlaySize);
+        Assert.Equal("Ctrl+F10", settings.ToggleHotkey);
+        Assert.True(settings.IsPersistenceAvailable);
+    }
+
+    [Theory]
+    [InlineData((int)RecordingOverlaySize.Small)]
+    [InlineData((int)RecordingOverlaySize.Medium)]
+    [InlineData((int)RecordingOverlaySize.Large)]
+    public void RecordingBarSizeSurvivesSettingsRoundTrip(int sizeValue)
+    {
+        var size = (RecordingOverlaySize)sizeValue;
+        Directory.CreateDirectory(_directory);
+        var settingsPath = Path.Combine(_directory, "settings.json");
+        var logger = CreateLogger();
+        var settings = AppSettings.Load(settingsPath, logger);
+        settings.RecordingOverlaySize = size;
+
+        Assert.True(settings.Save(logger));
+
+        var json = File.ReadAllText(settingsPath);
+        var reloaded = AppSettings.Load(settingsPath, logger);
+        Assert.Contains($"\"recordingOverlaySize\": \"{size}\"", json);
+        Assert.Equal(size, reloaded.RecordingOverlaySize);
+    }
+
+    [Theory]
+    [InlineData("\"Gigantic\"")]
+    [InlineData("999")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    public void InvalidRecordingBarSizeFallsBackWithoutDiscardingOtherSettings(string jsonValue)
+    {
+        Directory.CreateDirectory(_directory);
+        var settingsPath = Path.Combine(_directory, "settings.json");
+        File.WriteAllText(
+            settingsPath,
+            $$"""
+            {
+              "toggleHotkey": "Ctrl+F11",
+              "recordingOverlaySize": {{jsonValue}}
+            }
+            """);
+
+        var settings = AppSettings.Load(settingsPath, CreateLogger());
+
+        Assert.Equal(RecordingOverlaySize.Small, settings.RecordingOverlaySize);
+        Assert.Equal("Ctrl+F11", settings.ToggleHotkey);
+        Assert.True(settings.IsPersistenceAvailable);
+        Assert.Empty(Directory.GetFiles(
+            _directory,
+            "settings.unreadable-*.json",
+            SearchOption.TopDirectoryOnly));
+    }
+
+    [Fact]
     public void IncompleteRecordingBarPlacementIsDiscardedOnLoad()
     {
         Directory.CreateDirectory(_directory);

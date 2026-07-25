@@ -95,6 +95,62 @@ public sealed class RecordingOverlayPlacementTests
                 TimeSpan.FromSeconds(-1)));
     }
 
+    [Theory]
+    [InlineData(0, 210, 42)]
+    [InlineData(1, 255, 50)]
+    [InlineData(2, 300, 56)]
+    public void SizePresetsRenderAtExpectedLogicalSize(
+        int sizeValue,
+        int expectedWidth,
+        int expectedHeight)
+    {
+        RunOnStaThread(() =>
+        {
+            var size = (RecordingOverlaySize)sizeValue;
+            using var form = new RecordingOverlayForm(72, "Ctrl+Space")
+            {
+                Opacity = 0
+            };
+
+            form.ApplySizePreset(size);
+            form.ShowStatus(AppStatus.Idle);
+            Application.DoEvents();
+            StopAnimationTimer(form);
+
+            var scale = Math.Max(form.DeviceDpi, 96) / 96d;
+            Assert.Equal(size, form.SizePreset);
+            Assert.Equal(
+                new Size(expectedWidth, expectedHeight),
+                form.LogicalSize);
+            Assert.Equal(
+                (int)Math.Round(
+                    expectedWidth * scale,
+                    MidpointRounding.AwayFromZero),
+                form.ClientSize.Width);
+            Assert.Equal(
+                (int)Math.Round(
+                    expectedHeight * scale,
+                    MidpointRounding.AwayFromZero),
+                form.ClientSize.Height);
+
+            using var bitmap = new Bitmap(form.Width, form.Height);
+            form.DrawToBitmap(
+                bitmap,
+                new Rectangle(Point.Empty, bitmap.Size));
+            var center = bitmap.GetPixel(
+                bitmap.Width / 2,
+                bitmap.Height / 2);
+            Assert.True(
+                center.R < 45 &&
+                center.G < 45 &&
+                center.B < 50);
+            SaveSizePreviewIfRequested(
+                bitmap,
+                "ORHOM_OVERLAY_PREVIEW_PATH",
+                size);
+        });
+    }
+
     [Fact]
     public void IdleBarStaysVisibleAndRendersAtFlowBarSize()
     {
@@ -144,10 +200,10 @@ public sealed class RecordingOverlayPlacementTests
             Assert.True(
                 Screen.FromPoint(Cursor.Position).WorkingArea.Contains(form.Bounds));
             Assert.Equal(
-                (int)Math.Round(RecordingOverlayForm.LogicalSize.Width * scale),
+                (int)Math.Round(form.LogicalSize.Width * scale),
                 form.ClientSize.Width);
             Assert.Equal(
-                (int)Math.Round(RecordingOverlayForm.LogicalSize.Height * scale),
+                (int)Math.Round(form.LogicalSize.Height * scale),
                 form.ClientSize.Height);
 
             using var bitmap = new Bitmap(form.Width, form.Height);
@@ -169,15 +225,21 @@ public sealed class RecordingOverlayPlacementTests
         });
     }
 
-    [Fact]
-    public void RecordingActionsHaveIndependentHitTargets()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void RecordingActionsHaveIndependentSafeHitTargets(
+        int sizeValue)
     {
         RunOnStaThread(() =>
         {
+            var size = (RecordingOverlaySize)sizeValue;
             using var form = new RecordingOverlayForm(72, "Ctrl+Space")
             {
                 Opacity = 0
             };
+            form.ApplySizePreset(size);
             var toggleRequests = 0;
             var abortRequests = 0;
             form.ToggleRequested += (_, _) => toggleRequests++;
@@ -186,16 +248,38 @@ public sealed class RecordingOverlayPlacementTests
             form.ShowStatus(AppStatus.Recording);
             Application.DoEvents();
 
+            Assert.True(form.RecordingStopActionBounds.Left >= 0);
+            Assert.True(form.RecordingStopActionBounds.Top >= 0);
+            Assert.True(
+                form.RecordingStopActionBounds.Right <=
+                form.LogicalSize.Width);
+            Assert.True(
+                form.RecordingStopActionBounds.Bottom <=
+                form.LogicalSize.Height);
+            Assert.True(form.RecordingStopActionBounds.Width >= 70);
+            Assert.True(form.RecordingStopActionBounds.Height >= 32);
+            Assert.True(
+                form.RecordingAbortActionBounds.Left >
+                form.RecordingStopActionBounds.Right);
+            Assert.True(
+                form.RecordingAbortActionBounds.Right <=
+                form.LogicalSize.Width);
+            Assert.True(
+                form.RecordingAbortActionBounds.Bottom <=
+                form.LogicalSize.Height);
+            Assert.True(form.RecordingAbortActionBounds.Width >= 30);
+            Assert.True(form.RecordingAbortActionBounds.Height >= 32);
+
             var scale = Math.Max(form.DeviceDpi, 96) / 96f;
             ClickAt(
                 form,
                 GetScaledCenter(
-                    RecordingOverlayForm.RecordingStopActionBounds,
+                    form.RecordingStopActionBounds,
                     scale));
             ClickAt(
                 form,
                 GetScaledCenter(
-                    RecordingOverlayForm.RecordingAbortActionBounds,
+                    form.RecordingAbortActionBounds,
                     scale));
             ClickAt(form, new Point((int)(90 * scale), (int)(28 * scale)));
 
@@ -204,29 +288,25 @@ public sealed class RecordingOverlayPlacementTests
             Assert.Contains("Stopp", form.AccessibleDescription);
             Assert.Contains("verwirft", form.AccessibleDescription);
 
-            var previewPath = Environment.GetEnvironmentVariable(
-                "ORHOM_OVERLAY_RECORDING_PREVIEW_PATH");
-            if (!string.IsNullOrWhiteSpace(previewPath))
-            {
-                using var bitmap = new Bitmap(form.Width, form.Height);
-                form.DrawToBitmap(
-                    bitmap,
-                    new Rectangle(Point.Empty, bitmap.Size));
-                Directory.CreateDirectory(
-                    Path.GetDirectoryName(Path.GetFullPath(previewPath))!);
-                bitmap.Save(previewPath);
-            }
+            using var bitmap = new Bitmap(form.Width, form.Height);
+            form.DrawToBitmap(
+                bitmap,
+                new Rectangle(Point.Empty, bitmap.Size));
+            SaveSizePreviewIfRequested(
+                bitmap,
+                "ORHOM_OVERLAY_RECORDING_PREVIEW_PATH",
+                size);
 
             form.SetInteractionEnabled(false);
             ClickAt(
                 form,
                 GetScaledCenter(
-                    RecordingOverlayForm.RecordingStopActionBounds,
+                    form.RecordingStopActionBounds,
                     scale));
             ClickAt(
                 form,
                 GetScaledCenter(
-                    RecordingOverlayForm.RecordingAbortActionBounds,
+                    form.RecordingAbortActionBounds,
                     scale));
 
             Assert.Equal(1, toggleRequests);
@@ -377,6 +457,48 @@ public sealed class RecordingOverlayPlacementTests
             (int)Math.Round(
                 (bounds.Top + bounds.Height / 2) * scale,
                 MidpointRounding.AwayFromZero));
+
+    private static void SaveSizePreviewIfRequested(
+        Bitmap bitmap,
+        string baseVariable,
+        RecordingOverlaySize size)
+    {
+        var specificVariable =
+            $"{baseVariable[..^"_PATH".Length]}_{size.ToString().ToUpperInvariant()}_PATH";
+        var previewPath = Environment.GetEnvironmentVariable(
+            specificVariable);
+        if (string.IsNullOrWhiteSpace(previewPath))
+        {
+            previewPath = Environment.GetEnvironmentVariable(baseVariable);
+            if (string.IsNullOrWhiteSpace(previewPath))
+            {
+                return;
+            }
+
+            var sizeName = size.ToString().ToLowerInvariant();
+            if (previewPath.Contains(
+                    "{size}",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                previewPath = previewPath.Replace(
+                    "{size}",
+                    sizeName,
+                    StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                var fullPath = Path.GetFullPath(previewPath);
+                previewPath = Path.Combine(
+                    Path.GetDirectoryName(fullPath)!,
+                    $"{Path.GetFileNameWithoutExtension(fullPath)}-{sizeName}" +
+                    Path.GetExtension(fullPath));
+            }
+        }
+
+        Directory.CreateDirectory(
+            Path.GetDirectoryName(Path.GetFullPath(previewPath))!);
+        bitmap.Save(previewPath);
+    }
 
     private static void InvokeNonPublic(
         RecordingOverlayForm form,
