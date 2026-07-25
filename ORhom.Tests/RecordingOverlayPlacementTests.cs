@@ -1,7 +1,7 @@
 using System.Drawing;
 using System.Runtime.ExceptionServices;
 
-namespace ChatGptDictationBridge.Tests;
+namespace ORhom.Tests;
 
 public sealed class RecordingOverlayPlacementTests
 {
@@ -136,7 +136,7 @@ public sealed class RecordingOverlayPlacementTests
             Assert.True(center.R < 45 && center.G < 45 && center.B < 50);
 
             var previewPath = Environment.GetEnvironmentVariable(
-                "OPENAIFLOW_OVERLAY_PREVIEW_PATH");
+                "ORHOM_OVERLAY_PREVIEW_PATH");
             if (!string.IsNullOrWhiteSpace(previewPath))
             {
                 Directory.CreateDirectory(

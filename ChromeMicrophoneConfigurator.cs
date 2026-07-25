@@ -1,6 +1,6 @@
 using System.Windows.Automation;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed class ChromeMicrophoneConfigurator
 {
@@ -26,7 +26,7 @@ internal sealed class ChromeMicrophoneConfigurator
         var foregroundBeforeLaunch = NativeMethods.GetForegroundWindow();
         var windowsBeforeLaunch = FindChromeWindows().ToHashSet();
         var markerUrl = string.Empty;
-        var ownershipProperty = $"OpenAIFlow.MicrophoneSettingsWindow.{Guid.NewGuid():N}";
+        var ownershipProperty = $"ORhom.MicrophoneSettingsWindow.{Guid.NewGuid():N}";
         IntPtr settingsWindow = IntPtr.Zero;
         var navigationSucceeded = false;
         try

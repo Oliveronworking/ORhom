@@ -1,7 +1,7 @@
 using System.IO;
 using System.Text.Json;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed class DictationHistoryStore
 {

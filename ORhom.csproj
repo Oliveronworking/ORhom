@@ -7,17 +7,17 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>OpenAIFlow</AssemblyName>
-    <RootNamespace>ChatGptDictationBridge</RootNamespace>
+    <AssemblyName>ORhom</AssemblyName>
+    <RootNamespace>ORhom</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>Assets\OpenAIFlow.ico</ApplicationIcon>
-    <AssemblyTitle>OpenAI Flow Dictation</AssemblyTitle>
-    <Product>OpenAI Flow Dictation</Product>
+    <ApplicationIcon>Assets\ORhom.ico</ApplicationIcon>
+    <AssemblyTitle>ORhom</AssemblyTitle>
+    <Product>ORhom</Product>
     <Description>Lokale deutsche Windows-Diktierhilfe mit ChatGPT-Browser-Fallback.</Description>
     <Version>1.1.0</Version>
     <InformationalVersion>1.1.0</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
-    <Authors>OpenAI Flow</Authors>
+    <Authors>ORhom</Authors>
   </PropertyGroup>
 
   <ItemGroup>
@@ -48,7 +48,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="OpenAIFlow.Tests\**\*.cs" />
+    <Compile Remove="ORhom.Tests\**\*.cs" />
   </ItemGroup>
 
 </Project>

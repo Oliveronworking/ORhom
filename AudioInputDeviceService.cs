@@ -1,7 +1,7 @@
 using Microsoft.Win32;
 using NAudio.CoreAudioApi;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed class AudioInputDeviceService
 {

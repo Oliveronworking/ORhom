@@ -1,4 +1,4 @@
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal static class KeyboardHelpers
 {

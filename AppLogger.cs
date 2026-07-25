@@ -2,7 +2,7 @@ using System.IO;
 using System.Security;
 using System.Text;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed class AppLogger
 {

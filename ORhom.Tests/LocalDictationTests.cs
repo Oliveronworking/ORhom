@@ -1,12 +1,12 @@
 using NAudio.Wave;
 
-namespace ChatGptDictationBridge.Tests;
+namespace ORhom.Tests;
 
 public sealed class LocalDictationConfigurationTests : IDisposable
 {
     private readonly string _directory = Path.Combine(
         Path.GetTempPath(),
-        "OpenAIFlow.LocalDictation.Tests",
+        "ORhom.LocalDictation.Tests",
         Guid.NewGuid().ToString("N"));
 
     [Fact]
@@ -225,7 +225,7 @@ public sealed class LocalDictationConfigurationTests : IDisposable
     }
 
     [Theory]
-    [InlineData("OpenAI Flow")]
+    [InlineData("ORhom")]
     [InlineData("ChatGPT")]
     [InlineData("Codex")]
     [InlineData("GitHub")]

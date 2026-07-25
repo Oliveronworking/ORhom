@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed class HotkeyWindow : Form
 {

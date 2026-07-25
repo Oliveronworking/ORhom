@@ -1,4 +1,4 @@
-namespace ChatGptDictationBridge.Tests;
+namespace ORhom.Tests;
 
 public sealed class LocalWhisperVulkanIntegrationTests
 {
@@ -8,12 +8,12 @@ public sealed class LocalWhisperVulkanIntegrationTests
     {
         var modelDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "OpenAIFlow",
+            "ORhom",
             "models",
             "whisper.cpp");
         var logDirectory = Path.Combine(
             Path.GetTempPath(),
-            "OpenAIFlow.WhisperVulkan.Tests",
+            "ORhom.WhisperVulkan.Tests",
             Guid.NewGuid().ToString("N"));
         var logger = new AppLogger(logDirectory);
         using var service = new LocalWhisperRecognitionService(
@@ -42,11 +42,11 @@ internal sealed class LocalWhisperVulkanIntegrationFactAttribute : FactAttribute
     public LocalWhisperVulkanIntegrationFactAttribute()
     {
         if (!string.Equals(
-                Environment.GetEnvironmentVariable("OPENAIFLOW_RUN_WHISPER_VULKAN_INTEGRATION"),
+                Environment.GetEnvironmentVariable("ORHOM_RUN_WHISPER_VULKAN_INTEGRATION"),
                 "1",
                 StringComparison.Ordinal))
         {
-            Skip = "Set OPENAIFLOW_RUN_WHISPER_VULKAN_INTEGRATION=1 to run the real model and GPU test.";
+            Skip = "Set ORHOM_RUN_WHISPER_VULKAN_INTEGRATION=1 to run the real model and GPU test.";
         }
     }
 }

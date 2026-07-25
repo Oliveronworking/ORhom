@@ -1,8 +1,10 @@
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed class FocusTracker
 {
-    private const int LocalReprobeTimeoutMs = 180;
+    private const int LocalReprobeTimeoutMs = 350;
+    private const int CaptureAttemptCount = 3;
+    private const int CaptureRetryDelayMs = 15;
     private readonly AppLogger _logger;
     private int _localReprobeInFlight;
 
@@ -117,18 +119,91 @@ internal sealed class FocusTracker
 
     private FocusTarget CaptureCore(bool blockPasswordFields, string logPrefix)
     {
-        var window = NativeMethods.GetForegroundWindow();
-        var owningProcessId = window == IntPtr.Zero
-            ? 0
-            : NativeMethods.GetOwningProcessId(window);
-        var element = AutomationHelpers.GetFocusedElement(_logger);
-        if (element is not null &&
-            !AutomationHelpers.IsElementInWindow(element, window))
+        var fallbackWindow = IntPtr.Zero;
+        var fallbackProcessId = 0U;
+        var hasCoherentFallback = false;
+        var consecutiveMissingElements = 0;
+
+        for (var attempt = 1; attempt <= CaptureAttemptCount; attempt++)
         {
-            _logger.Info($"{logPrefix} ignored a focused UI Automation element outside the captured foreground window. WindowHandle=0x{window.ToInt64():X}");
-            element = null;
+            var windowBefore = NativeMethods.GetForegroundWindow();
+            var processBefore = windowBefore == IntPtr.Zero
+                ? 0
+                : NativeMethods.GetOwningProcessId(windowBefore);
+            var candidate = AutomationHelpers.GetFocusedElement(_logger);
+            var windowAfter = NativeMethods.GetForegroundWindow();
+            var processAfter = windowAfter == IntPtr.Zero
+                ? 0
+                : NativeMethods.GetOwningProcessId(windowAfter);
+            var coherentWindow = windowBefore == windowAfter &&
+                                 processBefore == processAfter;
+            if (coherentWindow)
+            {
+                fallbackWindow = windowBefore;
+                fallbackProcessId = processBefore;
+                hasCoherentFallback = true;
+                if (candidate is not null &&
+                    AutomationHelpers.IsElementInWindow(candidate, windowBefore))
+                {
+                    return CreateTarget(
+                        windowBefore,
+                        processBefore,
+                        candidate,
+                        blockPasswordFields,
+                        logPrefix);
+                }
+
+                consecutiveMissingElements++;
+                if (candidate is not null)
+                {
+                    _logger.Info($"{logPrefix} retrying because UI Automation reported an element outside the stable foreground window. Attempt={attempt} WindowHandle=0x{windowBefore.ToInt64():X}");
+                }
+
+                if (consecutiveMissingElements >= 2)
+                {
+                    return CreateTarget(
+                        windowBefore,
+                        processBefore,
+                        element: null,
+                        blockPasswordFields,
+                        logPrefix);
+                }
+            }
+            else
+            {
+                consecutiveMissingElements = 0;
+                _logger.Info($"{logPrefix} retrying because the foreground window changed during the UI Automation sample. Attempt={attempt} Before=0x{windowBefore.ToInt64():X} After=0x{windowAfter.ToInt64():X}");
+            }
+
+            if (attempt < CaptureAttemptCount)
+            {
+                Thread.Sleep(CaptureRetryDelayMs);
+            }
         }
 
+        if (!hasCoherentFallback)
+        {
+            fallbackWindow = NativeMethods.GetForegroundWindow();
+            fallbackProcessId = fallbackWindow == IntPtr.Zero
+                ? 0
+                : NativeMethods.GetOwningProcessId(fallbackWindow);
+        }
+
+        return CreateTarget(
+            fallbackWindow,
+            fallbackProcessId,
+            element: null,
+            blockPasswordFields,
+            logPrefix);
+    }
+
+    private FocusTarget CreateTarget(
+        IntPtr window,
+        uint owningProcessId,
+        System.Windows.Automation.AutomationElement? element,
+        bool blockPasswordFields,
+        string logPrefix)
+    {
         var title = window == IntPtr.Zero ? string.Empty : NativeMethods.GetWindowTitle(window);
         var className = window == IntPtr.Zero ? string.Empty : NativeMethods.GetWindowClass(window);
         var avoidElementFocus = FocusRestorationPolicy.ShouldAvoidAutomationElementFocus(

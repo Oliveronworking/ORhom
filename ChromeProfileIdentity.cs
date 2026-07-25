@@ -3,11 +3,11 @@ using System.Security;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed record ChromeProfileIdentity
 {
-    private const string OwnershipPropertyPrefix = "OpenAIFlow.ChatGptBackgroundWindow";
+    private const string OwnershipPropertyPrefix = "ORhom.ChatGptBackgroundWindow";
 
     private ChromeProfileIdentity(string userDataDirectory, string profileDirectory)
     {

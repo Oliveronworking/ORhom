@@ -1,4 +1,4 @@
-namespace ChatGptDictationBridge.Tests;
+namespace ORhom.Tests;
 
 public sealed class DictationCandidateTrackerTests
 {

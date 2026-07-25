@@ -6,14 +6,14 @@ using Whisper.net;
 using Whisper.net.LibraryLoader;
 using Whisper.net.Logger;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed class LocalWhisperRecognitionService : IDisposable
 {
     public const string Language = "de";
 
     internal const string InitialPrompt =
-        "OpenAI Flow, ChatGPT, Codex, GitHub, Repository, PowerShell, .NET, JSON, " +
+        "ORhom, ChatGPT, Codex, GitHub, Repository, PowerShell, .NET, JSON, " +
         "Vulkan, Flash Attention, Whisper Large V3 Turbo, Zwischenablage.";
 
     private const int SignalFrameSamples = 320;
@@ -102,7 +102,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
         {
             DisposeWhisperObjects();
             throw new LocalWhisperRecognitionException(
-                "whisper.cpp konnte das deutsche Modell nicht über Vulkan laden. Bitte den aktuellen AMD-Adrenalin-Treiber sowie Microsoft Visual C++ 2015–2022 Redistributable (x64) installieren und OpenAI Flow neu starten.",
+                "whisper.cpp konnte das deutsche Modell nicht über Vulkan laden. Bitte den aktuellen AMD-Adrenalin-Treiber sowie Microsoft Visual C++ 2015–2022 Redistributable (x64) installieren und ORhom neu starten.",
                 ex);
         }
         finally
@@ -252,7 +252,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
             loadedLibrary != RuntimeLibrary.Vulkan)
         {
             throw new LocalWhisperRecognitionException(
-                $"Es ist bereits die Whisper-Laufzeit {loadedLibrary} statt Vulkan aktiv. Bitte OpenAI Flow neu starten.");
+                $"Es ist bereits die Whisper-Laufzeit {loadedLibrary} statt Vulkan aktiv. Bitte ORhom neu starten.");
         }
 
         RuntimeOptions.RuntimeLibraryOrder = [RuntimeLibrary.Vulkan];
@@ -290,7 +290,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
             if (rx7700XtDevice >= 0 && selectedGpuDevice != rx7700XtDevice)
             {
                 throw new LocalWhisperRecognitionException(
-                    $"Die RX 7700 XT wurde als Vulkan-Gerät {rx7700XtDevice} erkannt, aber whisper.cpp verwendet Gerät {selectedGpuDevice}. Bitte OpenAI Flow neu starten.");
+                    $"Die RX 7700 XT wurde als Vulkan-Gerät {rx7700XtDevice} erkannt, aber whisper.cpp verwendet Gerät {selectedGpuDevice}. Bitte ORhom neu starten.");
             }
 
             _factory = factory;

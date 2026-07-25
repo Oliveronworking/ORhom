@@ -6,7 +6,7 @@ using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text.Json;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed record LocalWhisperModelDescriptor(
     string Id,
@@ -595,7 +595,7 @@ internal sealed class LocalWhisperModelManager : IDisposable
         {
             throw new LocalWhisperModelException(
                 LocalWhisperModelFailure.Storage,
-                $"OpenAI Flow konnte den {description} nicht entfernen. Bitte Zugriffsrechte prüfen und erneut versuchen.",
+                $"ORhom konnte den {description} nicht entfernen. Bitte Zugriffsrechte prüfen und erneut versuchen.",
                 ex);
         }
     }

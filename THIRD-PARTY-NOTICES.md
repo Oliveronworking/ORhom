@@ -1,6 +1,6 @@
 # Third-party notices for local speech recognition
 
-OpenAIFlow uses the following components for its local speech runtime. The
+ORhom uses the following components for its local speech runtime. The
 project does not modify their licenses.
 
 ## NAudio.Wasapi
@@ -116,6 +116,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-The model is not redistributed inside `OpenAIFlow.exe`. It is downloaded only
+The model is not redistributed inside `ORhom.exe`. It is downloaded only
 on the user's machine, verified by size and SHA-256, and stored below the
 user's local application-data directory.

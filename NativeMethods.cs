@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal static class NativeMethods
 {

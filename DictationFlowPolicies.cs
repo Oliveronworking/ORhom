@@ -1,4 +1,4 @@
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal enum RecordingUiState
 {
@@ -180,6 +180,66 @@ internal static class FocusRestorationPolicy
         windowClass.Equals("Chrome_WidgetWin_1", StringComparison.OrdinalIgnoreCase);
 }
 
+internal enum TargetFocusProbeResult
+{
+    Match,
+    TransientMismatch,
+    Unsafe
+}
+
+internal static class TargetFocusConfirmationPolicy
+{
+    public static bool TryConfirm(
+        Func<TargetFocusProbeResult> probe,
+        int maximumAttempts,
+        int requiredConsecutiveMatches,
+        int retryDelayMs,
+        Action<int>? delay = null)
+    {
+        ArgumentNullException.ThrowIfNull(probe);
+        maximumAttempts = Math.Max(maximumAttempts, 1);
+        requiredConsecutiveMatches = Math.Clamp(
+            requiredConsecutiveMatches,
+            1,
+            maximumAttempts);
+        retryDelayMs = Math.Max(retryDelayMs, 0);
+        delay ??= Thread.Sleep;
+
+        var consecutiveMatches = 0;
+        for (var attempt = 1; attempt <= maximumAttempts; attempt++)
+        {
+            switch (probe())
+            {
+                case TargetFocusProbeResult.Match:
+                    consecutiveMatches++;
+                    if (consecutiveMatches >= requiredConsecutiveMatches)
+                    {
+                        return true;
+                    }
+
+                    break;
+
+                case TargetFocusProbeResult.TransientMismatch:
+                    consecutiveMatches = 0;
+                    break;
+
+                case TargetFocusProbeResult.Unsafe:
+                    return false;
+
+                default:
+                    throw new InvalidOperationException("Unknown target focus probe result.");
+            }
+
+            if (attempt < maximumAttempts && retryDelayMs > 0)
+            {
+                delay(retryDelayMs);
+            }
+        }
+
+        return false;
+    }
+}
+
 internal static class FocusTargetSafetyPolicy
 {
     private const string ChromiumWindowClass = "Chrome_WidgetWin_1";
@@ -224,16 +284,29 @@ internal static class FocusTargetSafetyPolicy
         SafeFocusMetadata metadata)
     {
         if (!IsChromiumWindow(windowClass) ||
-            string.IsNullOrWhiteSpace(metadata.AutomationId) ||
             !metadata.ClassName.Contains(ProseMirrorMarker, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        return metadata.ControlType.Equals("ControlType.Edit", StringComparison.OrdinalIgnoreCase) ||
-               metadata.ControlType.Equals("ControlType.Document", StringComparison.OrdinalIgnoreCase) ||
-               metadata.ControlType.Equals("ControlType.Custom", StringComparison.OrdinalIgnoreCase) ||
-               metadata.ControlType.Equals("ControlType.Group", StringComparison.OrdinalIgnoreCase);
+        var supportedControlType =
+            metadata.ControlType.Equals("ControlType.Edit", StringComparison.OrdinalIgnoreCase) ||
+            metadata.ControlType.Equals("ControlType.Document", StringComparison.OrdinalIgnoreCase) ||
+            metadata.ControlType.Equals("ControlType.Custom", StringComparison.OrdinalIgnoreCase) ||
+            metadata.ControlType.Equals("ControlType.Group", StringComparison.OrdinalIgnoreCase);
+        if (!supportedControlType)
+        {
+            return false;
+        }
+
+        // During a Chromium accessibility-tree rebuild the focused ProseMirror
+        // node is sometimes exposed as a Group without its usual AutomationId.
+        // The focused class marker is the stable semantic signal in that state.
+        return !string.IsNullOrWhiteSpace(metadata.AutomationId) ||
+               (metadata.ControlType.Equals(
+                    "ControlType.Group",
+                    StringComparison.OrdinalIgnoreCase) &&
+                HasFocusedProseMirrorMarker(metadata));
     }
 
     public static bool ShouldPromoteTransientChromiumTarget(
@@ -261,10 +334,10 @@ internal static class FocusTargetSafetyPolicy
             originalWindowTitle,
             candidateWindowClass,
             candidateWindowTitle) &&
-        HasSameWebViewRootIdentity(
+        HasCompatiblePromotionRootIdentity(
             originalWebViewRootIdentity,
             candidateWebViewRootIdentity) &&
-        IsTransientChromiumMainTarget(originalWindowClass, originalMetadata) &&
+        IsTransientChromiumCaptureTarget(originalWindowClass, originalMetadata) &&
         IsStrongSemanticWebEditor(candidateWindowClass, candidateMetadata);
 
     public static bool CanAcceptSemanticEditorReplacement(
@@ -293,9 +366,7 @@ internal static class FocusTargetSafetyPolicy
         IsStrongSemanticWebEditor(originalWindowClass, originalMetadata) &&
         IsStrongSemanticWebEditor(candidateWindowClass, candidateMetadata) &&
         HasStrongEditorLayoutMatch(originalLayout, candidateLayout) &&
-        originalMetadata.AutomationId.Equals(
-            candidateMetadata.AutomationId,
-            StringComparison.OrdinalIgnoreCase);
+        HaveCompatibleEditorAutomationIds(originalMetadata, candidateMetadata);
 
     public static bool HasStrongEditorLayoutMatch(
         SafeFocusLayoutFingerprint original,
@@ -344,6 +415,59 @@ internal static class FocusTargetSafetyPolicy
         !string.IsNullOrWhiteSpace(originalIdentity) &&
         !string.IsNullOrWhiteSpace(candidateIdentity) &&
         originalIdentity.Equals(candidateIdentity, StringComparison.Ordinal);
+
+    private static bool HasCompatiblePromotionRootIdentity(
+        string originalIdentity,
+        string candidateIdentity) =>
+        !string.IsNullOrWhiteSpace(candidateIdentity) &&
+        (string.IsNullOrWhiteSpace(originalIdentity) ||
+         originalIdentity.Equals(candidateIdentity, StringComparison.Ordinal));
+
+    private static bool IsTransientChromiumCaptureTarget(
+        string windowClass,
+        SafeFocusMetadata metadata)
+    {
+        if (!IsChromiumWindow(windowClass))
+        {
+            return false;
+        }
+
+        if (IsTransientChromiumMainTarget(windowClass, metadata) ||
+            metadata.ControlType.Equals("<null>", StringComparison.OrdinalIgnoreCase) ||
+            metadata.ControlType.Equals("<stale>", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var isWindowShell =
+            metadata.ControlType.Equals("ControlType.Pane", StringComparison.OrdinalIgnoreCase) ||
+            metadata.ControlType.Equals("ControlType.Window", StringComparison.OrdinalIgnoreCase);
+        return isWindowShell &&
+               metadata.ClassName.Equals(
+                   ChromiumWindowClass,
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HaveCompatibleEditorAutomationIds(
+        SafeFocusMetadata original,
+        SafeFocusMetadata candidate)
+    {
+        if (!string.IsNullOrWhiteSpace(original.AutomationId) &&
+            !string.IsNullOrWhiteSpace(candidate.AutomationId))
+        {
+            return original.AutomationId.Equals(
+                candidate.AutomationId,
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        return HasFocusedProseMirrorMarker(original) &&
+               HasFocusedProseMirrorMarker(candidate);
+    }
+
+    private static bool HasFocusedProseMirrorMarker(SafeFocusMetadata metadata) =>
+        metadata.ClassName.Contains(
+            "ProseMirror-focused",
+            StringComparison.OrdinalIgnoreCase);
 
     private static bool IsChromiumWindow(string windowClass) =>
         windowClass.Equals(ChromiumWindowClass, StringComparison.OrdinalIgnoreCase);

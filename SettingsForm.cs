@@ -1,4 +1,4 @@
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed class SettingsForm : Form
 {
@@ -30,7 +30,7 @@ internal sealed class SettingsForm : Form
         _chromeProfiles = chromeProfiles;
         _saveAsync = saveAsync;
 
-        Text = "OpenAI Flow";
+        Text = "ORhom";
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = Color.FromArgb(17, 18, 22);
         ClientSize = new Size(620, 720);
@@ -43,7 +43,7 @@ internal sealed class SettingsForm : Form
         ShowInTaskbar = true;
 
         Controls.Add(CreateLabel(
-            "OpenAI Flow",
+            "ORhom",
             new Font("Segoe UI", 22, FontStyle.Bold),
             new Point(36, 26),
             new Size(400, 42)));
@@ -163,7 +163,7 @@ internal sealed class SettingsForm : Form
         Controls.Add(hotkeyCard);
 
         _statusLabel = CreateLabel(
-            "Bereit. Nach dem Schließen läuft OpenAI Flow im Infobereich weiter.",
+            "Bereit. Nach dem Schließen läuft ORhom im Infobereich weiter.",
             new Font("Segoe UI", 9f),
             new Point(39, 627),
             new Size(545, 24),

@@ -1,18 +1,23 @@
 using System.IO;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal static class Program
 {
     [STAThread]
     private static void Main()
     {
-        using var mutex = new Mutex(initiallyOwned: true, "ChatGptDictationBridge.SingleInstance", out var createdNew);
+        // Keep the established mutex identity so ORhom and an older installed build
+        // cannot record or manipulate the same profile at the same time.
+        using var mutex = new Mutex(
+            initiallyOwned: true,
+            "ChatGptDictationBridge.SingleInstance",
+            out var createdNew);
         if (!createdNew)
         {
             MessageBox.Show(
-                "OpenAI Flow Dictation läuft bereits im Hintergrund.",
-                "OpenAI Flow Dictation",
+                "ORhom läuft bereits im Hintergrund.",
+                "ORhom",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
             return;
@@ -37,8 +42,8 @@ internal static class Program
         if (!settings.IsPersistenceAvailable)
         {
             MessageBox.Show(
-                "Die vorhandene Einstellungsdatei konnte nicht sicher gelesen werden und wurde nicht überschrieben. Ein bisheriges OpenAI-Flow-Hintergrundfenster wurde, soweit möglich, sichtbar freigegeben. Bitte Datei- oder Zugriffsproblem beheben und OpenAI Flow neu starten.",
-                "OpenAI Flow Dictation",
+                "Die vorhandene Einstellungsdatei konnte nicht sicher gelesen werden und wurde nicht überschrieben. Ein bisheriges ORhom-Hintergrundfenster wurde, soweit möglich, sichtbar freigegeben. Bitte Datei- oder Zugriffsproblem beheben und ORhom neu starten.",
+                "ORhom",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return;
@@ -67,7 +72,7 @@ internal static class Program
                         handedToUser
                             ? $"{preservationFailure} Das bisherige Hintergrundfenster wurde sichtbar zur manuellen Textrettung freigegeben."
                             : preservationFailure,
-                        "OpenAI Flow Dictation",
+                        "ORhom",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
                     return;
@@ -86,8 +91,8 @@ internal static class Program
                 if (!previousWindowReleased)
                 {
                     MessageBox.Show(
-                        "Das bisherige OpenAI-Flow-Hintergrundfenster konnte weder geschlossen noch sicher sichtbar freigegeben werden. Die Profilauswahl wurde nicht übernommen.",
-                        "OpenAI Flow Dictation",
+                        "Das bisherige ORhom-Hintergrundfenster konnte weder geschlossen noch sicher sichtbar freigegeben werden. Die Profilauswahl wurde nicht übernommen.",
+                        "ORhom",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
                     return;
@@ -100,8 +105,8 @@ internal static class Program
             if (!settings.Save(logger))
             {
                 MessageBox.Show(
-                    "Das ausgewählte Chrome-Profil konnte nicht gespeichert werden. OpenAI Flow wurde nicht gestartet.",
-                    "OpenAI Flow Dictation",
+                    "Das ausgewählte Chrome-Profil konnte nicht gespeichert werden. ORhom wurde nicht gestartet.",
+                    "ORhom",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 return;
@@ -128,8 +133,8 @@ internal static class Program
             try
             {
                 MessageBox.Show(
-                    $"OpenAI Flow hat einen unerwarteten Fehler sicher abgefangen und beendet. Details stehen im Log:\n{logger.LogPath}",
-                    "OpenAI Flow Dictation",
+                    $"ORhom hat einen unerwarteten Fehler sicher abgefangen und beendet. Details stehen im Log:\n{logger.LogPath}",
+                    "ORhom",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             }
@@ -198,7 +203,7 @@ internal static class Program
             return false;
         }
 
-        failureMessage = "Der bisherige ChatGPT-Entwurf konnte nicht sicher geprüft werden. Die Profilauswahl wurde zum Schutz möglicher Texte nicht übernommen; bitte OpenAI Flow erneut mit dem bisherigen Profil starten.";
+        failureMessage = "Der bisherige ChatGPT-Entwurf konnte nicht sicher geprüft werden. Die Profilauswahl wurde zum Schutz möglicher Texte nicht übernommen; bitte ORhom erneut mit dem bisherigen Profil starten.";
         return false;
     }
 }

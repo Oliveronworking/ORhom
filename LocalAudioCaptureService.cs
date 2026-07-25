@@ -3,7 +3,7 @@ using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 
-namespace ChatGptDictationBridge;
+namespace ORhom;
 
 internal sealed class LocalAudioCaptureService
 {

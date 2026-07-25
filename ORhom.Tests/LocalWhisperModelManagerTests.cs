@@ -3,13 +3,13 @@ using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
 
-namespace ChatGptDictationBridge.Tests;
+namespace ORhom.Tests;
 
 public sealed class LocalWhisperModelManagerTests : IDisposable
 {
     private readonly string _testDirectory = Path.Combine(
         Path.GetTempPath(),
-        "OpenAIFlow.ModelManager.Tests",
+        "ORhom.ModelManager.Tests",
         Guid.NewGuid().ToString("N"));
 
     [Fact]
