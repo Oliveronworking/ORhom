@@ -17,6 +17,7 @@ $legacyDataDirs = @(
 )
 $settingsPath = Join-Path $dataDir 'settings.json'
 $installedExe = Join-Path $installDir 'ORhom.exe'
+$installedNotices = Join-Path $installDir 'THIRD-PARTY-NOTICES.md'
 $desktop = [Environment]::GetFolderPath('Desktop')
 $startMenuPrograms = [Environment]::GetFolderPath('Programs')
 
@@ -171,17 +172,30 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $publishedExe = Join-Path $publishDir 'ORhom.exe'
+$publishedNotices = Join-Path $repoRoot 'THIRD-PARTY-NOTICES.md'
 if (-not (Test-Path -LiteralPath $publishedExe)) {
     throw "Die veröffentlichte ORhom.exe wurde nicht gefunden."
 }
-$publishedFiles = @(Get-ChildItem -LiteralPath $publishDir -File -Recurse)
-if ($publishedFiles.Count -ne 1 -or
-    -not $publishedFiles[0].FullName.Equals($publishedExe, [StringComparison]::OrdinalIgnoreCase)) {
-    $publishedNames = ($publishedFiles | ForEach-Object { $_.FullName }) -join ', '
-    throw "Der Publish ist nicht mehr eine einzelne ORhom.exe. Gefundene Dateien: $publishedNames"
+if (-not (Test-Path -LiteralPath $publishedNotices)) {
+    throw "Die Drittanbieterhinweise wurden im Repository nicht gefunden."
 }
-if ($publishedFiles[0].Length -le 0) {
-    throw 'Die veröffentlichte ORhom.exe ist leer.'
+$expectedPublishedFiles = @('ORhom.exe')
+$publishPrefix = $publishDir.TrimEnd(
+    [IO.Path]::DirectorySeparatorChar,
+    [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+$actualPublishedFiles = @(
+    Get-ChildItem -LiteralPath $publishDir -File -Recurse |
+        ForEach-Object { $_.FullName.Substring($publishPrefix.Length) }
+)
+$publishDifference = @(
+    Compare-Object -ReferenceObject $expectedPublishedFiles -DifferenceObject $actualPublishedFiles
+)
+if ($publishDifference.Count -ne 0) {
+    throw "Unerwarteter Publish-Inhalt: $($actualPublishedFiles -join ', ')"
+}
+if ((Get-Item -LiteralPath $publishedExe).Length -le 0 -or
+    (Get-Item -LiteralPath $publishedNotices).Length -le 0) {
+    throw 'Die veröffentlichte ORhom.exe oder die Drittanbieterhinweise sind leer.'
 }
 $publishedVersionInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($publishedExe)
 if ($publishedVersionInfo.ProductName -ne 'ORhom' -or
@@ -255,6 +269,7 @@ for ($attempt = 1; $attempt -le 20; $attempt++) {
 if (-not $copyCompleted) {
     throw 'Die installierte ORhom.exe konnte nicht aktualisiert werden.'
 }
+Copy-Item -LiteralPath $publishedNotices -Destination $installedNotices -Force
 
 $shell = New-Object -ComObject WScript.Shell
 $desktopShortcutPath = Join-Path $desktop 'ORhom.lnk'
@@ -341,6 +356,7 @@ if (-not $NoLaunch) {
 
 [PSCustomObject]@{
     Executable = $installedExe
+    ThirdPartyNotices = $installedNotices
     DesktopShortcut = $desktopShortcutPath
     StartMenuShortcut = $startMenuShortcutPath
     TaskbarRepinRequired = $taskbarRepinRequired

@@ -678,6 +678,8 @@ internal static class AutomationHelpers
             await Task.Delay(Math.Max(delayMs, 1), cancellationToken);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (tracker.HasCandidate)
         {
             logger.Info($"ChatGPT dictated text returned at timeout without full stability. Attempts={attempts} Method={tracker.Method} TextLength={tracker.Text.Length}");

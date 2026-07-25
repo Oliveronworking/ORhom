@@ -16,20 +16,27 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 15
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Set up .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
-          dotnet-version: 8.0.x
+          dotnet-version: 8.0.422
 
       - name: Restore
-        run: dotnet restore ORhom.sln
+        run: |
+          dotnet restore ORhom.sln
+          dotnet restore ORhom.csproj -r win-x64
 
       - name: Verify formatting
         run: dotnet format ORhom.sln --verify-no-changes --no-restore
@@ -39,18 +46,19 @@ jobs:
 
       - name: Verify self-contained Windows publish
         run: |
-          dotnet publish ORhom.csproj -c Release -r win-x64 --self-contained true --nologo -p:TreatWarningsAsErrors=true -p:PublishProfile=WindowsSelfContained -o artifacts/ci-publish
+          dotnet publish ORhom.csproj -c Release -r win-x64 --self-contained true --no-restore --nologo -p:TreatWarningsAsErrors=true -p:PublishProfile=WindowsSelfContained -o artifacts/ci-publish
           if (-not (Test-Path -LiteralPath artifacts/ci-publish/ORhom.exe)) {
             throw "The expected ORhom.exe publish artifact is missing."
           }
           $publishFiles = @(Get-ChildItem -LiteralPath artifacts/ci-publish -File -Recurse)
           if ($publishFiles.Count -ne 1 -or $publishFiles[0].Name -ne "ORhom.exe") {
-            throw "The installer requires a single-file publish containing only ORhom.exe."
+            throw "The portable release requires a single-file publish containing only ORhom.exe."
           }
-          if ($publishFiles[0].Length -le 0) {
+          $publishedExe = $publishFiles[0]
+          if ($publishedExe.Length -le 0) {
             throw "The published ORhom.exe is empty."
           }
-          $versionInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($publishFiles[0].FullName)
+          $versionInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($publishedExe.FullName)
           if ($versionInfo.ProductName -ne "ORhom" -or $versionInfo.FileDescription -ne "ORhom") {
             throw "The published executable metadata must use ORhom for ProductName and FileDescription."
           }

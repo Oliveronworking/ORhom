@@ -4,6 +4,30 @@ ORhom ist eine Windows-Tray-App für lokale deutsche Diktierung. Ein Klick auf d
 
 Die Spracherkennung läuft standardmäßig vollständig lokal, fest auf Deutsch (`de`) und ohne OpenAI-API-Key. Als ausdrücklich auswählbarer Fallback bleibt die bisherige ChatGPT-Browser-Diktierung erhalten.
 
+## Download und Installation
+
+Die aktuelle Windows-Version steht auf der
+[GitHub-Releases-Seite](https://github.com/Oliveronworking/ORhom/releases/latest)
+bereit:
+
+1. `ORhom-Setup-<Version>-win-x64.exe` herunterladen.
+2. ORhom beenden, falls bereits eine ältere Version im Tray läuft.
+3. Den Installer starten. Er installiert ORhom mit der eingebetteten
+   .NET-8-Laufzeit, richtet bei Bedarf die Microsoft-Visual-C++-Laufzeit ein und
+   legt eine Startmenü-Verknüpfung an.
+4. ORhom starten und Mikrofon sowie Hotkey auswählen.
+
+Alternativ enthält jedes Release eine portable
+`ORhom-<Version>-win-x64-portable.exe`. Dafür muss die aktuelle Microsoft Visual
+C++ 2015–2022 Redistributable (x64) bereits installiert sein; auf einem neuen
+Rechner wird deshalb der Installer empfohlen. Die Datei `SHA256SUMS.txt` enthält
+die Prüfsummen aller Downloads.
+
+Derzeit wird **Windows 10/11 x64** unterstützt. macOS und Linux benötigen wegen
+WinForms, WASAPI, globaler Win32-Hotkeys sowie Windows-UI-Automation eigene
+Plattformimplementierungen; eine Windows-EXE kann auf diesen Systemen nicht
+ausgeführt werden.
+
 ## Bedienung auf einen Blick
 
 - Das Hauptfenster führt in drei Schritten durch **Modus wählen**, **Mikrofon auswählen** und **Shortcut festlegen**.
@@ -16,11 +40,14 @@ Die Spracherkennung läuft standardmäßig vollständig lokal, fest auf Deutsch 
 
 ## Voraussetzungen und Build
 
-- Windows mit .NET 8 SDK
+- Windows 10 ab Version 1809 oder Windows 11, jeweils x64
 - aktueller AMD-Adrenalin-Treiber mit Vulkan-Unterstützung; Zielsystem ist eine Radeon RX 7700 XT
-- Microsoft Visual C++ 2015–2022 Redistributable (x64) für die native whisper.cpp-Laufzeit
 - ungefähr 2 GB freier Speicher für Modell, Prüfdatei und Downloadreserve
 - Google Chrome und ein angemeldetes Profil nur für den optionalen Browser-Fallback
+
+Der Release-Installer bringt die benötigte .NET-8- und
+Microsoft-Visual-C++-Laufzeit mit. Nur für einen Build aus dem Quellcode wird
+zusätzlich das .NET 8 SDK benötigt:
 
 ```powershell
 dotnet build .\ORhom.sln -c Release
@@ -144,7 +171,7 @@ Die mitgelieferte `settings.json` enthält insbesondere:
   "dictationProvider": "LocalWhisper",
   "preferredMicrophoneId": "",
   "browserProfileMode": "ExistingChromeProfile",
-  "preferredMicrophoneName": "Mikrofon (Logi C525 HD WebCam)",
+  "preferredMicrophoneName": "",
   "setupCompleted": false,
   "chromeExecutablePath": "",
   "chromeUserDataDir": "",

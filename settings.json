@@ -2,7 +2,7 @@
   "toggleHotkey": "F8",
   "dictationProvider": "LocalWhisper",
   "preferredMicrophoneId": "",
-  "preferredMicrophoneName": "Mikrofon (Logi C525 HD WebCam)",
+  "preferredMicrophoneName": "",
   "setupCompleted": false,
   "chatGptDictationHotkey": "Ctrl+Shift+D",
   "chatGptUrl": "https://chatgpt.com",
