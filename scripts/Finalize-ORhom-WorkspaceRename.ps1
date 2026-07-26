@@ -74,7 +74,7 @@ if (-not (Test-Path -LiteralPath $destination -PathType Container)) {
     throw "Der Workspace wurde nicht unter '$destination' gefunden."
 }
 
-& dotnet restore (Join-Path $destination 'ORhom.sln') --nologo -m:1
+& dotnet restore (Join-Path $destination 'ORhom.sln') --locked-mode --nologo -m:1
 if ($LASTEXITCODE -ne 0) {
     throw 'Der Restore im umbenannten Workspace ist fehlgeschlagen.'
 }
@@ -85,7 +85,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $publishDirectory = Join-Path $destination 'artifacts\publish\win-x64'
-& dotnet restore (Join-Path $destination 'ORhom.csproj') -r win-x64 --nologo -m:1
+& dotnet restore (Join-Path $destination 'ORhom.csproj') -r win-x64 --locked-mode --nologo -m:1
 if ($LASTEXITCODE -ne 0) {
     throw 'Der win-x64-Restore im umbenannten Workspace ist fehlgeschlagen.'
 }

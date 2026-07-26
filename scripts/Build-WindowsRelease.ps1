@@ -22,6 +22,7 @@ $noticesSourcePath = Join-Path $repoRoot 'THIRD-PARTY-NOTICES.md'
 $installerScriptPath = Join-Path $repoRoot 'installer\ORhom.iss'
 $buildRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot "artifacts\release-build\$Version"))
 $publishDir = Join-Path $buildRoot 'publish'
+$combinedNoticesPath = Join-Path $buildRoot 'THIRD-PARTY-NOTICES.md'
 $releaseDir = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     [IO.Path]::GetFullPath((Join-Path $repoRoot 'artifacts\release'))
 }
@@ -58,6 +59,60 @@ function Assert-PathWithinDirectory {
     if (-not $candidate.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing to modify a path outside '$directory': $candidate"
     }
+}
+
+function Get-ExactDownloadDependencyVersion {
+    param(
+        [Parameter(Mandatory)]
+        [object]$AssetsDocument,
+
+        [Parameter(Mandatory)]
+        [string]$PackageName
+    )
+
+    $dependencies = @(
+        $AssetsDocument.project.frameworks.PSObject.Properties |
+            ForEach-Object { @($_.Value.downloadDependencies) } |
+            Where-Object { $_.name -eq $PackageName }
+    )
+    if ($dependencies.Count -ne 1) {
+        throw "Expected exactly one download dependency for '$PackageName'."
+    }
+
+    $versionRange = [string]$dependencies[0].version
+    if ($versionRange -notmatch '^\[(?<lower>[^,\]]+),\s*(?<upper>[^\]]+)\]$' -or
+        $Matches.lower -ne $Matches.upper) {
+        throw "Runtime dependency '$PackageName' is not pinned exactly: $versionRange"
+    }
+
+    return $Matches.lower
+}
+
+function Resolve-PackageFile {
+    param(
+        [Parameter(Mandatory)]
+        [object]$AssetsDocument,
+
+        [Parameter(Mandatory)]
+        [string]$PackageName,
+
+        [Parameter(Mandatory)]
+        [string]$PackageVersion,
+
+        [Parameter(Mandatory)]
+        [string]$RelativePath
+    )
+
+    foreach ($packageFolder in $AssetsDocument.packageFolders.PSObject.Properties.Name) {
+        $candidate = Join-Path $packageFolder (
+            Join-Path $PackageName.ToLowerInvariant() (
+                Join-Path $PackageVersion $RelativePath))
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return $candidate
+        }
+    }
+
+    throw "Package file '$PackageName/$PackageVersion/$RelativePath' was not found."
 }
 
 $innoCompiler = [IO.Path]::GetFullPath($InnoCompilerPath)
@@ -110,11 +165,80 @@ Assert-CommandSucceeded 'dotnet restore'
 & dotnet format $solutionPath --verify-no-changes --no-restore
 Assert-CommandSucceeded 'dotnet format'
 
-& dotnet test $solutionPath -c Release --no-restore --nologo -m:1 -p:TreatWarningsAsErrors=true
+& dotnet test $solutionPath -c Release --no-restore --nologo -m:1 `
+    -p:TreatWarningsAsErrors=true `
+    -p:TreatNoTestsAsError=true
 Assert-CommandSucceeded 'dotnet test'
 
 & dotnet restore $projectPath -r win-x64 -m:1 --locked-mode
 Assert-CommandSucceeded 'runtime-specific dotnet restore'
+
+$assetsPath = Join-Path $repoRoot 'obj\project.assets.json'
+if (-not (Test-Path -LiteralPath $assetsPath -PathType Leaf)) {
+    throw "Runtime restore did not produce '$assetsPath'."
+}
+
+$assetsDocument = Get-Content -LiteralPath $assetsPath -Raw | ConvertFrom-Json
+$coreRuntimePackage = 'Microsoft.NETCore.App.Runtime.win-x64'
+$desktopRuntimePackage = 'Microsoft.WindowsDesktop.App.Runtime.win-x64'
+$coreRuntimeVersion = Get-ExactDownloadDependencyVersion `
+    -AssetsDocument $assetsDocument `
+    -PackageName $coreRuntimePackage
+$desktopRuntimeVersion = Get-ExactDownloadDependencyVersion `
+    -AssetsDocument $assetsDocument `
+    -PackageName $desktopRuntimePackage
+$coreRuntimeNoticePath = Resolve-PackageFile `
+    -AssetsDocument $assetsDocument `
+    -PackageName $coreRuntimePackage `
+    -PackageVersion $coreRuntimeVersion `
+    -RelativePath 'THIRD-PARTY-NOTICES.TXT'
+$coreRuntimeLicensePath = Resolve-PackageFile `
+    -AssetsDocument $assetsDocument `
+    -PackageName $coreRuntimePackage `
+    -PackageVersion $coreRuntimeVersion `
+    -RelativePath 'LICENSE.TXT'
+$desktopRuntimeLicensePath = Resolve-PackageFile `
+    -AssetsDocument $assetsDocument `
+    -PackageName $desktopRuntimePackage `
+    -PackageVersion $desktopRuntimeVersion `
+    -RelativePath 'LICENSE'
+
+$coreRuntimeLicense = [IO.File]::ReadAllText($coreRuntimeLicensePath)
+$desktopRuntimeLicense = [IO.File]::ReadAllText($desktopRuntimeLicensePath)
+$normalizedCoreRuntimeLicense =
+    ($coreRuntimeLicense -replace "`r`n", "`n").TrimEnd()
+$normalizedDesktopRuntimeLicense =
+    ($desktopRuntimeLicense -replace "`r`n", "`n").TrimEnd()
+if ($normalizedCoreRuntimeLicense -ne $normalizedDesktopRuntimeLicense) {
+    throw 'The .NET and Windows Desktop runtime licenses differ; update the release notice merger.'
+}
+
+$noticeSeparator = @"
+
+---
+
+# Official Microsoft .NET runtime notices
+
+The following unmodified notices come from
+$coreRuntimePackage $coreRuntimeVersion, which is bundled into ORhom.exe.
+Both that package and $desktopRuntimePackage $desktopRuntimeVersion use the
+official license reproduced below.
+
+## Official runtime license
+
+$coreRuntimeLicense
+
+## Official runtime third-party notices
+
+"@
+$combinedNotices =
+    [IO.File]::ReadAllText($noticesSourcePath).TrimEnd() +
+    $noticeSeparator +
+    [IO.File]::ReadAllText($coreRuntimeNoticePath)
+[IO.File]::WriteAllText(
+    $combinedNoticesPath,
+    $combinedNotices,
+    [Text.UTF8Encoding]::new($false))
 
 & dotnet publish $projectPath `
     -c Release `
@@ -143,7 +267,7 @@ if ($publishDifference.Count -ne 0) {
 }
 
 $publishedExe = Get-Item -LiteralPath (Join-Path $publishDir 'ORhom.exe')
-$publishedNotices = Get-Item -LiteralPath $noticesSourcePath
+$publishedNotices = Get-Item -LiteralPath $combinedNoticesPath
 if ($publishedExe.Length -le 0 -or $publishedNotices.Length -le 0) {
     throw 'The published executable or third-party notices file is empty.'
 }
@@ -165,7 +289,7 @@ Copy-Item -LiteralPath $publishedNotices.FullName -Destination $releaseNoticesPa
     "/DAppVersion=$Version" `
     "/DSourceDir=$publishDir" `
     "/DOutputDir=$releaseDir" `
-    "/DNoticesPath=$noticesSourcePath" `
+    "/DNoticesPath=$combinedNoticesPath" `
     "/DVcRedistPath=$vcRedist" `
     $installerScriptPath
 Assert-CommandSucceeded 'Inno Setup compiler'

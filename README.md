@@ -70,12 +70,13 @@ ausgeführt werden.
 ## Bedienung auf einen Blick
 
 - Das Hauptfenster führt in drei Schritten durch **Modus wählen**, **Mikrofon auswählen** und **Shortcut festlegen**.
-- Unter **Größe des Sprachfelds** lässt sich die Diktierleiste jederzeit auf **Klein**, **Mittel** oder **Groß** stellen. Neue und bisherige Installationen starten platzsparend mit **Klein**.
+- Unter **Größe des Sprachfelds** lässt sich die Diktierleiste jederzeit auf **Klein**, **Mittel** oder **Groß** stellen. Bei lokaler Aufnahme reagiert ihre Pegelanzeige auf das echte Mikrofonsignal; im Browser-Fallback bleibt eine neutrale Animation aktiv.
+- Die **Aufnahmeoptionen** machen Diktierleiste, Hybrid-Push-to-talk und Audio-Ducking samt Restlautstärke direkt im Hauptfenster konfigurierbar.
 - Im Bereitschaftszustand startet ein Klick auf die Diktierleiste das Diktat; der konfigurierte Hotkey funktioniert app-übergreifend.
 - Während der Aufnahme beendet **Stopp & einfügen** das Diktat regulär. Das separate **X** beziehungsweise Escape bricht ohne Einfügen ab.
 - Das Tray-Menü zeigt Status und Hinweise auf Deutsch. Seine Primäraktion passt sich dem Zustand an, etwa **Diktieren**, **Aufnahme stoppen** oder **Verarbeitung abbrechen**.
 - Im Tray lassen sich das Mikrofon schnell auswählen, das letzte Diktat erneut einfügen und die Diktierleiste ein- oder ausblenden.
-- Technische Funktionen und die ChatGPT-Diagnose liegen gesammelt unter **Erweitert**.
+- Unter **Erweitert** lässt sich das lokale Sprachmodell neu laden oder der GPU-/Modellkontext bis zum nächsten Diktat freigeben. Dort liegt auch die ChatGPT-Diagnose.
 
 ## Voraussetzungen und Build
 
@@ -85,12 +86,26 @@ ausgeführt werden.
 - Google Chrome und ein angemeldetes Profil nur für den optionalen Browser-Fallback
 
 Der Release-Installer bringt die benötigte .NET-8- und
-Microsoft-Visual-C++-Laufzeit mit. Nur für einen Build aus dem Quellcode wird
-zusätzlich das .NET 8 SDK benötigt:
+Microsoft-Visual-C++-Laufzeit mit. Ein Build aus dem Quellcode benötigt exakt
+das in `global.json` gepinnte **.NET SDK 8.0.423**; `rollForward` ist für
+reproduzierbare Builds bewusst deaktiviert. Die installierte Version lässt sich
+vorher prüfen:
 
 ```powershell
+dotnet --version
 dotnet build .\ORhom.sln -c Release
 Start-Process "bin\Release\net8.0-windows\ORhom.exe"
+```
+
+Falls 8.0.423 nicht systemweit installiert ist, kann das offizielle
+[`dotnet-install.ps1`](https://learn.microsoft.com/dotnet/core/tools/dotnet-install-script)
+eine repository-lokale SDK-Kopie anlegen:
+
+```powershell
+Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 `
+    -OutFile "$env:TEMP\dotnet-install.ps1"
+& "$env:TEMP\dotnet-install.ps1" -Version 8.0.423 -InstallDir .\.dotnet
+.\.dotnet\dotnet.exe build .\ORhom.sln -c Release
 ```
 
 Für die lokale Einzeldatei-Installation zuerst eine laufende Vorgängerversion über
@@ -124,9 +139,9 @@ Das X des Hauptfensters und **Im Hintergrund schließen** blenden nur die Einste
 - Modellgröße: `1.624.555.275` Bytes
 - SHA-256: `1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69`
 
-Das Modell und der Vulkan-Kontext werden im Hintergrund einmal geladen und mit einer verworfenen synthetischen Inferenz vollständig vorgewärmt, bevor die App „bereit“ meldet. Dadurch trifft auch das erste echte Diktat auf den warmen nativen Inferenzpfad; es muss weder ein neuer `whisper-cli`-Prozess starten noch das 1,6-GB-Modell erneut eingelesen werden. Ein deutsches Community-Finetuning wurde bewusst nicht zum automatischen Standard gemacht: Das derzeit stärkste gefundene Modell veröffentlicht kein autorenseitiges GGML-Artefakt mit gleichwertig belastbarer Provenienz.
+Das Modell und der Vulkan-Kontext werden im Hintergrund einmal geladen und mit einer verworfenen synthetischen Inferenz vollständig vorgewärmt, bevor die App „bereit“ meldet. Jeder Prozessstart berechnet die SHA-256-Prüfsumme auch bei vorhandenem Prüfnachweis erneut; Dateigröße und wiederhergestellte Zeitstempel allein gelten nie als Integritätsbeleg. Dadurch trifft auch das erste echte Diktat auf einen verifizierten, warmen nativen Inferenzpfad. Unter **Erweitert** kann der Kontext gezielt freigegeben oder frisch geladen werden. Ein deutsches Community-Finetuning wurde bewusst nicht zum automatischen Standard gemacht: Das derzeit stärkste gefundene Modell veröffentlicht kein autorenseitiges GGML-Artefakt mit gleichwertig belastbarer Provenienz.
 
-Die App nimmt per WASAPI über die stabile Windows-Geräte-ID auf, mischt Mehrkanalton phasenrobust zu Mono und resampelt im Speicher auf 16 kHz. Vor der Inferenz werden nicht-finite Samples neutralisiert und nahezu digitale Stille an den äußeren Rändern konservativ entfernt. Die dafür verwendete sehr niedrige Content-Schwelle ist bewusst vom eigentlichen Sprach-Gate getrennt; zusammen mit 300 ms Schutzpolster bleiben dadurch auch leise Vor- und Nachsilben erhalten. Die vorhandene Fokus-, Clipboard-, Paste-, Audio-Ducking- und Verlaufslogik wird als gemeinsamer Abschlussweg verwendet.
+Die App nimmt per WASAPI über die stabile Windows-Geräte-ID auf, mischt Mehrkanalton phasenrobust zu Mono und resampelt im Speicher auf 16 kHz. Aus denselben 50-ms-Frames berechnet sie ausschließlich für die Anzeige einen geglätteten, normierten Peak; weder Audiodaten noch Pegelwerte werden protokolliert oder zur Aufnahmeentscheidung verwendet. Vor der Inferenz werden nicht-finite Samples neutralisiert und nahezu digitale Stille an den äußeren Rändern konservativ entfernt. Die dafür verwendete sehr niedrige Content-Schwelle ist bewusst vom eigentlichen Sprach-Gate getrennt; zusammen mit 300 ms Schutzpolster bleiben dadurch auch leise Vor- und Nachsilben erhalten. Die vorhandene Fokus-, Clipboard-, Paste-, Audio-Ducking- und Verlaufslogik wird als gemeinsamer Abschlussweg verwendet.
 
 Im Browser-Fallback hält ORhom während seiner Laufzeit genau ein eigenes ChatGPT-Fenster im Hintergrund. Es wird minimiert gestartet, über einen generischen App-Marker und einen profilgebundenen Hash-Marker wiedererkannt und nur nahezu transparent für kurze UI-Automationsschritte aktiviert. Ein einmaliger URL-Marker ordnet einen neuen Chrome-Start eindeutig zu; andere gleichzeitig geöffnete Chrome-Profile werden nicht verändert. **Erweitert > ChatGPT-Profil öffnen** öffnet dagegen bewusst ein separates, unmarkiertes Nutzerfenster, das ORhom weder minimiert noch schließt.
 
@@ -268,7 +283,7 @@ Bei Problemen unter **Erweitert** zuerst **Chrome-Profil prüfen** und danach **
 
 ## Tests
 
-Die Solution enthält deterministische Regressionstests für den gepinnten Modelldownload samt Fortschritt, SHA-256, Cache-Hit und Abbruch, lokale PCM/Float-Audiokonvertierung, Stereo-Downmix, 16-kHz-Resampling, Sprach-Gate, leise Randsilben, Randstille, Warm-up, Technik-Prompt, Provider-Migration und feste Sprache `de`. Hinzu kommen Tests für Zustandsbestätigung, Push-to-talk, Clipboard-Ressourcen, Passwortfelder, Fokus-, Root- und Layout-Fingerprints, HWND/PID-/Origin-Schutz, sichere Verwerf-Semantik, atomare Persistenz, Chrome-Ownership sowie Rendering und Multi-Monitor-Positionierung. Ein opt-in Hardwaretest lädt das echte Modell, verlangt ein bestätigtes Vulkan-Backend und führt eine Inferenz aus:
+Die Solution enthält deterministische Regressionstests für den gepinnten Modelldownload samt Fortschritt, erneuter SHA-256-Prüfung trotz passendem Sidecar, Cache-Hit und Abbruch, lokale PCM/Float-Audiokonvertierung, Live-Pegelmessung und -glättung, Stereo-Downmix, 16-kHz-Resampling, Sprach-Gate, leise Randsilben, Randstille, Warm-up, Technik-Prompt, Provider-Migration und feste Sprache `de`. Hinzu kommen Tests für Zustandsbestätigung, Push-to-talk, Modell-Ressourcensteuerung, Clipboard-Ressourcen, Passwortfelder, Fokus-, Root- und Layout-Fingerprints, HWND/PID-/Origin-Schutz, sichere Verwerf-Semantik, atomare Persistenz, vollständige Drittanbieterhinweise, Chrome-Ownership sowie Rendering und Multi-Monitor-Positionierung. Ein opt-in Hardwaretest lädt das echte Modell, verlangt ein bestätigtes Vulkan-Backend und führt eine Inferenz aus:
 
 ```powershell
 dotnet test .\ORhom.sln -c Release
@@ -290,6 +305,6 @@ dotnet test .\ORhom.sln -c Release --filter 'Category=ChromeIntegration'
 - [OpenAI-Modellkarte für Whisper large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo)
 - [Gepinnte GGML-Modellablage](https://huggingface.co/ggerganov/whisper.cpp/tree/5359861c739e955e79d9a303bcbc70fb988958b1)
 - [Whisper.net 1.9.1](https://www.nuget.org/packages/Whisper.net/1.9.1) und [Vulkan-Runtime](https://www.nuget.org/packages/Whisper.net.Runtime.Vulkan/1.9.1)
-- [NAudio 2.3.0 Quellstand, Commit `24c0394`](https://github.com/naudio/NAudio/tree/24c0394da0cffeddc70a13f6c6d5f55f4af0dea2)
+- [NAudio 2.3.0 Paket-Quellstand, Commit `c89fee9`](https://github.com/naudio/NAudio/tree/c89fee940ee6f8d7374d18714a6b85d8b7a18ab0) und [Release-Tag-Commit `24c0394`](https://github.com/naudio/NAudio/tree/24c0394da0cffeddc70a13f6c6d5f55f4af0dea2)
 
 Die Hinweise zu den MIT-lizenzierten Komponenten stehen zusätzlich in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
