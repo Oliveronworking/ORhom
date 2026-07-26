@@ -275,6 +275,28 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     {
         var menu = new ToolStripMenuItem("Erweitert");
         menu.DropDownItems.Add(new ToolStripMenuItem(
+            "Sprachmodell neu laden",
+            null,
+            (_, _) => RunUserOperation(
+                ReloadLocalWhisperModelAsync,
+                "reload-local-model"))
+        {
+            Name = "reload-local-model",
+            ToolTipText =
+                "Prüft den Modellcache erneut und lädt whisper.cpp frisch über Vulkan."
+        });
+        menu.DropDownItems.Add(new ToolStripMenuItem(
+            "GPU-Modell freigeben",
+            null,
+            (_, _) => RunUserOperation(
+                ReleaseLocalWhisperModelAsync,
+                "release-local-model"))
+        {
+            Name = "release-local-model",
+            ToolTipText =
+                "Gibt den lokalen GPU- und Modellkontext bis zum nächsten Diktat frei."
+        });
+        menu.DropDownItems.Add(new ToolStripMenuItem(
             "ChatGPT-Profil öffnen",
             null,
             (_, _) => RunUserOperation(
@@ -354,6 +376,21 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
         var browserMode = !DictationProviders.IsLocal(
             _settings.DictationProvider);
+        var localModelControls = LocalModelControlPresentation.For(
+            !browserMode,
+            _status,
+            _exitInProgress,
+            _settingsForm.Visible,
+            _localWhisper.IsReady,
+            !_localPreparationTask.IsCompleted);
+        SetAdvancedItemState(
+            "reload-local-model",
+            localModelControls.Visible,
+            localModelControls.CanReload);
+        SetAdvancedItemState(
+            "release-local-model",
+            localModelControls.Visible,
+            localModelControls.CanRelease);
         SetAdvancedItemState(
             "open-chatgpt-profile",
             browserMode && _settings.OpenChatGptProfileVisibleForSetup);
@@ -409,10 +446,18 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
     private void SetAdvancedItemState(string name, bool enabled)
     {
+        SetAdvancedItemState(name, enabled, enabled);
+    }
+
+    private void SetAdvancedItemState(
+        string name,
+        bool visible,
+        bool enabled)
+    {
         if (_advancedMenu.DropDownItems[name] is ToolStripItem item)
         {
             item.Enabled = enabled;
-            item.Visible = enabled;
+            item.Visible = visible;
         }
     }
 
@@ -1840,6 +1885,94 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
     }
 
+    private async Task ReloadLocalWhisperModelAsync()
+    {
+        if (!await _operationLock.WaitAsync(0))
+        {
+            ShowMessage("ORhom verarbeitet gerade eine andere Aktion.");
+            return;
+        }
+
+        try
+        {
+            var presentation = GetLocalModelControlPresentation();
+            if (!presentation.CanReload)
+            {
+                ShowMessage(
+                    "Das lokale Sprachmodell kann geändert werden, sobald ORhom bereit ist.");
+                return;
+            }
+
+            if (!await StopLocalWhisperPreparationAsync(unloadModel: true))
+            {
+                ShowErrorMessage(
+                    "Das lokale GPU-Modell konnte nicht vollständig freigegeben werden. Bitte ORhom neu starten.");
+                return;
+            }
+
+            QueueLocalWhisperPreparation();
+            RefreshTrayMenu();
+            ShowMessage(
+                "Der Modellcache wird erneut geprüft und das Vulkan-Modell frisch geladen.");
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    private async Task ReleaseLocalWhisperModelAsync()
+    {
+        if (!await _operationLock.WaitAsync(0))
+        {
+            ShowMessage("ORhom verarbeitet gerade eine andere Aktion.");
+            return;
+        }
+
+        try
+        {
+            var presentation = GetLocalModelControlPresentation();
+            if (!presentation.CanRelease)
+            {
+                ShowMessage(
+                    "Es ist derzeit kein lokaler Modellkontext zum Freigeben geladen.");
+                return;
+            }
+
+            if (!await StopLocalWhisperPreparationAsync(unloadModel: true))
+            {
+                ShowErrorMessage(
+                    "Das lokale GPU-Modell konnte nicht vollständig freigegeben werden. Bitte ORhom neu starten.");
+                return;
+            }
+
+            _idleReadinessTitle = "Sprachmodell freigegeben";
+            _idleReadinessHint = "Wird beim nächsten Diktat neu geladen";
+            ApplyTrayStatePresentation();
+            if (_settings.ShowRecordingOverlay)
+            {
+                _recordingOverlay.ShowStatus(AppStatus.Idle);
+            }
+
+            RefreshTrayMenu();
+            ShowMessage(
+                "GPU- und Modellressourcen sind freigegeben. Das nächste Diktat lädt sie automatisch neu.");
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    private LocalModelControlPresentation GetLocalModelControlPresentation() =>
+        LocalModelControlPresentation.For(
+            DictationProviders.IsLocal(_settings.DictationProvider),
+            _status,
+            _exitInProgress,
+            _settingsForm.Visible,
+            _localWhisper.IsReady,
+            !_localPreparationTask.IsCompleted);
+
     private void QueueLocalWhisperPreparation()
     {
         if (!DictationProviders.IsLocal(_settings.DictationProvider) ||
@@ -1905,7 +2038,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.Error("Local whisper.cpp model could not be unloaded after provider switch.", ex);
+            _logger.Error("Local whisper.cpp model could not be unloaded.", ex);
             return false;
         }
     }
@@ -2883,6 +3016,31 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         Guid HistoryEntryId,
         string Text,
         string Outcome);
+}
+
+internal readonly record struct LocalModelControlPresentation(
+    bool Visible,
+    bool CanReload,
+    bool CanRelease)
+{
+    public static LocalModelControlPresentation For(
+        bool isLocalProvider,
+        AppStatus status,
+        bool exitInProgress,
+        bool settingsVisible,
+        bool modelReady,
+        bool preparationInProgress)
+    {
+        var canManage =
+            isLocalProvider &&
+            status == AppStatus.Idle &&
+            !exitInProgress &&
+            !settingsVisible;
+        return new LocalModelControlPresentation(
+            isLocalProvider,
+            canManage,
+            canManage && (modelReady || preparationInProgress));
+    }
 }
 
 internal static class AbortRecoveryPersistence
