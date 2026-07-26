@@ -5,7 +5,7 @@ project does not modify their licenses.
 
 ## NAudio.Wasapi
 
-- Project: https://github.com/naudio/NAudio
+- Project: https://github.com/naudio/NAudio/tree/24c0394da0cffeddc70a13f6c6d5f55f4af0dea2
 - Package version: 2.3.0
 - License: MIT
 
@@ -31,10 +31,11 @@ SOFTWARE.
 
 ## whisper.cpp
 
-- Project: https://github.com/ggml-org/whisper.cpp
+- Project: https://github.com/ggml-org/whisper.cpp/tree/f24588a272ae8e23280d9c220536437164e6ed28
 - License: MIT
 - Vulkan runtime reached through the Whisper.net package is based on pinned
-  whisper.cpp commit `f24588a` (upstream v1.8.5).
+  whisper.cpp commit `f24588a272ae8e23280d9c220536437164e6ed28`
+  (upstream v1.8.5).
 
 MIT License
 
@@ -90,7 +91,7 @@ SOFTWARE.
 ## OpenAI Whisper large-v3-turbo model
 
 - Original model: https://huggingface.co/openai/whisper-large-v3-turbo
-- GGML conversion: https://huggingface.co/ggerganov/whisper.cpp
+- GGML conversion: https://huggingface.co/ggerganov/whisper.cpp/tree/5359861c739e955e79d9a303bcbc70fb988958b1
 - Pinned GGML revision: `5359861c739e955e79d9a303bcbc70fb988958b1`
 - License declared by the model card: MIT
 

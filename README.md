@@ -1,6 +1,6 @@
 # ORhom
 
-ORhom ist eine Windows-Tray-App für lokale deutsche Diktierung. Ein Klick auf die kompakte Diktierleiste oder der eingestellte Hotkey startet die Aufnahme direkt am gewählten Windows-Mikrofon. Während der Aufnahme stehen **Stopp & einfügen** und ein separates **X** zum Abbrechen sichtbar nebeneinander. Der reguläre Stopp transkribiert lokal mit `whisper.cpp` über Vulkan und fügt den Text am ursprünglichen Cursor ein. Alternativ funktioniert derselbe Hotkey als Push-to-talk: länger halten, sprechen und zum Stoppen loslassen. Ein kurzer Tastendruck behält den Toggle-Modus. Escape entspricht dem Abbruch und versucht, bereits gesprochenen Text im lokalen Diktierverlauf zu retten.
+ORhom ist eine Windows-Tray-App für lokale deutsche Diktierung. Ein Klick auf die kompakte Diktierleiste oder der eingestellte Hotkey startet die Aufnahme direkt am gewählten Windows-Mikrofon. Während der Aufnahme stehen **Stopp & einfügen** und ein separates **X** zum Verwerfen sichtbar nebeneinander. Der reguläre Stopp transkribiert lokal mit `whisper.cpp` über Vulkan und fügt den Text am ursprünglichen Cursor ein. Alternativ funktioniert derselbe Hotkey als Push-to-talk: länger halten, sprechen und zum Stoppen loslassen. Ein kurzer Tastendruck behält den Toggle-Modus. Escape entspricht dem Verwerfen: Die lokale Audiodatei wird weder transkribiert noch in Verlauf oder Zwischenablage gespeichert; im Browser-Fallback wird der zugehörige Composer ohne lokale Textrettung geleert.
 
 Die Spracherkennung läuft standardmäßig vollständig lokal, fest auf Deutsch (`de`) und ohne OpenAI-API-Key. Als ausdrücklich auswählbarer Fallback bleibt die bisherige ChatGPT-Browser-Diktierung erhalten.
 
@@ -21,9 +21,39 @@ Alternativ enthält jedes Release eine portable
 `ORhom-<Version>-win-x64-portable.exe`. Dafür muss die aktuelle Microsoft Visual
 C++ 2015–2022 Redistributable (x64) bereits installiert sein; auf einem neuen
 Rechner wird deshalb der Installer empfohlen. Die Datei `SHA256SUMS.txt` enthält
-die Prüfsummen aller Downloads.
+die SHA-256-Prüfsummen des Installers, der portablen EXE und der mitgelieferten
+`THIRD-PARTY-NOTICES.md`. Der Release-Workflow prüft diese drei Einträge vor
+der Veröffentlichung. Liegen alle vier Release-Dateien in einem Ordner, lassen
+sie sich in PowerShell erneut prüfen:
 
-Derzeit wird **Windows 10/11 x64** unterstützt. macOS und Linux benötigen wegen
+```powershell
+$entries = @(Get-Content -LiteralPath .\SHA256SUMS.txt)
+if ($entries.Count -ne 3) {
+    throw "SHA256SUMS.txt muss genau drei Einträge enthalten."
+}
+
+$entries | ForEach-Object {
+    if ($_ -notmatch '^(?<hash>[0-9a-f]{64}) \*(?<name>.+)$') {
+        throw "Ungültiger Prüfsummeneintrag: $_"
+    }
+
+    $expected = $Matches.hash
+    $name = $Matches.name
+    $path = Join-Path -Path $PWD -ChildPath $name
+    $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actual -ne $expected) {
+        throw "SHA-256-Prüfung fehlgeschlagen: $name"
+    }
+
+    "OK: $name"
+}
+```
+
+Die ORhom-Programmdateien sind derzeit nicht Authenticode-signiert; Windows kann
+deshalb einen SmartScreen-Hinweis anzeigen. Prüfsummen belegen die
+Dateiintegrität, ersetzen aber keine digitale Herausgebersignatur.
+
+Derzeit wird **Windows 11 x64** unterstützt. macOS und Linux benötigen wegen
 WinForms, WASAPI, globaler Win32-Hotkeys sowie Windows-UI-Automation eigene
 Plattformimplementierungen; eine Windows-EXE kann auf diesen Systemen nicht
 ausgeführt werden.
@@ -40,7 +70,7 @@ ausgeführt werden.
 
 ## Voraussetzungen und Build
 
-- Windows 10 ab Version 1809 oder Windows 11, jeweils x64
+- Windows 11 ab Build 22000, x64
 - aktueller AMD-Adrenalin-Treiber mit Vulkan-Unterstützung; Zielsystem ist eine Radeon RX 7700 XT
 - ungefähr 2 GB freier Speicher für Modell, Prüfdatei und Downloadreserve
 - Google Chrome und ein angemeldetes Profil nur für den optionalen Browser-Fallback
@@ -62,7 +92,9 @@ das Tray-Menü beenden und anschließend aus dem Repository ausführen:
 ```
 
 Das Skript veröffentlicht und installiert `ORhom.exe`, legt Desktop- und
-Startmenü-Verknüpfungen namens **ORhom** an und übernimmt vorhandene Daten aus
+Startmenü-Verknüpfungen namens **ORhom** an und übernimmt vorhandene Daten
+einschließlich Einstellungen, Diktierverlauf und Modellcache zuerst aus
+`%LOCALAPPDATA%\OpenAIFlow`, ersatzweise aus
 `%LOCALAPPDATA%\OliSpeechToText`.
 Eine alte Taskleisten-Anheftung wird sicher entfernt; **ORhom** muss danach
 einmal neu an die Taskleiste angeheftet werden.
@@ -73,7 +105,7 @@ Das X des Hauptfensters und **Im Hintergrund schließen** blenden nur die Einste
 
 ## Lokale Spracherkennung
 
-- Engine: `whisper.cpp`, eingebettet über `Whisper.net.Runtime.Vulkan` 1.9.1 (native Basis: gepinnter whisper.cpp-Commit `f24588a`, entsprechend v1.8.5)
+- Engine: `whisper.cpp`, eingebettet über `Whisper.net.Runtime.Vulkan` 1.9.1 (native Basis: gepinnter whisper.cpp-Commit `f24588a272ae8e23280d9c220536437164e6ed28`, entsprechend v1.8.5)
 - Aufnahme: `NAudio.Wasapi` 2.3.0 im gemeinsam genutzten Windows-Audiomodus
 - Modell: unquantisiertes, mehrsprachiges `ggml-large-v3-turbo.bin`
 - Sprache/Aufgabe: fest `de`, Transkription und keine automatische Spracherkennung
@@ -127,7 +159,7 @@ Fehlt das ausgewählte Profil später, startet die Diktierung nicht und die Tray
 5. **Stopp & einfügen** anklicken, den Hotkey erneut drücken oder einen gehaltenen Hotkey loslassen. Die App lässt dem letzten gesprochenen Wort noch einen kurzen Audiopuffer und löst den Stop-Befehl genau einmal aus. Lokal wird das auf 16-kHz-Mono normalisierte Audio unmittelbar mit dem warmen Vulkan-Modell transkribiert. Die längeren Stabilitäts- und Composer-Prüfungen gelten nur für den Browser-Fallback.
 6. Der Text wird am ursprünglichen Cursor eingefügt und die vorherige Zwischenablage wiederhergestellt.
 
-Jede transkribierte Diktierung wird vor dem Einfügeversuch lokal gespeichert. Über **Diktierverlauf** im Tray-Menü lassen sich die letzten zehn Einträge ansehen und wieder in die Zwischenablage kopieren. Sobald ein elfter Eintrag hinzukommt, wird automatisch der älteste entfernt. Auch Einfügefehler und abgebrochene Aufnahmen erscheinen im Verlauf; bei Escape wird eine lokale Aufnahme noch transkribiert und zuerst gesichert. Im Browser-Fallback wird danach der zugehörige Composer geleert, damit die nächste Aufnahme nicht durch einen wiederhergestellten Entwurf blockiert wird. Vor Profilwechsel oder Beenden prüft ORhom einen verbliebenen Browser-Composer erneut und sichert dessen stabilen Text atomar im Verlauf. Scheitern Prüfung oder Speicherung, wird das Fenster nicht unsichtbar verworfen, sondern bei Bedarf sichtbar zur manuellen Rettung freigegeben. Der Verlauf liegt ausschließlich lokal unter `%LOCALAPPDATA%\ORhom\dictation-history.json` und kann im Verlaufsfenster vollständig gelöscht werden.
+Jede regulär transkribierte Diktierung wird vor dem Einfügeversuch lokal gespeichert. Über **Diktierverlauf** im Tray-Menü lassen sich die letzten zehn Einträge ansehen und wieder in die Zwischenablage kopieren. Sobald ein elfter Eintrag hinzukommt, wird automatisch der älteste entfernt. Einfügefehler erscheinen ebenfalls im Verlauf. Mit **X** oder Escape ausdrücklich verworfene Aufnahmen werden dagegen nicht transkribiert, nicht in den Verlauf geschrieben und nicht in die Zwischenablage kopiert. Im Browser-Fallback wird der zugehörige Composer nach bestätigtem Aufnahmestopp ohne Textlesen geleert. Vor Profilwechsel oder Beenden prüft ORhom einen sonst verbliebenen Browser-Composer erneut und sichert dessen stabilen Text atomar im Verlauf. Scheitern Prüfung oder Speicherung, wird das Fenster nicht unsichtbar verworfen, sondern bei Bedarf sichtbar zur manuellen Rettung freigegeben. Der Verlauf liegt ausschließlich lokal unter `%LOCALAPPDATA%\ORhom\dictation-history.json` und kann im Verlaufsfenster vollständig gelöscht werden.
 
 Falls das Ziel während der Verarbeitung geschlossen wird oder das Einfügen anderweitig fehlschlägt, bleibt der fertige Text zusätzlich direkt in der Zwischenablage, sofern diese noch sicher unter Kontrolle der App ist. Er kann dann sofort mit `Strg+V` eingefügt werden. Hat zwischenzeitlich eine andere Anwendung das Clipboard geändert, überschreibt ORhom diese Änderung nicht und sichert das Diktat stattdessen im Verlauf.
 
@@ -143,7 +175,7 @@ Die State-Machine lautet:
 Idle -> Starting -> Recording -> Stopping -> ReadingText -> Pasting -> Idle
 ```
 
-`Recording` wird lokal erst nach erfolgreichem Start der WASAPI-Aufnahme gesetzt; im Browser-Fallback erst, wenn ChatGPT den Aufnahmezustand sichtbar bestätigt. Die nachfolgenden Composer-Sicherungen gelten nur für den Browser-Fallback: Sobald dort ein regulärer Stop-Befehl gesendet wurde, führt die App keinen automatischen Cancel, Seiten-Reset oder Fensterschluss mehr aus. Der Composer wird erst geleert, nachdem das Transkript synchron im lokalen Diktierverlauf gespeichert wurde. Entspricht ein übrig gebliebener Composer-Text exakt dem neuesten, höchstens 24 Stunden alten Eintrag `Abgebrochen · Text gerettet` oder `Fehler · Text gerettet`, wird er vor dem nächsten Start bestätigt gelöscht und die Aufnahme genau einmal erneut gestartet. Älterer, bereits abgeschlossener oder unbekannter Text blockiert weiterhin sicher, statt überschrieben zu werden. Beenden während einer noch aktiven Aufnahme wird abgelehnt; zuerst muss der eingestellte Hotkey oder Escape den Zustand sicher abschließen. Ein reguläres Beenden schließt nur das mit App- und Profilmarker versehene ORhom-Hintergrundfenster; sichtbare, unmarkierte Chrome-Fenster bleiben unangetastet. Reagiert Chrome nicht auf den Schließbefehl, wird das eigene Fenster vollständig sichtbar und als Nutzerfenster freigegeben. Ein expliziter Abbruch beendet nur die laufende Aufnahme und sichert verwertbaren Text. Clipboard-Restore-Fehler sperren weitere Clipboard-Leseversuche der laufenden Sitzung und werden ausdrücklich gemeldet.
+`Recording` wird lokal erst nach erfolgreichem Start der WASAPI-Aufnahme gesetzt; im Browser-Fallback erst, wenn ChatGPT den Aufnahmezustand sichtbar bestätigt. Die nachfolgenden Composer-Sicherungen gelten nur für den Browser-Fallback: Sobald dort ein regulärer Stop-Befehl gesendet wurde, führt die App keinen automatischen Cancel, Seiten-Reset oder Fensterschluss mehr aus. Der Composer wird erst geleert, nachdem das Transkript synchron im lokalen Diktierverlauf gespeichert wurde. Entspricht ein übrig gebliebener Composer-Text exakt dem neuesten, höchstens 24 Stunden alten Eintrag `Abgebrochen · Text gerettet` oder `Fehler · Text gerettet`, wird er vor dem nächsten Start bestätigt gelöscht und die Aufnahme genau einmal erneut gestartet. Älterer, bereits abgeschlossener oder unbekannter Text blockiert weiterhin sicher, statt überschrieben zu werden. Beenden während einer noch aktiven Aufnahme wird abgelehnt; zuerst muss der eingestellte Hotkey oder Escape den Zustand sicher abschließen. Ein reguläres Beenden schließt nur das mit App- und Profilmarker versehene ORhom-Hintergrundfenster; sichtbare, unmarkierte Chrome-Fenster bleiben unangetastet. Reagiert Chrome nicht auf den Schließbefehl, wird das eigene Fenster vollständig sichtbar und als Nutzerfenster freigegeben. Ein explizites Verwerfen beendet die laufende Aufnahme, ohne Sprache lokal auszulesen oder zu speichern; lässt sich ein Browser-Composer nicht bestätigt leeren, wird das ausdrücklich gemeldet. Clipboard-Restore-Fehler sperren weitere Clipboard-Leseversuche der laufenden Sitzung und werden ausdrücklich gemeldet.
 
 Die Diktierleiste spiegelt diese Zustände als `Bereit`, `Mikrofon wird aktiviert`, `Aufnahme läuft`, `Aufnahme beendet`, `Transkription läuft` und `Text wird eingefügt`. Das Tray formuliert dieselben Phasen kompakt als `Bereit`, `Wird gestartet`, `Hört zu`, `Aufnahme wird beendet`, `Wird transkribiert` und `Wird eingefügt`; Hinweis und Primäraktion ändern sich passend dazu. Im Zustand `Idle` bleibt die Leiste als sichtbares Aktivitätszeichen eingeblendet; Fehler erscheinen kurz direkt in der Leiste. Die Leiste verwendet `WS_EX_NOACTIVATE`, damit ein Klick das zuvor aktive Textfeld nicht fokussiert. Im Pending-Text-Fehlerpfad wird nur das ursprüngliche Fenster mit einer begrenzten Win32-Operation wieder aktiviert; blockierende UI-Automation auf veralteten Electron-/WebView-Elementen wird dort nicht mehr ausgeführt.
 
@@ -154,7 +186,7 @@ Chromium kann unmittelbar nach dem globalen Hotkey kurz den übergeordneten `mai
 ## Tray-Menü und Diagnose
 
 - Die oberste Zeile zeigt den aktuellen deutschen Status samt Hotkey-Hinweis; direkt darunter steht die passende Primäraktion.
-- **Letztes Diktat einfügen** setzt den zuletzt erkannten Text sicher in das zuvor aktive Feld; wenn das Ziel nicht mehr eindeutig ist, bleibt der Text für `Strg+V` in der Zwischenablage. **Diktierverlauf** öffnet erfolgreiche, fehlgeschlagene und abgebrochene Diktierungen.
+- **Letztes Diktat einfügen** setzt den zuletzt erkannten Text sicher in das zuvor aktive Feld; wenn das Ziel nicht mehr eindeutig ist, bleibt der Text für `Strg+V` in der Zwischenablage. **Diktierverlauf** öffnet erfolgreiche und fehlgeschlagene Diktierungen; ausdrücklich verworfene Aufnahmen hinterlassen keinen Eintrag.
 - **Mikrofon** erlaubt im Bereitschaftszustand die Schnellauswahl eines aktiven Windows-Audioeingangs. **Mikrofon & Einstellungen öffnen …** führt bei Bedarf in das Hauptfenster.
 - **Diktierleiste anzeigen** blendet die Leiste ein oder aus. **ORhom öffnen** zeigt das Hauptfenster mit den drei Einrichtungsschritten.
 - Unter **Erweitert** liegen Konfiguration und Logs sowie die Funktionen des Browser-Fallbacks: **ChatGPT-Profil öffnen**, **Chrome-Profil prüfen**, **ChatGPT-Diagnose speichern** und **Chrome-Profilordner öffnen**.
@@ -227,7 +259,7 @@ Bei Problemen unter **Erweitert** zuerst **Chrome-Profil prüfen** und danach **
 
 ## Tests
 
-Die Solution enthält deterministische Regressionstests für den gepinnten Modelldownload samt Fortschritt, SHA-256, Cache-Hit und Abbruch, lokale PCM/Float-Audiokonvertierung, Stereo-Downmix, 16-kHz-Resampling, Sprach-Gate, leise Randsilben, Randstille, Warm-up, Technik-Prompt, Provider-Migration und feste Sprache `de`. Hinzu kommen die bestehenden Tests für Zustandsbestätigung, Push-to-talk, Clipboard-Snapshots, Fokus-, Root- und Layout-Fingerprints, HWND/PID-Schutz, Sicherheitsregeln, atomare Persistenz, Chrome-Ownership, Escape-Recovery sowie Rendering und Multi-Monitor-Positionierung. Ein opt-in Hardwaretest lädt das echte Modell, verlangt ein bestätigtes Vulkan-Backend und führt eine Inferenz aus:
+Die Solution enthält deterministische Regressionstests für den gepinnten Modelldownload samt Fortschritt, SHA-256, Cache-Hit und Abbruch, lokale PCM/Float-Audiokonvertierung, Stereo-Downmix, 16-kHz-Resampling, Sprach-Gate, leise Randsilben, Randstille, Warm-up, Technik-Prompt, Provider-Migration und feste Sprache `de`. Hinzu kommen Tests für Zustandsbestätigung, Push-to-talk, Clipboard-Ressourcen, Passwortfelder, Fokus-, Root- und Layout-Fingerprints, HWND/PID-/Origin-Schutz, sichere Verwerf-Semantik, atomare Persistenz, Chrome-Ownership sowie Rendering und Multi-Monitor-Positionierung. Ein opt-in Hardwaretest lädt das echte Modell, verlangt ein bestätigtes Vulkan-Backend und führt eine Inferenz aus:
 
 ```powershell
 dotnet test .\ORhom.sln -c Release
@@ -245,10 +277,10 @@ dotnet test .\ORhom.sln -c Release --filter 'Category=ChromeIntegration'
 
 ## Recherchequellen und Lizenzen
 
-- [`whisper.cpp` Vulkan- und Modelldokumentation](https://github.com/ggml-org/whisper.cpp/blob/v1.9.1/README.md)
+- [`whisper.cpp` Vulkan- und Modelldokumentation, Commit `f24588a` (v1.8.5)](https://github.com/ggml-org/whisper.cpp/blob/f24588a272ae8e23280d9c220536437164e6ed28/README.md)
 - [OpenAI-Modellkarte für Whisper large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo)
 - [Gepinnte GGML-Modellablage](https://huggingface.co/ggerganov/whisper.cpp/tree/5359861c739e955e79d9a303bcbc70fb988958b1)
 - [Whisper.net 1.9.1](https://www.nuget.org/packages/Whisper.net/1.9.1) und [Vulkan-Runtime](https://www.nuget.org/packages/Whisper.net.Runtime.Vulkan/1.9.1)
-- [NAudio 2.3.0 Release Notes](https://github.com/naudio/NAudio/blob/master/RELEASE_NOTES.md)
+- [NAudio 2.3.0 Quellstand, Commit `24c0394`](https://github.com/naudio/NAudio/tree/24c0394da0cffeddc70a13f6c6d5f55f4af0dea2)
 
 Die Hinweise zu den MIT-lizenzierten Komponenten stehen zusätzlich in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
