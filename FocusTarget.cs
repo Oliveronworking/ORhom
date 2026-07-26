@@ -12,7 +12,7 @@ internal sealed record FocusTarget(
     string WebViewRootIdentity,
     SafeFocusLayoutFingerprint LayoutFingerprint,
     bool AvoidAutomationElementFocus,
-    bool IsPasswordField);
+    bool IsPasswordFieldOrUnverifiable);
 
 internal readonly record struct SafeFocusLayoutFingerprint(
     double RelativeLeft,
@@ -20,7 +20,7 @@ internal readonly record struct SafeFocusLayoutFingerprint(
     double RelativeWidth,
     double RelativeHeight)
 {
-    public static SafeFocusLayoutFingerprint Empty { get; } = default;
+    public static SafeFocusLayoutFingerprint Empty { get; }
 
     public bool IsValid =>
         double.IsFinite(RelativeLeft) &&

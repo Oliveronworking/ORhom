@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Win32;
 using NAudio.CoreAudioApi;
 
@@ -105,7 +106,9 @@ internal sealed class AudioInputDeviceService
         foreach (var deviceId in root.GetSubKeyNames())
         {
             using var device = root.OpenSubKey(deviceId);
-            var state = Convert.ToInt32(device?.GetValue("DeviceState") ?? 0);
+            var state = Convert.ToInt32(
+                device?.GetValue("DeviceState") ?? 0,
+                CultureInfo.InvariantCulture);
             if ((state & DeviceStateActive) == 0)
             {
                 continue;

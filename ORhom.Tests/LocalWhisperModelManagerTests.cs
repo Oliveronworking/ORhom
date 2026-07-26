@@ -114,6 +114,63 @@ public sealed class LocalWhisperModelManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task MatchingSidecarCannotHideSameLengthModelTampering()
+    {
+        byte[] expectedPayload = [1, 2, 3, 4, 5, 6];
+        byte[] tamperedPayload = [6, 5, 4, 3, 2, 1];
+        var descriptor = CreateDescriptor(expectedPayload);
+        var initialHandler = new StubHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(expectedPayload)
+            }));
+        using (var initialClient = new HttpClient(initialHandler))
+        using (var initialManager = new LocalWhisperModelManager(
+                   _testDirectory,
+                   initialClient,
+                   descriptor))
+        {
+            await initialManager.EnsureModelAsync();
+        }
+
+        var originalCreationTime = File.GetCreationTimeUtc(
+            Path.Combine(_testDirectory, descriptor.FileName));
+        var originalLastWriteTime = File.GetLastWriteTimeUtc(
+            Path.Combine(_testDirectory, descriptor.FileName));
+        await File.WriteAllBytesAsync(
+            Path.Combine(_testDirectory, descriptor.FileName),
+            tamperedPayload);
+        File.SetCreationTimeUtc(
+            Path.Combine(_testDirectory, descriptor.FileName),
+            originalCreationTime);
+        File.SetLastWriteTimeUtc(
+            Path.Combine(_testDirectory, descriptor.FileName),
+            originalLastWriteTime);
+
+        var recoveryHandler = new StubHttpMessageHandler((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(expectedPayload)
+            }));
+        using var recoveryClient = new HttpClient(recoveryHandler);
+        using var recoveryManager = new LocalWhisperModelManager(
+            _testDirectory,
+            recoveryClient,
+            descriptor);
+        var progress = new ProgressCollector();
+
+        await recoveryManager.EnsureModelAsync(progress);
+
+        Assert.Equal(1, recoveryHandler.RequestCount);
+        Assert.Equal(
+            expectedPayload,
+            await File.ReadAllBytesAsync(recoveryManager.ModelPath));
+        Assert.Contains(
+            progress.Values,
+            value => value.Stage == LocalWhisperModelProgressStage.VerifyingCache);
+    }
+
+    [Fact]
     public async Task HashMismatchDeletesPartialFileAndDoesNotPublishModel()
     {
         byte[] expectedPayload = [1, 2, 3, 4, 5];

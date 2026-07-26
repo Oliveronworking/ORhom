@@ -18,9 +18,9 @@ internal sealed class PasteService
 
     public PasteResult PasteIntoTarget(string text, FocusTarget target, AppSettings settings)
     {
-        if (target.IsPasswordField)
+        if (target.IsPasswordFieldOrUnverifiable)
         {
-            _logger.Info("Paste skipped because captured target is a password field.");
+            _logger.Info("Paste skipped because the captured target is a password field or could not be verified safely.");
             return PasteResult.FailedWithClipboardFallback;
         }
 
@@ -31,9 +31,11 @@ internal sealed class PasteService
         }
 
         var focusedBeforePaste = AutomationHelpers.GetFocusedElement(_logger);
-        if (settings.BlockPasswordFields && AutomationHelpers.IsPasswordElement(focusedBeforePaste))
+        if (AutomationHelpers.ShouldBlockPasswordField(
+                focusedBeforePaste,
+                settings.BlockPasswordFields))
         {
-            _logger.Info("Paste skipped because current target is a password field.");
+            _logger.Info("Paste skipped because the current target is a password field or could not be verified safely.");
             return PasteResult.FailedWithClipboardFallback;
         }
 
@@ -49,6 +51,7 @@ internal sealed class PasteService
             return PasteResult.FailedWithoutClipboardFallback;
         }
 
+        using var ownedClipboardSnapshot = clipboardSnapshot as IDisposable;
         if (settings.RestoreClipboard &&
             NativeMethods.GetClipboardSequenceNumber() != capturedClipboardSequence)
         {
@@ -71,7 +74,9 @@ internal sealed class PasteService
 
         var ownedClipboardSequence = NativeMethods.GetClipboardSequenceNumber();
         var dispatched = false;
+        var pasteMayHaveReachedTarget = false;
         var method = "None";
+        PasteShortcutDispatchResult? dispatchResult = null;
         try
         {
             Thread.Sleep(Math.Max(settings.PasteDelayMs, 0));
@@ -81,27 +86,28 @@ internal sealed class PasteService
             }
             else
             {
-                dispatched = NativeMethods.SendPasteShortcut();
-                method = "SendInput";
-                if (!dispatched)
+                dispatchResult = NativeMethods.SendPasteShortcut();
+                var decision = PasteDispatchSafetyPolicy.Decide(dispatchResult.Value);
+                dispatched = decision == PasteDispatchDecision.ConfirmedSuccess;
+                pasteMayHaveReachedTarget =
+                    decision == PasteDispatchDecision.UnconfirmedMayHaveReachedTarget;
+                method = dispatched
+                    ? "SendInput"
+                    : "SendInputUnconfirmed";
+                if (decision != PasteDispatchDecision.ConfirmedSuccess)
                 {
-                    if (IsPasteDispatchSafe(target, settings, text, ownedClipboardSequence))
-                    {
-                        SendKeys.SendWait("^v");
-                        dispatched = true;
-                        method = "SendKeysFallback";
-                    }
-                    else
-                    {
-                        _logger.Info("Paste SendKeys fallback skipped because target focus or clipboard ownership changed.");
-                    }
+                    // A partial SendInput may already have reached the target.
+                    // SendKeys has no delivery acknowledgement, so retrying here
+                    // could duplicate the paste while still reporting false success.
+                    _logger.Info(
+                        $"Paste dispatch was not fully confirmed. MayHaveReachedTarget={pasteMayHaveReachedTarget} AcceptedInputs={dispatchResult.Value.AcceptedInputCount} RequestedInputs={dispatchResult.Value.RequestedInputCount} CleanupAttempted={dispatchResult.Value.CleanupAttempted} CleanupSucceeded={dispatchResult.Value.CleanupSucceeded}");
                 }
             }
 
             var foregroundVerified = NativeMethods.GetForegroundWindow() == target.WindowHandle &&
                                      HasExpectedWindowIdentity(target);
             _logger.Info($"Paste shortcut dispatched. Success={dispatched} Method={method} ForegroundVerified={foregroundVerified} PreserveWebViewFocus={target.AvoidAutomationElementFocus} TextLength={text.Length}");
-            if (dispatched)
+            if (dispatched || pasteMayHaveReachedTarget)
             {
                 Thread.Sleep(Math.Max(settings.RestoreClipboardDelayMs, 0));
             }
@@ -134,12 +140,15 @@ internal sealed class PasteService
                 textIsOnClipboard);
         }
 
-        var allowClipboardFallback = restoreOutcome == ClipboardRestoreOutcome.Restored;
+        var allowClipboardFallback =
+            !pasteMayHaveReachedTarget &&
+            restoreOutcome == ClipboardRestoreOutcome.Restored;
         return new PasteResult(
             false,
             allowClipboardFallback,
             restoreOutcome,
-            textIsOnClipboard);
+            textIsOnClipboard,
+            pasteMayHaveReachedTarget);
     }
 
     private bool IsPasteDispatchSafe(
@@ -173,7 +182,9 @@ internal sealed class PasteService
         }
 
         var focused = AutomationHelpers.GetFocusedElement(_logger);
-        if (settings.BlockPasswordFields && AutomationHelpers.IsPasswordElement(focused))
+        if (AutomationHelpers.ShouldBlockPasswordField(
+                focused,
+                settings.BlockPasswordFields))
         {
             return TargetFocusProbeResult.Unsafe;
         }
@@ -330,7 +341,13 @@ internal sealed class PasteService
     private bool IsExpectedTargetFocused(FocusTarget target, AutomationElement? focused)
     {
         var candidateWindowClass = NativeMethods.GetWindowClass(target.WindowHandle);
+        var candidateWindowTitle = NativeMethods.GetWindowTitle(target.WindowHandle);
         if (!HasExpectedWindowIdentity(target) ||
+            !FocusTargetSafetyPolicy.HasSameViewIdentity(
+                target.WindowClass,
+                target.WindowTitle,
+                candidateWindowClass,
+                candidateWindowTitle) ||
             !AutomationHelpers.IsElementInWindow(focused, target.WindowHandle))
         {
             return false;
@@ -359,16 +376,20 @@ internal sealed class PasteService
             target.WindowHandle,
             target.OwningProcessId,
             target.WindowClass,
+            target.WindowTitle,
             target.FocusMetadata,
             target.WebViewRootIdentity,
             target.LayoutFingerprint,
             target.WindowHandle,
             NativeMethods.GetOwningProcessId(target.WindowHandle),
             candidateWindowClass,
+            candidateWindowTitle,
             focusedMetadata,
             focusedWebViewRootIdentity,
             focusedLayoutFingerprint,
-            AutomationHelpers.IsPasswordElement(focused));
+            AutomationHelpers.ShouldBlockPasswordField(
+                focused,
+                blockPasswordFields: true));
         if (semanticMatch)
         {
             _logger.Info($"Target focus accepted through a strong semantic editor fingerprint after the UI Automation runtime identity changed. AutomationId='{focusedMetadata.AutomationId}' Class='{focusedMetadata.ClassName}'");
@@ -385,14 +406,51 @@ internal sealed class PasteService
             NativeMethods.GetOwningProcessId(target.WindowHandle));
 }
 
+internal static class PasteDispatchSafetyPolicy
+{
+    public static PasteDispatchDecision Decide(PasteShortcutDispatchResult result)
+    {
+        if (result.RequestedInputCount > 0 &&
+            result.AcceptedInputCount == result.RequestedInputCount &&
+            !result.CleanupAttempted &&
+            result.CleanupSucceeded)
+        {
+            return PasteDispatchDecision.ConfirmedSuccess;
+        }
+
+        return MayHaveReachedTarget(result)
+            ? PasteDispatchDecision.UnconfirmedMayHaveReachedTarget
+            : PasteDispatchDecision.FailWithClipboardFallback;
+    }
+
+    public static bool MayHaveReachedTarget(PasteShortcutDispatchResult result) =>
+        result.AcceptedInputCount >= 2;
+}
+
+internal enum PasteDispatchDecision
+{
+    ConfirmedSuccess,
+    FailWithClipboardFallback,
+    UnconfirmedMayHaveReachedTarget
+}
+
 internal sealed record PasteResult(
     bool Succeeded,
     bool AllowClipboardFallback,
     ClipboardRestoreOutcome ClipboardRestoreOutcome,
-    bool TextIsOnClipboard = false)
+    bool TextIsOnClipboard = false,
+    bool PasteMayHaveReachedTarget = false)
 {
     public bool ShouldAttemptClipboardFallback =>
-        !Succeeded && AllowClipboardFallback && !TextIsOnClipboard;
+        !Succeeded &&
+        !PasteMayHaveReachedTarget &&
+        AllowClipboardFallback &&
+        !TextIsOnClipboard;
+
+    public bool ShouldCopyUnconfirmedTextAsLastResort =>
+        !Succeeded &&
+        PasteMayHaveReachedTarget &&
+        !TextIsOnClipboard;
 
     public static PasteResult FailedWithClipboardFallback { get; } =
         new(false, true, ClipboardRestoreOutcome.NotRequested);

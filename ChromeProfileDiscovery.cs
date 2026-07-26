@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text.Json;
 
@@ -5,6 +6,10 @@ namespace ORhom;
 
 internal sealed class ChromeProfileDiscovery
 {
+    [SuppressMessage(
+        "Performance",
+        "CA1822:Mark members as static",
+        Justification = "The instance boundary keeps profile discovery replaceable at UI composition points.")]
     public ChromeProfileDiscoveryResult Discover(string? configuredExecutablePath = null, string? configuredUserDataDirectory = null)
     {
         var executablePath = FirstExistingFile(

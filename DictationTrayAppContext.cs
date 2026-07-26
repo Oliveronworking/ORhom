@@ -37,6 +37,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private readonly SettingsForm _settingsForm;
     private readonly DictationHistoryStore _history;
     private readonly DictationHistoryForm _historyForm;
+    private readonly int _uiThreadId;
     private AppStatus _status = AppStatus.Idle;
     private string _idleReadinessTitle = string.Empty;
     private string _idleReadinessHint = string.Empty;
@@ -56,8 +57,10 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     public DictationTrayAppContext(
         AppSettings settings,
         AppLogger logger,
-        ChromeProfileDiscovery chromeProfileDiscovery)
+        ChromeProfileDiscovery chromeProfileDiscovery,
+        AppPaths paths)
     {
+        _uiThreadId = Environment.CurrentManagedThreadId;
         _logger = logger;
         _applicationIcon = LoadApplicationIcon();
         _settings = settings;
@@ -68,8 +71,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _dictationController = new ChatGptDictationController(_settings, _logger, _chromeProfileLauncher);
         _localAudioCapture = new LocalAudioCaptureService(_logger);
         var modelDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ORhom",
+            paths.DataDirectory,
             "models",
             "whisper.cpp");
         _localWhisper = new LocalWhisperRecognitionService(
@@ -90,12 +92,12 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _settings.RecordingOverlayBottomOffsetPx,
             _settings.ToggleHotkey,
             overlayPlacement);
+        _recordingOverlay.ApplySizePreset(_settings.RecordingOverlaySize);
         _focusTracker = new FocusTracker(_logger);
         _pasteService = new PasteService(_logger);
-        var historyDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ORhom");
-        _history = new DictationHistoryStore(Path.Combine(historyDirectory, "dictation-history.json"), _logger);
+        _history = new DictationHistoryStore(
+            Path.Combine(paths.DataDirectory, "dictation-history.json"),
+            _logger);
         _historyForm = new DictationHistoryForm(_history) { Icon = _applicationIcon };
         _logger.Info("Application started.");
         var initialProfileValidation = DictationProviders.IsLocal(_settings.DictationProvider)
@@ -273,6 +275,28 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     {
         var menu = new ToolStripMenuItem("Erweitert");
         menu.DropDownItems.Add(new ToolStripMenuItem(
+            "Sprachmodell neu laden",
+            null,
+            (_, _) => RunUserOperation(
+                ReloadLocalWhisperModelAsync,
+                "reload-local-model"))
+        {
+            Name = "reload-local-model",
+            ToolTipText =
+                "Prüft den Modellcache erneut und lädt whisper.cpp frisch über Vulkan."
+        });
+        menu.DropDownItems.Add(new ToolStripMenuItem(
+            "GPU-Modell freigeben",
+            null,
+            (_, _) => RunUserOperation(
+                ReleaseLocalWhisperModelAsync,
+                "release-local-model"))
+        {
+            Name = "release-local-model",
+            ToolTipText =
+                "Gibt den lokalen GPU- und Modellkontext bis zum nächsten Diktat frei."
+        });
+        menu.DropDownItems.Add(new ToolStripMenuItem(
             "ChatGPT-Profil öffnen",
             null,
             (_, _) => RunUserOperation(
@@ -347,11 +371,26 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             !_exitInProgress &&
             !_settingsForm.Visible;
         _overlayVisibilityItem.Text = _settings.ShowRecordingOverlay
-            ? "Diktierleiste anzeigen"
+            ? "Diktierleiste ausblenden"
             : "Diktierleiste einblenden";
 
         var browserMode = !DictationProviders.IsLocal(
             _settings.DictationProvider);
+        var localModelControls = LocalModelControlPresentation.For(
+            !browserMode,
+            _status,
+            _exitInProgress,
+            _settingsForm.Visible,
+            _localWhisper.IsReady,
+            !_localPreparationTask.IsCompleted);
+        SetAdvancedItemState(
+            "reload-local-model",
+            localModelControls.Visible,
+            localModelControls.CanReload);
+        SetAdvancedItemState(
+            "release-local-model",
+            localModelControls.Visible,
+            localModelControls.CanRelease);
         SetAdvancedItemState(
             "open-chatgpt-profile",
             browserMode && _settings.OpenChatGptProfileVisibleForSetup);
@@ -370,10 +409,15 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var hasReadinessOverride =
             _status == AppStatus.Idle &&
             !string.IsNullOrWhiteSpace(_idleReadinessTitle);
+        var readinessHint = _idleReadinessTitle.Equals(
+            "Bereit · Lokal · Vulkan",
+            StringComparison.Ordinal)
+                ? $"{_settings.ToggleHotkey} drücken, um zu diktieren"
+                : _idleReadinessHint;
         _statusItem.Text = hasReadinessOverride
-            ? string.IsNullOrWhiteSpace(_idleReadinessHint)
+            ? string.IsNullOrWhiteSpace(readinessHint)
                 ? _idleReadinessTitle
-                : $"{_idleReadinessTitle} · {_idleReadinessHint}"
+                : $"{_idleReadinessTitle} · {readinessHint}"
             : $"{presentation.VisibleStatus} · {presentation.Hint}";
         _primaryActionItem.Text = presentation.PrimaryAction;
         _primaryActionItem.ShortcutKeyDisplayString = _settings.ToggleHotkey;
@@ -402,10 +446,18 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
     private void SetAdvancedItemState(string name, bool enabled)
     {
+        SetAdvancedItemState(name, enabled, enabled);
+    }
+
+    private void SetAdvancedItemState(
+        string name,
+        bool visible,
+        bool enabled)
+    {
         if (_advancedMenu.DropDownItems[name] is ToolStripItem item)
         {
             item.Enabled = enabled;
-            item.Visible = enabled;
+            item.Visible = visible;
         }
     }
 
@@ -536,7 +588,12 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             device.Id,
             device.DisplayName,
             _settings.ToggleHotkey,
-            chromeProfile));
+            chromeProfile,
+            _settings.RecordingOverlaySize,
+            _settings.ShowRecordingOverlay,
+            _settings.EnableHybridPushToTalk,
+            _settings.EnableAudioDucking,
+            _settings.AudioDuckingVolumePercent));
         if (!result.Ok)
         {
             ShowErrorMessage(result.Message);
@@ -588,6 +645,13 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                     ShowMessage("Letztes Diktat erneut eingefügt.");
                 }
 
+                return;
+            }
+
+            if (result.PasteMayHaveReachedTarget)
+            {
+                ShowMessage(
+                    "Das automatische Einfügen konnte nicht bestätigt werden. Bitte zuerst das Zielfeld prüfen; das Diktat bleibt im Verlauf.");
                 return;
             }
 
@@ -705,13 +769,13 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _audioDuckingTimer.Dispose();
         _audioDucking.Dispose();
         _localSession?.Capture.Dispose();
-        _dictationController.Dispose();
         _applicationIcon.Dispose();
         var preparationTasks = Task.WhenAll(
             _startupPreparationTask,
             _localPreparationTask);
         if (preparationTasks.IsCompleted)
         {
+            _dictationController.Dispose();
             _localWhisper.Dispose();
             _localPreparationCancellation?.Dispose();
             _startupCancellation.Dispose();
@@ -723,6 +787,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _ = preparationTasks.ContinueWith(
                 _ =>
                 {
+                    _dictationController.Dispose();
                     _localWhisper.Dispose();
                     localPreparationCancellation?.Dispose();
                     _startupCancellation.Dispose();
@@ -892,9 +957,9 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
 
         var target = _focusTracker.Capture(_settings);
-        if (target.IsPasswordField)
+        if (target.IsPasswordFieldOrUnverifiable)
         {
-            ShowErrorMessage("Ziel ist ein Passwortfeld. Aufnahme wurde nicht gestartet.");
+            ShowErrorMessage("Das Zielfeld ist ein Passwortfeld oder konnte nicht sicher geprüft werden. Aufnahme wurde nicht gestartet.");
             ResetToIdle();
             return;
         }
@@ -930,7 +995,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                 _settings.PreferredMicrophoneId,
                 _settings.PreferredMicrophoneName,
                 TimeSpan.FromSeconds(_settings.LocalMaxRecordingSeconds),
-                OnLocalCaptureUnexpectedlyStopped);
+                OnLocalCaptureUnexpectedlyStopped,
+                OnLocalAudioLevelChanged);
             capture.RecordingLimitReached += OnLocalRecordingLimitReached;
             _localSession = new LocalRecordingSession(target, capture);
             _audioDucking.Begin();
@@ -993,6 +1059,27 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             ShowMessage(
                 $"Die maximale lokale Aufnahmedauer von {_settings.LocalMaxRecordingSeconds / 60} Minuten ist erreicht. Das Diktat wird jetzt transkribiert.");
             RunUserOperation(StopAfterQueuedRequestAsync, "local-duration-limit");
+        });
+    }
+
+    private void OnLocalAudioLevelChanged(
+        object? sender,
+        LocalAudioLevelChangedEventArgs e)
+    {
+        if (sender is not LocalAudioCaptureSession capture)
+        {
+            return;
+        }
+
+        RunOnUiThread(() =>
+        {
+            if (_localSession?.Capture != capture ||
+                _status != AppStatus.Recording)
+            {
+                return;
+            }
+
+            _recordingOverlay.SetMicrophoneLevel(e.Level);
         });
     }
 
@@ -1155,18 +1242,33 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                     : DictationHistoryOutcomes.PasteFailed);
         }
 
+        var unconfirmedRecoveryCopied =
+            !historyPersisted &&
+            (pasteResult.TextIsOnClipboard ||
+             (pasteResult.ShouldCopyUnconfirmedTextAsLastResort &&
+              ClipboardHelper.TrySetText(text, _logger)));
         var copied = !pasteResult.Succeeded &&
+                     !pasteResult.PasteMayHaveReachedTarget &&
                      (pasteResult.TextIsOnClipboard ||
                       (pasteResult.ShouldAttemptClipboardFallback &&
                        ClipboardHelper.TrySetText(text, _logger)));
-        _logger.Info($"Local dictation paste completed. Success={pasteResult.Succeeded} TextLength={text.Length} ClipboardRestoreOutcome={pasteResult.ClipboardRestoreOutcome}.");
+        _logger.Info($"Local dictation paste completed. Success={pasteResult.Succeeded} MayHaveReachedTarget={pasteResult.PasteMayHaveReachedTarget} TextLength={text.Length} ClipboardRestoreOutcome={pasteResult.ClipboardRestoreOutcome}.");
         if (!historyPersisted)
         {
-            ShowMessage(pasteResult.Succeeded
+            ShowMessage(pasteResult.PasteMayHaveReachedTarget
+                ? unconfirmedRecoveryCopied
+                    ? "Das Einfügen konnte nicht bestätigt und der Text nicht im Diktierverlauf gesichert werden. Bitte zuerst das Zielfeld prüfen; nur falls er dort fehlt, liegt er als Rettung in der Zwischenablage."
+                    : "Das Einfügen konnte nicht bestätigt und der Text weder im Diktierverlauf noch in der Zwischenablage gesichert werden. Bitte das Zielfeld prüfen."
+                : pasteResult.Succeeded
                 ? "Text wurde eingefügt, konnte aber nicht im Diktierverlauf gesichert werden."
                 : copied
                     ? "Text konnte weder eingefügt noch im Diktierverlauf gesichert werden. Er liegt als Rettung in der Zwischenablage."
                     : "Text konnte weder eingefügt noch sicher im Diktierverlauf oder in der Zwischenablage gesichert werden.");
+        }
+        else if (pasteResult.PasteMayHaveReachedTarget)
+        {
+            ShowMessage(
+                "Das Einfügen konnte nicht bestätigt werden. Bitte zuerst das Zielfeld prüfen; der Text bleibt im Diktierverlauf.");
         }
         else if (!pasteResult.Succeeded)
         {
@@ -1196,10 +1298,10 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
 
         var target = _focusTracker.Capture(_settings);
-        if (target.IsPasswordField)
+        if (target.IsPasswordFieldOrUnverifiable)
         {
-            _logger.Info("Recording blocked because target is a password field.");
-            ShowErrorMessage("Ziel ist ein Passwortfeld. Aufnahme wurde nicht gestartet.");
+            _logger.Info("Recording blocked because the target is a password field or could not be verified safely.");
+            ShowErrorMessage("Das Zielfeld ist ein Passwortfeld oder konnte nicht sicher geprüft werden. Aufnahme wurde nicht gestartet.");
             ResetToIdle();
             return;
         }
@@ -1547,10 +1649,12 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                         : DictationHistoryOutcomes.PasteFailed);
         }
 
-        _logger.Info($"Dictation paste completed. Success={pasteResult.Succeeded} TextLength={text.Length} ClipboardRestoreOutcome={pasteResult.ClipboardRestoreOutcome} TextIsOnClipboard={pasteResult.TextIsOnClipboard}");
+        _logger.Info($"Dictation paste completed. Success={pasteResult.Succeeded} MayHaveReachedTarget={pasteResult.PasteMayHaveReachedTarget} TextLength={text.Length} ClipboardRestoreOutcome={pasteResult.ClipboardRestoreOutcome} TextIsOnClipboard={pasteResult.TextIsOnClipboard}");
         if (!historyPersisted)
         {
-            ShowMessage(pasteResult.Succeeded
+            ShowMessage(pasteResult.PasteMayHaveReachedTarget
+                ? "Das Einfügen konnte nicht bestätigt und der Text nicht im Verlauf gespeichert werden. Bitte zuerst das Zielfeld prüfen; der ChatGPT-Entwurf bleibt als Sicherung erhalten."
+                : pasteResult.Succeeded
                 ? "Text wurde eingefügt, aber nicht im Verlauf gespeichert. Der ChatGPT-Entwurf bleibt als Sicherung erhalten."
                 : "Text konnte weder im Verlauf gespeichert noch sicher eingefügt werden. Der ChatGPT-Entwurf bleibt als Sicherung erhalten.");
         }
@@ -1558,7 +1662,14 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         {
             ShowMessage(pasteResult.Succeeded
                 ? "Text wurde eingefügt und im Verlauf gesichert, aber der ChatGPT-Entwurf konnte nicht gelöscht werden. Bitte das ChatGPT-Profil öffnen und den Entwurf löschen."
+                : pasteResult.PasteMayHaveReachedTarget
+                    ? "Das Einfügen konnte nicht bestätigt werden. Bitte zuerst das Zielfeld prüfen. Der Text liegt im Verlauf; der ChatGPT-Entwurf konnte nicht gelöscht werden."
                 : "Text liegt sicher im Verlauf, aber Einfügen und Löschen des ChatGPT-Entwurfs sind fehlgeschlagen. Bitte das ChatGPT-Profil öffnen.");
+        }
+        else if (pasteResult.PasteMayHaveReachedTarget)
+        {
+            ShowMessage(
+                "Das Einfügen konnte nicht bestätigt werden. Bitte zuerst das Zielfeld prüfen; der Text bleibt im Diktierverlauf.");
         }
         else if (!pasteResult.Succeeded)
         {
@@ -1649,124 +1760,12 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                 RestoreFocus,
                 cancellation.Token);
             StopAudioDucking();
-            var textWasRecovered = false;
-            var recoveryClipboardRestoreFailed = false;
-            var recoveryComposerCleanupFailed = false;
             var terminationConfirmed = stopResult.IsTerminationConfirmed;
-            DictationRecoveryResult? deferredRecovery = null;
-            try
+            if (stopResult.RequiresDeferredCleanup)
             {
-                if (stopResult.Ok)
-                {
-                    SetStatus(AppStatus.ReadingText);
-                    var readResult = await _dictationController.ReadDictatedTextAsync(
-                        session.ChatWindow,
-                        session.ChatInput,
-                        restoreTargetFocus: RestoreFocus,
-                        cancellationToken: cancellation.Token);
-                    recoveryClipboardRestoreFailed = readResult.ClipboardRestoreFailed;
-                    var text = readResult.Text.Trim();
-                    if (!terminationConfirmed)
-                    {
-                        terminationConfirmed = await _dictationController.ConfirmRecordingInactiveAsync(
-                            session.ChatWindow,
-                            readResult.Input ?? session.ChatInput,
-                            cancellation.Token);
-                    }
-
-                    if (text.Length > 0 && !AutomationHelpers.IsUnsafeCapturedText(text))
-                    {
-                        if (terminationConfirmed)
-                        {
-                            var historyEntryId = Guid.Empty;
-                            var persistence = await AbortRecoveryPersistence.SaveThenClearAsync(
-                                text,
-                                recoveredText => _history.TryAdd(
-                                    recoveredText,
-                                    DictationHistoryOutcomes.CancelledRecovered,
-                                    out historyEntryId),
-                                () => _dictationController.ClearPersistedDictationAsync(
-                                    session.ChatWindow,
-                                    readResult.Input ?? session.ChatInput,
-                                    RestoreFocus,
-                                    text));
-                            textWasRecovered = persistence.Persisted;
-                            recoveryComposerCleanupFailed =
-                                persistence.Persisted && !persistence.Cleared;
-                            UpdateRecoveredCleanupOutcome(
-                                historyEntryId,
-                                DictationHistoryOutcomes.CancelledRecovered,
-                                persistence.Cleared);
-                        }
-                        else
-                        {
-                            textWasRecovered = _history.TryAdd(
-                                text,
-                                DictationHistoryOutcomes.FailureRecovered,
-                                out _);
-                        }
-                    }
-                    else
-                    {
-                        _history.Add(string.Empty, DictationHistoryOutcomes.CancelledWithoutText);
-                    }
-                }
-                else if (stopResult.CanRecoverText)
-                {
-                    SetStatus(AppStatus.ReadingText);
-                    var recovery = await TryRecoverTextToHistoryAsync(
-                        session.ChatWindow,
-                        session.ChatInput,
-                        DictationHistoryOutcomes.CancelledRecovered,
-                        stopResult.RequiresDeferredCleanup ? 2500 : null,
-                        RestoreFocus,
-                        clearComposerAfterPersistence: !stopResult.RequiresDeferredCleanup,
-                        cancellationToken: cancellation.Token);
-                    deferredRecovery = stopResult.RequiresDeferredCleanup
-                        ? recovery
-                        : null;
-                    textWasRecovered = recovery.TextRecovered;
-                    recoveryClipboardRestoreFailed = recovery.ClipboardRestoreFailed;
-                    recoveryComposerCleanupFailed = recovery.ComposerCleanupFailed;
-                    if (!textWasRecovered)
-                    {
-                        _history.Add(string.Empty, DictationHistoryOutcomes.CancelledWithoutText);
-                    }
-                }
-                else
-                {
-                    _history.Add(string.Empty, DictationHistoryOutcomes.CancelledWithoutText);
-                }
-            }
-            finally
-            {
-                if (stopResult.RequiresDeferredCleanup)
-                {
-                    var cleanup = await _dictationController.CompleteDeferredStopCleanupAsync(
-                        session.ChatWindow);
-                    terminationConfirmed = cleanup.IsTerminationConfirmed;
-                }
-            }
-
-            if (stopResult.RequiresDeferredCleanup &&
-                terminationConfirmed &&
-                textWasRecovered &&
-                deferredRecovery is not null)
-            {
-                var ownedWindowAvailable =
-                    ChatGptWindowFinder.IsOwnedBackgroundWindow(session.ChatWindow, _settings);
-                var cleared = ownedWindowAvailable &&
-                              await _dictationController.ClearPersistedDictationAsync(
-                        session.ChatWindow,
-                        session.ChatInput,
-                        RestoreFocus,
-                        deferredRecovery.Text);
-                var cleanupCompleted = !ownedWindowAvailable || cleared;
-                recoveryComposerCleanupFailed = !cleanupCompleted;
-                UpdateRecoveredCleanupOutcome(
-                    deferredRecovery.HistoryEntryId,
-                    deferredRecovery.Outcome,
-                    cleanupCompleted);
+                var cleanup = await _dictationController.CompleteDeferredStopCleanupAsync(
+                    session.ChatWindow);
+                terminationConfirmed = cleanup.IsTerminationConfirmed;
             }
 
             RestoreTargetFocus(session.Target);
@@ -1778,13 +1777,18 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                 return;
             }
 
-            ShowMessage(recoveryComposerCleanupFailed
-                ? "Aufnahme abgebrochen und Text im Verlauf gesichert, aber der ChatGPT-Entwurf konnte nicht gelöscht werden. Bitte das ChatGPT-Profil öffnen und den Entwurf löschen."
-                : recoveryClipboardRestoreFailed
-                ? "Aufnahme abgebrochen, aber die vorherige Zwischenablage konnte bei der Textrettung nicht wiederhergestellt werden."
-                : textWasRecovered
-                    ? "Aufnahme abgebrochen. Der gesprochene Text wurde im Verlauf gesichert."
-                    : "Aufnahme abgebrochen. Es konnte kein Text gesichert werden.");
+            var ownedWindowAvailable =
+                ChatGptWindowFinder.IsOwnedBackgroundWindow(session.ChatWindow, _settings);
+            var composerCleared = !ownedWindowAvailable ||
+                                  await _dictationController.ClearPersistedDictationAsync(
+                                      session.ChatWindow,
+                                      session.ChatInput,
+                                      RestoreFocus);
+            _logger.Info(
+                $"Recording discarded without reading or persisting dictated text. ComposerCleared={composerCleared}");
+            ShowMessage(composerCleared
+                ? "Aufnahme verworfen."
+                : "Aufnahme beendet, aber der ChatGPT-Entwurf konnte nicht gelöscht werden. Bitte das ChatGPT-Profil öffnen und den Entwurf manuell löschen.");
             ResetToIdle();
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -1847,36 +1851,11 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         SetStatus(AppStatus.Stopping);
         try
         {
-            var audio = await session.Capture.StopAndGetSamplesAsync(cancellationToken);
+            await session.Capture.StopAsync(cancellationToken);
             StopAudioDucking();
-            SetStatus(AppStatus.ReadingText);
-            var text = await _localWhisper.TranscribeGermanAsync(
-                audio.Samples,
-                cancellationToken);
-            var hasSafeText = !string.IsNullOrWhiteSpace(text) &&
-                              !AutomationHelpers.IsUnsafeCapturedText(text);
-            var historyRecovered = hasSafeText &&
-                                   _history.TryAdd(
-                                       text,
-                                       DictationHistoryOutcomes.CancelledRecovered,
-                                       out _);
-            var clipboardRecovered = hasSafeText &&
-                                     !historyRecovered &&
-                                     ClipboardHelper.TrySetText(text, _logger);
-            if (!hasSafeText)
-            {
-                _history.TryAdd(
-                    string.Empty,
-                    DictationHistoryOutcomes.CancelledWithoutText,
-                    out _);
-            }
-
             RestoreTargetFocus(session.Target);
-            ShowMessage(historyRecovered
-                ? "Aufnahme abgebrochen. Der lokal erkannte Text wurde im Diktierverlauf gesichert."
-                : clipboardRecovered
-                    ? "Aufnahme abgebrochen. Der Verlauf war nicht beschreibbar; der erkannte Text liegt zur Rettung in der Zwischenablage."
-                    : "Aufnahme abgebrochen. Es konnte kein sicherer Text gesichert werden.");
+            _logger.Info("Local recording discarded without transcription or persistence.");
+            ShowMessage("Aufnahme verworfen.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1884,13 +1863,9 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
         catch (Exception ex)
         {
-            _logger.Error("Local text recovery after abort failed.", ex);
-            _history.TryAdd(
-                string.Empty,
-                DictationHistoryOutcomes.CancelledWithoutText,
-                out _);
+            _logger.Error("Local microphone could not be stopped while discarding the recording.", ex);
             RestoreTargetFocus(session.Target);
-            ShowMessage($"Aufnahme abgebrochen. {GetLocalWhisperErrorMessage(ex)}");
+            ShowMessage($"Aufnahme konnte nicht sauber verworfen werden. {GetLocalWhisperErrorMessage(ex)}");
         }
         finally
         {
@@ -1910,6 +1885,94 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
     }
 
+    private async Task ReloadLocalWhisperModelAsync()
+    {
+        if (!await _operationLock.WaitAsync(0))
+        {
+            ShowMessage("ORhom verarbeitet gerade eine andere Aktion.");
+            return;
+        }
+
+        try
+        {
+            var presentation = GetLocalModelControlPresentation();
+            if (!presentation.CanReload)
+            {
+                ShowMessage(
+                    "Das lokale Sprachmodell kann geändert werden, sobald ORhom bereit ist.");
+                return;
+            }
+
+            if (!await StopLocalWhisperPreparationAsync(unloadModel: true))
+            {
+                ShowErrorMessage(
+                    "Das lokale GPU-Modell konnte nicht vollständig freigegeben werden. Bitte ORhom neu starten.");
+                return;
+            }
+
+            QueueLocalWhisperPreparation();
+            RefreshTrayMenu();
+            ShowMessage(
+                "Der Modellcache wird erneut geprüft und das Vulkan-Modell frisch geladen.");
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    private async Task ReleaseLocalWhisperModelAsync()
+    {
+        if (!await _operationLock.WaitAsync(0))
+        {
+            ShowMessage("ORhom verarbeitet gerade eine andere Aktion.");
+            return;
+        }
+
+        try
+        {
+            var presentation = GetLocalModelControlPresentation();
+            if (!presentation.CanRelease)
+            {
+                ShowMessage(
+                    "Es ist derzeit kein lokaler Modellkontext zum Freigeben geladen.");
+                return;
+            }
+
+            if (!await StopLocalWhisperPreparationAsync(unloadModel: true))
+            {
+                ShowErrorMessage(
+                    "Das lokale GPU-Modell konnte nicht vollständig freigegeben werden. Bitte ORhom neu starten.");
+                return;
+            }
+
+            _idleReadinessTitle = "Sprachmodell freigegeben";
+            _idleReadinessHint = "Wird beim nächsten Diktat neu geladen";
+            ApplyTrayStatePresentation();
+            if (_settings.ShowRecordingOverlay)
+            {
+                _recordingOverlay.ShowStatus(AppStatus.Idle);
+            }
+
+            RefreshTrayMenu();
+            ShowMessage(
+                "GPU- und Modellressourcen sind freigegeben. Das nächste Diktat lädt sie automatisch neu.");
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    private LocalModelControlPresentation GetLocalModelControlPresentation() =>
+        LocalModelControlPresentation.For(
+            DictationProviders.IsLocal(_settings.DictationProvider),
+            _status,
+            _exitInProgress,
+            _settingsForm.Visible,
+            _localWhisper.IsReady,
+            !_localPreparationTask.IsCompleted);
+
     private void QueueLocalWhisperPreparation()
     {
         if (!DictationProviders.IsLocal(_settings.DictationProvider) ||
@@ -1928,8 +1991,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         ApplyTrayStatePresentation();
         var generation = Interlocked.Increment(ref _localPreparationGeneration);
         _localPreparationTask = PrepareLocalWhisperAsync(
-            _localPreparationCancellation.Token,
-            generation);
+            generation,
+            _localPreparationCancellation.Token);
     }
 
     private async Task<bool> StopLocalWhisperPreparationAsync(bool unloadModel)
@@ -1975,14 +2038,14 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.Error("Local whisper.cpp model could not be unloaded after provider switch.", ex);
+            _logger.Error("Local whisper.cpp model could not be unloaded.", ex);
             return false;
         }
     }
 
     private async Task PrepareLocalWhisperAsync(
-        CancellationToken cancellationToken,
-        long generation)
+        long generation,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -2001,8 +2064,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                 if (_status == AppStatus.Idle)
                 {
                     _idleReadinessTitle = "Bereit · Lokal · Vulkan";
-                    _idleReadinessHint =
-                        $"{_settings.ToggleHotkey} drücken, um zu diktieren";
+                    _idleReadinessHint = string.Empty;
                     ApplyTrayStatePresentation();
                 }
             });
@@ -2071,19 +2133,42 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
     private void RunOnUiThread(Action action)
     {
-        if (_recordingOverlay.IsDisposed || _lifetimeCancellation.IsCancellationRequested)
+        if (!CanDispatchUiAction())
         {
             return;
         }
 
-        if (_recordingOverlay.InvokeRequired)
+        if (Environment.CurrentManagedThreadId == _uiThreadId)
         {
-            _recordingOverlay.BeginInvoke(action);
+            if (CanDispatchUiAction())
+            {
+                action();
+            }
+
             return;
         }
 
-        action();
+        try
+        {
+            _hotkeyWindow.BeginInvoke((Action)(() =>
+            {
+                if (CanDispatchUiAction())
+                {
+                    action();
+                }
+            }));
+        }
+        catch (InvalidOperationException) when (!CanDispatchUiAction())
+        {
+            // Shutdown can destroy the dispatcher handle between the checks above.
+        }
     }
+
+    private bool CanDispatchUiAction() =>
+        Volatile.Read(ref _disposeState) == 0 &&
+        !_lifetimeCancellation.IsCancellationRequested &&
+        !_hotkeyWindow.IsDisposed &&
+        _hotkeyWindow.IsHandleCreated;
 
     private static string FormatBytes(long bytes) =>
         bytes >= 1024L * 1024 * 1024
@@ -2223,12 +2308,24 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var microphoneId = values.MicrophoneId;
         var hotkey = values.Hotkey;
         var provider = DictationProviders.Normalize(values.DictationProvider);
+        var recordingOverlaySize = Enum.IsDefined(values.RecordingOverlaySize)
+            ? values.RecordingOverlaySize
+            : RecordingOverlaySize.Small;
+        var audioDuckingVolumePercent = Math.Clamp(
+            values.AudioDuckingVolumePercent,
+            0,
+            100);
         if (DictationProviders.IsLocal(provider))
         {
             return await ApplyLocalSettingsCoreAsync(
                 microphoneId,
                 microphoneName,
-                hotkey);
+                hotkey,
+                recordingOverlaySize,
+                values.ShowRecordingOverlay,
+                values.EnableHybridPushToTalk,
+                values.EnableAudioDucking,
+                audioDuckingVolumePercent);
         }
 
         if (values.ChromeProfile is not { } chromeProfile)
@@ -2247,6 +2344,13 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var previousMicrophoneId = _settings.PreferredMicrophoneId;
         var previousMicrophoneName = _settings.PreferredMicrophoneName;
         var previousHotkey = _settings.ToggleHotkey;
+        var previousRecordingOverlaySize = _settings.RecordingOverlaySize;
+        var previousShowRecordingOverlay = _settings.ShowRecordingOverlay;
+        var previousEnableHybridPushToTalk =
+            _settings.EnableHybridPushToTalk;
+        var previousEnableAudioDucking = _settings.EnableAudioDucking;
+        var previousAudioDuckingVolumePercent =
+            _settings.AudioDuckingVolumePercent;
         var previousSetupCompleted = _settings.SetupCompleted;
         var profileChanged =
             !previousUserDataDirectory.Equals(chromeProfile.UserDataDirectory, StringComparison.OrdinalIgnoreCase) ||
@@ -2355,6 +2459,13 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _settings.PreferredMicrophoneId = microphoneId;
         _settings.PreferredMicrophoneName = microphoneName;
         _settings.ToggleHotkey = hotkey;
+        _settings.RecordingOverlaySize = recordingOverlaySize;
+        _settings.ShowRecordingOverlay = values.ShowRecordingOverlay;
+        _settings.EnableHybridPushToTalk =
+            values.EnableHybridPushToTalk;
+        _settings.EnableAudioDucking = values.EnableAudioDucking;
+        _settings.AudioDuckingVolumePercent =
+            audioDuckingVolumePercent;
         _settings.SetupCompleted = true;
         if (!_settings.Save(_logger))
         {
@@ -2362,6 +2473,14 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _settings.PreferredMicrophoneId = previousMicrophoneId;
             _settings.PreferredMicrophoneName = previousMicrophoneName;
             _settings.ToggleHotkey = previousHotkey;
+            _settings.RecordingOverlaySize = previousRecordingOverlaySize;
+            _settings.ShowRecordingOverlay =
+                previousShowRecordingOverlay;
+            _settings.EnableHybridPushToTalk =
+                previousEnableHybridPushToTalk;
+            _settings.EnableAudioDucking = previousEnableAudioDucking;
+            _settings.AudioDuckingVolumePercent =
+                previousAudioDuckingVolumePercent;
             _settings.SetupCompleted = previousSetupCompleted;
             if (!_hotkeyWindow.TryUpdateToggleHotkey(previousHotkey, out var rollbackFailure))
             {
@@ -2384,8 +2503,11 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             SetStatus(AppStatus.Idle);
         }
 
-        _recordingOverlay.SetToggleHotkey(hotkey);
-        _logger.Info($"Settings applied from UI. ChromeProfileDirectory='{chromeProfile.DirectoryName}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}'.");
+        ApplyRecordingUiSettings(
+            hotkey,
+            recordingOverlaySize,
+            values.ShowRecordingOverlay);
+        _logger.Info($"Settings applied from UI. ChromeProfileDirectory='{chromeProfile.DirectoryName}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}' RecordingOverlaySize='{recordingOverlaySize}' ShowRecordingOverlay={values.ShowRecordingOverlay} HybridPushToTalk={values.EnableHybridPushToTalk} AudioDucking={values.EnableAudioDucking} AudioDuckingVolumePercent={audioDuckingVolumePercent}.");
         ShowMessage(localResourcesReleased
             ? $"ORhom läuft jetzt mit {hotkey} im Hintergrund."
             : "Die Browser-Diktierung ist aktiv, aber das lokale GPU-Modell konnte nicht freigegeben werden. Ein Neustart von ORhom gibt die Ressourcen frei.");
@@ -2395,7 +2517,12 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private async Task<SettingsApplyResult> ApplyLocalSettingsCoreAsync(
         string microphoneId,
         string microphoneName,
-        string hotkey)
+        string hotkey,
+        RecordingOverlaySize recordingOverlaySize,
+        bool showRecordingOverlay,
+        bool enableHybridPushToTalk,
+        bool enableAudioDucking,
+        int audioDuckingVolumePercent)
     {
         if (!_audioInputDevices.IsMicrophoneActive(microphoneId, microphoneName))
         {
@@ -2406,6 +2533,13 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var previousMicrophoneId = _settings.PreferredMicrophoneId;
         var previousMicrophoneName = _settings.PreferredMicrophoneName;
         var previousHotkey = _settings.ToggleHotkey;
+        var previousRecordingOverlaySize = _settings.RecordingOverlaySize;
+        var previousShowRecordingOverlay = _settings.ShowRecordingOverlay;
+        var previousEnableHybridPushToTalk =
+            _settings.EnableHybridPushToTalk;
+        var previousEnableAudioDucking = _settings.EnableAudioDucking;
+        var previousAudioDuckingVolumePercent =
+            _settings.AudioDuckingVolumePercent;
         var previousSetupCompleted = _settings.SetupCompleted;
 
         if (!_hotkeyWindow.TryUpdateToggleHotkey(hotkey, out var hotkeyFailure))
@@ -2440,6 +2574,12 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _settings.PreferredMicrophoneId = microphoneId;
         _settings.PreferredMicrophoneName = microphoneName;
         _settings.ToggleHotkey = hotkey;
+        _settings.RecordingOverlaySize = recordingOverlaySize;
+        _settings.ShowRecordingOverlay = showRecordingOverlay;
+        _settings.EnableHybridPushToTalk = enableHybridPushToTalk;
+        _settings.EnableAudioDucking = enableAudioDucking;
+        _settings.AudioDuckingVolumePercent =
+            audioDuckingVolumePercent;
         _settings.SetupCompleted = true;
         if (!_settings.Save(_logger))
         {
@@ -2447,17 +2587,45 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _settings.PreferredMicrophoneId = previousMicrophoneId;
             _settings.PreferredMicrophoneName = previousMicrophoneName;
             _settings.ToggleHotkey = previousHotkey;
+            _settings.RecordingOverlaySize = previousRecordingOverlaySize;
+            _settings.ShowRecordingOverlay =
+                previousShowRecordingOverlay;
+            _settings.EnableHybridPushToTalk =
+                previousEnableHybridPushToTalk;
+            _settings.EnableAudioDucking = previousEnableAudioDucking;
+            _settings.AudioDuckingVolumePercent =
+                previousAudioDuckingVolumePercent;
             _settings.SetupCompleted = previousSetupCompleted;
             _ = _hotkeyWindow.TryUpdateToggleHotkey(previousHotkey, out _);
             return SettingsApplyResult.Fail(
                 "Die Einstellungen konnten nicht sicher gespeichert werden. Bitte Schreibrechte und freien Speicherplatz prüfen.");
         }
 
-        _recordingOverlay.SetToggleHotkey(hotkey);
+        ApplyRecordingUiSettings(
+            hotkey,
+            recordingOverlaySize,
+            showRecordingOverlay);
         QueueLocalWhisperPreparation();
-        _logger.Info($"Local settings applied. MicrophoneId='{microphoneId}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}'.");
+        _logger.Info($"Local settings applied. MicrophoneId='{microphoneId}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}' RecordingOverlaySize='{recordingOverlaySize}' ShowRecordingOverlay={showRecordingOverlay} HybridPushToTalk={enableHybridPushToTalk} AudioDucking={enableAudioDucking} AudioDuckingVolumePercent={audioDuckingVolumePercent}.");
         ShowMessage($"Lokale deutsche Diktierung läuft jetzt mit {hotkey} im Hintergrund.");
         return SettingsApplyResult.Success(microphoneName, hotkey);
+    }
+
+    private void ApplyRecordingUiSettings(
+        string hotkey,
+        RecordingOverlaySize recordingOverlaySize,
+        bool showRecordingOverlay)
+    {
+        _recordingOverlay.SetToggleHotkey(hotkey);
+        _recordingOverlay.ApplySizePreset(recordingOverlaySize);
+        if (showRecordingOverlay)
+        {
+            _recordingOverlay.ShowStatus(_status);
+        }
+        else
+        {
+            _recordingOverlay.HideOverlay();
+        }
     }
 
     private void OpenSettings()
@@ -2659,6 +2827,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         {
             localSession.Capture.RecordingLimitReached -= OnLocalRecordingLimitReached;
             localSession.Capture.UnexpectedlyStopped -= OnLocalCaptureUnexpectedlyStopped;
+            localSession.Capture.AudioLevelChanged -= OnLocalAudioLevelChanged;
             localSession.Capture.Dispose();
             _localSession = null;
         }
@@ -2768,7 +2937,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                 var profileIdentity = ChromeProfileIdentity.From(_settings);
                 var backgroundWindowWasPresent =
                     ChatGptWindowFinder.FindOwnedBackgroundWindow(_settings) != IntPtr.Zero;
-                var backgroundWindowReleased = ChatGptWindowFinder.CloseOwnedBackgroundWindowAndWait(
+                var backgroundWindowReleased = await ChatGptWindowFinder.CloseOwnedBackgroundWindowAndWaitAsync(
                     profileIdentity,
                     _logger);
                 if (!backgroundWindowReleased)
@@ -2847,6 +3016,31 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         Guid HistoryEntryId,
         string Text,
         string Outcome);
+}
+
+internal readonly record struct LocalModelControlPresentation(
+    bool Visible,
+    bool CanReload,
+    bool CanRelease)
+{
+    public static LocalModelControlPresentation For(
+        bool isLocalProvider,
+        AppStatus status,
+        bool exitInProgress,
+        bool settingsVisible,
+        bool modelReady,
+        bool preparationInProgress)
+    {
+        var canManage =
+            isLocalProvider &&
+            status == AppStatus.Idle &&
+            !exitInProgress &&
+            !settingsVisible;
+        return new LocalModelControlPresentation(
+            isLocalProvider,
+            canManage,
+            canManage && (modelReady || preparationInProgress));
+    }
 }
 
 internal static class AbortRecoveryPersistence

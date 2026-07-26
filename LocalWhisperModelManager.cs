@@ -267,12 +267,6 @@ internal sealed class LocalWhisperModelManager : IDisposable
             return false;
         }
 
-        var sidecar = await TryReadSidecarAsync(cancellationToken).ConfigureAwait(false);
-        if (SidecarMatches(sidecar, modelInfo))
-        {
-            return true;
-        }
-
         progress?.Report(new LocalWhisperModelProgress(
             LocalWhisperModelProgressStage.VerifyingCache,
             0,
@@ -289,7 +283,12 @@ internal sealed class LocalWhisperModelManager : IDisposable
             return false;
         }
 
-        await WriteSidecarAsync(modelInfo).ConfigureAwait(false);
+        var sidecar = await TryReadSidecarAsync(cancellationToken).ConfigureAwait(false);
+        if (!SidecarMatches(sidecar, modelInfo))
+        {
+            await WriteSidecarAsync(modelInfo).ConfigureAwait(false);
+        }
+
         return true;
     }
 
@@ -580,7 +579,7 @@ internal sealed class LocalWhisperModelManager : IDisposable
         DeleteFileRequired(VerificationPath, "ungültigen Modell-Prüfnachweis");
     }
 
-    private void DeleteFileRequired(string path, string description)
+    private static void DeleteFileRequired(string path, string description)
     {
         if (!File.Exists(path))
         {
@@ -724,10 +723,9 @@ internal sealed class LocalWhisperModelManager : IDisposable
 
     private void ThrowIfDisposed()
     {
-        if (Volatile.Read(ref _disposeState) != 0)
-        {
-            throw new ObjectDisposedException(nameof(LocalWhisperModelManager));
-        }
+        ObjectDisposedException.ThrowIf(
+            Volatile.Read(ref _disposeState) != 0,
+            this);
     }
 
     private void EnsureSufficientDiskSpace()

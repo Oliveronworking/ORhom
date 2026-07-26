@@ -4,6 +4,14 @@ namespace ORhom;
 
 internal sealed record AppPaths(string DataDirectory, string SettingsPath, string LogDirectory)
 {
+    private static readonly string[] KnownDataEntryNames =
+    [
+        "settings.json",
+        "dictation-history.json",
+        "models",
+        "logs"
+    ];
+
     public static AppPaths Create()
     {
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -12,36 +20,110 @@ internal sealed record AppPaths(string DataDirectory, string SettingsPath, strin
             localAppData = AppContext.BaseDirectory;
         }
 
+        return Create(localAppData);
+    }
+
+    internal static AppPaths Create(string localAppData)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(localAppData);
+
         var dataDirectory = Path.Combine(localAppData, "ORhom");
         var legacyDataDirectories = new[]
         {
+            Path.Combine(localAppData, "OpenAIFlow"),
             Path.Combine(localAppData, "OliSpeechToText")
         };
 
         foreach (var legacyDataDirectory in legacyDataDirectories)
         {
-            if (Directory.Exists(dataDirectory) || !Directory.Exists(legacyDataDirectory))
+            if (!Directory.Exists(legacyDataDirectory))
             {
                 continue;
             }
 
-            try
+            if (!Directory.Exists(dataDirectory))
             {
-                Directory.Move(legacyDataDirectory, dataDirectory);
-            }
-            catch (Exception)
-            {
-                // Keep using the existing data in place if Windows cannot move it yet.
-                dataDirectory = legacyDataDirectory;
+                try
+                {
+                    Directory.Move(legacyDataDirectory, dataDirectory);
+                }
+                catch (Exception)
+                {
+                    // Keep every data consumer on the same usable root when Windows
+                    // cannot complete the atomic migration yet.
+                    dataDirectory = legacyDataDirectory;
+                    break;
+                }
+
+                // The primary predecessor is now the ORhom root. Continue so any
+                // non-conflicting data from older product roots is merged during
+                // this same first start instead of being stranded until a retry.
+                continue;
             }
 
-            break;
+            MergeMissingKnownData(legacyDataDirectory, dataDirectory);
         }
 
         return new AppPaths(
             dataDirectory,
             Path.Combine(dataDirectory, "settings.json"),
             Path.Combine(dataDirectory, "logs"));
+    }
+
+    private static void MergeMissingKnownData(
+        string legacyDataDirectory,
+        string dataDirectory)
+    {
+        foreach (var entryName in KnownDataEntryNames)
+        {
+            TryMoveMissingEntry(
+                Path.Combine(legacyDataDirectory, entryName),
+                Path.Combine(dataDirectory, entryName));
+        }
+    }
+
+    private static void TryMoveMissingEntry(string sourcePath, string targetPath)
+    {
+        try
+        {
+            if (File.Exists(sourcePath))
+            {
+                if (!File.Exists(targetPath) && !Directory.Exists(targetPath))
+                {
+                    File.Move(sourcePath, targetPath);
+                }
+
+                return;
+            }
+
+            if (!Directory.Exists(sourcePath))
+            {
+                return;
+            }
+
+            if (!Directory.Exists(targetPath) && !File.Exists(targetPath))
+            {
+                Directory.Move(sourcePath, targetPath);
+                return;
+            }
+
+            if (!Directory.Exists(targetPath))
+            {
+                return;
+            }
+
+            foreach (var sourceEntry in Directory.EnumerateFileSystemEntries(sourcePath))
+            {
+                TryMoveMissingEntry(
+                    sourceEntry,
+                    Path.Combine(targetPath, Path.GetFileName(sourceEntry)));
+            }
+        }
+        catch (Exception)
+        {
+            // Migration is best-effort and never overwrites current ORhom data.
+            // Any source that could not be moved remains intact for a later retry.
+        }
     }
 
     public void MigrateLegacySettingsIfNeeded(AppLogger logger)

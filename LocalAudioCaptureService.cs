@@ -18,7 +18,8 @@ internal sealed class LocalAudioCaptureService
         string? preferredDeviceId,
         string? preferredDeviceName,
         TimeSpan maximumDuration,
-        EventHandler<LocalAudioCaptureUnexpectedlyStoppedEventArgs>? unexpectedlyStoppedHandler = null)
+        EventHandler<LocalAudioCaptureUnexpectedlyStoppedEventArgs>? unexpectedlyStoppedHandler = null,
+        EventHandler<LocalAudioLevelChangedEventArgs>? audioLevelChangedHandler = null)
     {
         MMDevice? selectedDevice = null;
         MMDevice? nameFallbackDevice = null;
@@ -100,6 +101,11 @@ internal sealed class LocalAudioCaptureService
                 session.UnexpectedlyStopped += unexpectedlyStoppedHandler;
             }
 
+            if (audioLevelChangedHandler is not null)
+            {
+                session.AudioLevelChanged += audioLevelChangedHandler;
+            }
+
             session.Start();
             return session;
         }
@@ -151,6 +157,8 @@ internal sealed class LocalAudioCaptureSession : IDisposable
     private readonly System.Diagnostics.Stopwatch _duration = new();
     private int _stopRequested;
     private int _limitReported;
+    private int _levelHandlerFailureReported;
+    private float _smoothedAudioLevel;
     private EventHandler<LocalAudioCaptureUnexpectedlyStoppedEventArgs>? _unexpectedlyStopped;
     private LocalAudioCaptureUnexpectedlyStoppedEventArgs? _unexpectedStop;
     private bool _disposed;
@@ -171,6 +179,8 @@ internal sealed class LocalAudioCaptureSession : IDisposable
     }
 
     public event EventHandler? RecordingLimitReached;
+
+    public event EventHandler<LocalAudioLevelChangedEventArgs>? AudioLevelChanged;
 
     public event EventHandler<LocalAudioCaptureUnexpectedlyStoppedEventArgs>? UnexpectedlyStopped
     {
@@ -308,6 +318,8 @@ internal sealed class LocalAudioCaptureSession : IDisposable
         {
             _unexpectedlyStopped = null;
         }
+
+        AudioLevelChanged = null;
     }
 
     internal static float[] ConvertToMono16Khz(
@@ -421,6 +433,8 @@ internal sealed class LocalAudioCaptureSession : IDisposable
             _capturedBytes.Write(e.Buffer, 0, e.BytesRecorded);
         }
 
+        ReportAudioLevel(e.Buffer.AsSpan(0, e.BytesRecorded));
+
         if (_duration.Elapsed < _maximumDuration ||
             Interlocked.Exchange(ref _limitReported, 1) != 0)
         {
@@ -429,6 +443,40 @@ internal sealed class LocalAudioCaptureSession : IDisposable
 
         RequestStop();
         RecordingLimitReached?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ReportAudioLevel(ReadOnlySpan<byte> buffer)
+    {
+        var handlers = AudioLevelChanged;
+        if (handlers is null ||
+            Volatile.Read(ref _levelHandlerFailureReported) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var measuredLevel = AudioLevelMeter.MeasurePeak(
+                buffer,
+                _capture.WaveFormat);
+            _smoothedAudioLevel = AudioLevelMeter.Smooth(
+                _smoothedAudioLevel,
+                measuredLevel);
+            handlers.Invoke(
+                this,
+                new LocalAudioLevelChangedEventArgs(_smoothedAudioLevel));
+        }
+        catch (Exception ex)
+        {
+            if (Interlocked.Exchange(
+                    ref _levelHandlerFailureReported,
+                    1) == 0)
+            {
+                _logger.Error(
+                    "The local microphone level indicator could not be updated.",
+                    ex);
+            }
+        }
     }
 
     private void OnRecordingStopped(object? sender, StoppedEventArgs e)
@@ -614,6 +662,16 @@ internal sealed record LocalAudioCaptureResult(
     TimeSpan Duration,
     string DeviceId,
     string DeviceName);
+
+internal sealed class LocalAudioLevelChangedEventArgs : EventArgs
+{
+    public LocalAudioLevelChangedEventArgs(float level)
+    {
+        Level = AudioLevelMeter.NormalizeLevel(level);
+    }
+
+    public float Level { get; }
+}
 
 internal sealed class LocalAudioCaptureUnexpectedlyStoppedEventArgs : EventArgs
 {

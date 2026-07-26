@@ -74,9 +74,9 @@ internal sealed class FocusTracker
             originalTarget.OwningProcessId,
             candidate.WindowHandle,
             candidate.OwningProcessId);
-        if (sameWindowIdentity && candidate.IsPasswordField)
+        if (sameWindowIdentity && candidate.IsPasswordFieldOrUnverifiable)
         {
-            _logger.Info("Local target re-probe found a password field in the captured window; recording will be discarded.");
+            _logger.Info("Local target re-probe found a password field or could not verify the field safely; recording will be discarded.");
             return new FocusTargetReprobeResult(originalTarget, true, false);
         }
 
@@ -93,7 +93,7 @@ internal sealed class FocusTracker
                 candidate.WindowTitle,
                 candidate.FocusMetadata,
                 candidate.WebViewRootIdentity,
-                candidate.IsPasswordField))
+                candidate.IsPasswordFieldOrUnverifiable))
         {
             _logger.Info($"Transient Chromium focus target promoted to a strong semantic editor. ControlType='{candidate.FocusMetadata.ControlType}' Class='{candidate.FocusMetadata.ClassName}' AutomationId='{candidate.FocusMetadata.AutomationId}'");
             return new FocusTargetReprobeResult(candidate, false, true);
@@ -209,14 +209,19 @@ internal sealed class FocusTracker
         var avoidElementFocus = FocusRestorationPolicy.ShouldAvoidAutomationElementFocus(
             className,
             AutomationHelpers.ShouldPreserveWebViewFocus(element));
-        var isPassword = blockPasswordFields && AutomationHelpers.IsPasswordElement(element);
+        var passwordFieldState = blockPasswordFields
+            ? AutomationHelpers.GetPasswordFieldState(element)
+            : PasswordFieldState.NotPassword;
+        var isPasswordFieldOrUnverifiable = AutomationHelpers.ShouldBlockPasswordField(
+            passwordFieldState,
+            blockPasswordFields);
 
         var targetMetadata = AutomationHelpers.GetSafeFocusMetadata(element);
         var webViewRootIdentity = AutomationHelpers.GetSafeWebViewRootIdentity(element);
         var layoutFingerprint = AutomationHelpers.GetSafeFocusLayoutFingerprint(
             element,
             window);
-        _logger.Info($"{logPrefix}. WindowHandle=0x{window.ToInt64():X} ProcessId={owningProcessId} Class='{className}' TargetControlType='{targetMetadata.ControlType}' TargetClass='{targetMetadata.ClassName}' TargetAutomationId='{targetMetadata.AutomationId}' WebViewRootIdentified={webViewRootIdentity.Length > 0} LayoutIdentified={layoutFingerprint.IsValid} PreserveWebViewFocus={avoidElementFocus} PasswordTarget={isPassword}");
+        _logger.Info($"{logPrefix}. WindowHandle=0x{window.ToInt64():X} ProcessId={owningProcessId} Class='{className}' TargetControlType='{targetMetadata.ControlType}' TargetClass='{targetMetadata.ClassName}' TargetAutomationId='{targetMetadata.AutomationId}' WebViewRootIdentified={webViewRootIdentity.Length > 0} LayoutIdentified={layoutFingerprint.IsValid} PreserveWebViewFocus={avoidElementFocus} PasswordFieldState={passwordFieldState} PasswordTargetBlocked={isPasswordFieldOrUnverifiable}");
 
         return new FocusTarget(
             window,
@@ -228,7 +233,7 @@ internal sealed class FocusTracker
             webViewRootIdentity,
             layoutFingerprint,
             avoidElementFocus,
-            isPassword);
+            isPasswordFieldOrUnverifiable);
     }
 }
 

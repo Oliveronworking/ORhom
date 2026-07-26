@@ -582,7 +582,7 @@ internal static class ChatGptWindowFinder
         logger.Info($"Persistent ChatGPT background window minimized. Handle=0x{hWnd.ToInt64():X}");
     }
 
-    private static IReadOnlyList<IntPtr> FindChatGptWindows(AppSettings settings, IntPtr excludedWindow)
+    private static List<IntPtr> FindChatGptWindows(AppSettings settings, IntPtr excludedWindow)
     {
         var windows = new List<IntPtr>();
         _ = NativeMethods.EnumWindows((window, _) =>
@@ -597,7 +597,7 @@ internal static class ChatGptWindowFinder
         return windows;
     }
 
-    private static IReadOnlyList<IntPtr> FindChromeWindows(IntPtr excludedWindow)
+    private static List<IntPtr> FindChromeWindows(IntPtr excludedWindow)
     {
         var windows = new List<IntPtr>();
         _ = NativeMethods.EnumWindows((window, _) =>

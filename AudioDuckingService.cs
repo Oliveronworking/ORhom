@@ -49,6 +49,7 @@ internal sealed class AudioDuckingService : IDisposable
 
         _active = false;
         var restoredCount = 0;
+        var userChangedCount = 0;
         Exception? restoreError = null;
         try
         {
@@ -56,8 +57,17 @@ internal sealed class AudioDuckingService : IDisposable
             {
                 try
                 {
-                    snapshot.Volume.Volume = snapshot.OriginalVolume;
-                    restoredCount++;
+                    if (ShouldRestoreVolume(
+                            snapshot.Volume.Volume,
+                            snapshot.AppliedVolume))
+                    {
+                        snapshot.Volume.Volume = snapshot.OriginalVolume;
+                        restoredCount++;
+                    }
+                    else
+                    {
+                        userChangedCount++;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -71,14 +81,17 @@ internal sealed class AudioDuckingService : IDisposable
         }
         finally
         {
-            var failedCount = Math.Max(_sessions.Count - restoredCount, 0);
+            var failedCount = Math.Max(
+                _sessions.Count - restoredCount - userChangedCount,
+                0);
             _sessions.Clear();
             if (restoreError is not null)
             {
                 _logger.Error("Audio session volumes could not be fully restored.", restoreError);
             }
 
-            _logger.Info($"Audio ducking stopped. RestoredSessions={restoredCount} FailedSessions={failedCount}");
+            _logger.Info(
+                $"Audio ducking stopped. RestoredSessions={restoredCount} UserChangedSessions={userChangedCount} FailedSessions={failedCount}");
         }
     }
 
@@ -104,19 +117,33 @@ internal sealed class AudioDuckingService : IDisposable
                         try
                         {
                             var processId = control.GetProcessID;
-                            var instanceId = GetStableSessionId(control, processId, sessionIndex);
-                            var key = $"{endpointId}|{instanceId}";
-                            if (processId == _currentProcessId || _sessions.ContainsKey(key))
+                            if (processId == _currentProcessId)
+                            {
+                                continue;
+                            }
+
+                            var key = CreateSessionKey(
+                                endpointId,
+                                TryGetStableSessionInstanceId(control));
+                            if (key is null || _sessions.ContainsKey(key))
                             {
                                 continue;
                             }
 
                             var volume = control.SimpleAudioVolume;
                             var originalVolume = volume.Volume;
-                            _sessions[key] = new SessionSnapshot(originalVolume, control, volume);
+                            var appliedVolume = Math.Clamp(
+                                originalVolume * factor,
+                                0f,
+                                1f);
+                            _sessions[key] = new SessionSnapshot(
+                                originalVolume,
+                                appliedVolume,
+                                control,
+                                volume);
                             try
                             {
-                                volume.Volume = Math.Clamp(originalVolume * factor, 0f, 1f);
+                                volume.Volume = appliedVolume;
                             }
                             catch
                             {
@@ -144,34 +171,41 @@ internal sealed class AudioDuckingService : IDisposable
         }
     }
 
-    private static string GetStableSessionId(AudioSessionControl control, uint processId, int sessionIndex)
+    private static string? TryGetStableSessionInstanceId(AudioSessionControl control)
     {
         try
         {
             var instanceId = control.GetSessionInstanceIdentifier;
-            if (!string.IsNullOrWhiteSpace(instanceId))
-            {
-                return instanceId;
-            }
-
-            var sessionId = control.GetSessionIdentifier;
-            if (!string.IsNullOrWhiteSpace(sessionId))
-            {
-                return sessionId;
-            }
+            return string.IsNullOrWhiteSpace(instanceId)
+                ? null
+                : instanceId;
         }
         catch
         {
-            // Some driver-owned and system sessions do not expose identifiers.
+            // A non-unique fallback could cause the same session to be ducked
+            // twice and then restored to the wrong volume. Skip it instead.
+            return null;
         }
-
-        return $"pid:{processId}:slot:{sessionIndex}";
     }
+
+    internal static string? CreateSessionKey(
+        string? endpointId,
+        string? sessionInstanceId) =>
+        string.IsNullOrWhiteSpace(endpointId) ||
+        string.IsNullOrWhiteSpace(sessionInstanceId)
+            ? null
+            : $"{endpointId.Trim()}|{sessionInstanceId.Trim()}";
 
     private int GetVolumePercent() => Math.Clamp(_settings.AudioDuckingVolumePercent, 0, 100);
 
+    internal static bool ShouldRestoreVolume(
+        float currentVolume,
+        float appliedVolume) =>
+        Math.Abs(currentVolume - appliedVolume) <= 0.001f;
+
     private sealed record SessionSnapshot(
         float OriginalVolume,
+        float AppliedVolume,
         AudioSessionControl Control,
         SimpleAudioVolume Volume);
 }

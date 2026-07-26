@@ -161,7 +161,7 @@ internal sealed class DictationHistoryForm : Form
         }
 
         _entryList.EndUpdate();
-        _clearButton.Enabled = entries.Count > 0;
+        _clearButton.Enabled = _history.CanClear();
     }
 
     private void ShowSelectedEntry()
@@ -192,7 +192,11 @@ internal sealed class DictationHistoryForm : Form
 
         try
         {
-            Clipboard.SetText(item.Entry.Text);
+            if (!ClipboardHelper.TrySetText(item.Entry.Text))
+            {
+                _copyButton.Text = "Kopieren fehlgeschlagen";
+                return;
+            }
             _copyButton.Text = "Kopiert ✓";
             var timer = new System.Windows.Forms.Timer { Interval = 1200 };
             timer.Tick += (_, _) =>
@@ -221,9 +225,15 @@ internal sealed class DictationHistoryForm : Form
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning,
             MessageBoxDefaultButton.Button2);
-        if (result == DialogResult.Yes)
+        if (result == DialogResult.Yes && !_history.Clear())
         {
-            _history.Clear();
+            _clearButton.Enabled = true;
+            MessageBox.Show(
+                this,
+                "Mindestens eine Verlaufsdatei konnte nicht gelöscht werden. Bitte schließe Programme, die auf die Dateien zugreifen, und versuche es erneut.",
+                "Diktierverlauf nicht vollständig gelöscht",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
     }
 

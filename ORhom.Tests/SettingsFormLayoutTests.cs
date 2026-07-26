@@ -65,11 +65,47 @@ public sealed class SettingsFormLayoutTests
                     FindControl(form, "saveAndStartButton"));
                 var hideButton = Assert.IsType<Button>(
                     FindControl(form, "hideToTrayButton"));
+                var overlaySizeCombo = Assert.IsType<ComboBox>(
+                    FindControl(form, "recordingOverlaySizeCombo"));
+                var overlayVisibility = Assert.IsType<CheckBox>(
+                    FindControl(
+                        form,
+                        "recordingOverlayVisibilityCheckBox"));
+                var hybridPushToTalk = Assert.IsType<CheckBox>(
+                    FindControl(form, "hybridPushToTalkCheckBox"));
+                var audioDucking = Assert.IsType<CheckBox>(
+                    FindControl(form, "audioDuckingCheckBox"));
+                var audioDuckingVolume = Assert.IsType<NumericUpDown>(
+                    FindControl(form, "audioDuckingVolumeInput"));
 
                 Assert.True(scrollPanel.AutoScroll);
                 Assert.NotNull(FindControl(form, "providerStepCard"));
                 Assert.NotNull(FindControl(form, "microphoneStepCard"));
                 Assert.NotNull(FindControl(form, "hotkeyStepCard"));
+                Assert.Equal(
+                    ["Klein", "Mittel", "Groß"],
+                    overlaySizeCombo.Items
+                        .Cast<object>()
+                        .Select(item => item.ToString()!)
+                        .ToArray());
+                Assert.Equal("Klein", overlaySizeCombo.Text);
+                Assert.Equal(
+                    "Größe des Sprachfelds",
+                    overlaySizeCombo.AccessibleName);
+                Assert.Contains(
+                    "Klein, Mittel und Groß",
+                    overlaySizeCombo.AccessibleDescription ?? string.Empty);
+                Assert.True(overlayVisibility.Checked);
+                Assert.True(hybridPushToTalk.Checked);
+                Assert.True(audioDucking.Checked);
+                Assert.Equal(10m, audioDuckingVolume.Value);
+                Assert.True(audioDuckingVolume.Enabled);
+                Assert.False(string.IsNullOrWhiteSpace(
+                    overlayVisibility.AccessibleDescription));
+                Assert.False(string.IsNullOrWhiteSpace(
+                    hybridPushToTalk.AccessibleDescription));
+                Assert.False(string.IsNullOrWhiteSpace(
+                    audioDucking.AccessibleDescription));
                 Assert.Equal("Speichern & losdiktieren", saveButton.Text);
                 Assert.Equal("Im Hintergrund schließen", hideButton.Text);
                 Assert.False(string.IsNullOrWhiteSpace(
@@ -97,6 +133,123 @@ public sealed class SettingsFormLayoutTests
                             Path.GetFullPath(previewPath))!);
                     bitmap.Save(previewPath);
                 }
+
+                form.ClosePermanently();
+            }
+            finally
+            {
+                Directory.Delete(temporaryDirectory, recursive: true);
+            }
+        });
+    }
+
+    [Fact]
+    public void RecordingBarSizeSynchronizesFromSettingsAndIsPassedToSave()
+    {
+        RunOnStaThread(() =>
+        {
+            var temporaryDirectory = Path.Combine(
+                Path.GetTempPath(),
+                $"orhom-settings-size-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(temporaryDirectory);
+            try
+            {
+                var logger = new AppLogger(
+                    Path.Combine(temporaryDirectory, "logs"));
+                var settings = AppSettings.Load(
+                    Path.Combine(temporaryDirectory, "settings.json"),
+                    logger);
+                settings.ToggleHotkey = "F8";
+                settings.DictationProvider = DictationProviders.LocalWhisper;
+                settings.RecordingOverlaySize = RecordingOverlaySize.Medium;
+                settings.ShowRecordingOverlay = false;
+                settings.EnableHybridPushToTalk = false;
+                settings.EnableAudioDucking = false;
+                settings.AudioDuckingVolumePercent = 35;
+
+                SettingsFormValues? savedValues = null;
+                using var form = new SettingsForm(
+                    settings,
+                    new AudioInputDeviceService(logger),
+                    new ChromeProfileDiscovery(),
+                    values =>
+                    {
+                        savedValues = values;
+                        settings.RecordingOverlaySize = values.RecordingOverlaySize;
+                        return Task.FromResult(
+                            SettingsApplyResult.Fail("Test beendet."));
+                    })
+                {
+                    Opacity = 0,
+                    ShowInTaskbar = false
+                };
+
+                form.Show();
+                Application.DoEvents();
+
+                var overlaySizeCombo = Assert.IsType<ComboBox>(
+                    FindControl(form, "recordingOverlaySizeCombo"));
+                var overlayVisibility = Assert.IsType<CheckBox>(
+                    FindControl(
+                        form,
+                        "recordingOverlayVisibilityCheckBox"));
+                var hybridPushToTalk = Assert.IsType<CheckBox>(
+                    FindControl(form, "hybridPushToTalkCheckBox"));
+                var audioDucking = Assert.IsType<CheckBox>(
+                    FindControl(form, "audioDuckingCheckBox"));
+                var audioDuckingVolume = Assert.IsType<NumericUpDown>(
+                    FindControl(form, "audioDuckingVolumeInput"));
+                Assert.Equal("Mittel", overlaySizeCombo.Text);
+                Assert.False(overlayVisibility.Checked);
+                Assert.False(hybridPushToTalk.Checked);
+                Assert.False(audioDucking.Checked);
+                Assert.Equal(35m, audioDuckingVolume.Value);
+                Assert.False(audioDuckingVolume.Enabled);
+
+                settings.RecordingOverlaySize = RecordingOverlaySize.Large;
+                settings.ShowRecordingOverlay = true;
+                settings.EnableHybridPushToTalk = true;
+                settings.EnableAudioDucking = true;
+                settings.AudioDuckingVolumePercent = 25;
+                form.ShowAndActivate();
+                Application.DoEvents();
+                Assert.Equal("Groß", overlaySizeCombo.Text);
+                Assert.True(overlayVisibility.Checked);
+                Assert.True(hybridPushToTalk.Checked);
+                Assert.True(audioDucking.Checked);
+                Assert.Equal(25m, audioDuckingVolume.Value);
+                Assert.True(audioDuckingVolume.Enabled);
+
+                overlaySizeCombo.SelectedIndex = 0;
+                overlayVisibility.Checked = false;
+                hybridPushToTalk.Checked = false;
+                audioDucking.Checked = true;
+                audioDuckingVolume.Value = 40;
+                var microphoneCombo = Assert.IsType<ComboBox>(
+                    FindControl(form, "microphoneCombo"));
+                var microphone = new AudioInputDeviceInfo(
+                    "settings-size-test",
+                    "Testmikrofon");
+                microphoneCombo.Items.Clear();
+                microphoneCombo.Items.Add(microphone);
+                microphoneCombo.SelectedItem = microphone;
+
+                var saveButton = Assert.IsType<Button>(
+                    FindControl(form, "saveAndStartButton"));
+                saveButton.PerformClick();
+                Application.DoEvents();
+
+                Assert.NotNull(savedValues);
+                Assert.Equal(
+                    RecordingOverlaySize.Small,
+                    savedValues.RecordingOverlaySize);
+                Assert.False(savedValues.ShowRecordingOverlay);
+                Assert.False(savedValues.EnableHybridPushToTalk);
+                Assert.True(savedValues.EnableAudioDucking);
+                Assert.Equal(40, savedValues.AudioDuckingVolumePercent);
+                Assert.Equal(
+                    RecordingOverlaySize.Small,
+                    settings.RecordingOverlaySize);
 
                 form.ClosePermanently();
             }

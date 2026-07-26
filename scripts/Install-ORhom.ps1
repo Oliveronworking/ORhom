@@ -10,13 +10,16 @@ $publishDir = [IO.Path]::GetFullPath((Join-Path $repoRoot 'artifacts\publish\win
 $installDir = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs\ORhom'))
 $dataDir = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'ORhom'))
 $legacyInstallDirs = @(
+    [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs\OpenAIFlow')),
     [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs\OliSpeechToText'))
 )
 $legacyDataDirs = @(
+    [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'OpenAIFlow')),
     [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'OliSpeechToText'))
 )
 $settingsPath = Join-Path $dataDir 'settings.json'
 $installedExe = Join-Path $installDir 'ORhom.exe'
+$installedNotices = Join-Path $installDir 'THIRD-PARTY-NOTICES.md'
 $desktop = [Environment]::GetFolderPath('Desktop')
 $startMenuPrograms = [Environment]::GetFolderPath('Programs')
 
@@ -31,11 +34,14 @@ $legacyStandaloneExecutables = @(
     [IO.Path]::GetFullPath((Join-Path $desktop 'SpeechToText.exe'))
 )
 $legacyExecutableNames = @(
+    'OpenAIFlow.exe',
     'OliSpeechToText.exe',
     'SpeechToText.exe',
     'ChatGptDictationBridge.exe'
 )
 $legacyProductMetadata = @(
+    'OpenAIFlow',
+    'OpenAI Flow Dictation',
     'OliSpeechToText',
     'SpeechToText',
     'ChatGptDictationBridge'
@@ -127,6 +133,7 @@ if (-not $publishDir.StartsWith($repoRoot + [IO.Path]::DirectorySeparatorChar, [
 
 $managedProcessNames = @(
     'ORhom',
+    'OpenAIFlow',
     'OliSpeechToText',
     'SpeechToText',
     'ChatGptDictationBridge'
@@ -160,10 +167,18 @@ if (Test-Path -LiteralPath $publishDir) {
 }
 New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
 
+& dotnet restore $projectPath -r win-x64 -m:1 --locked-mode
+if ($LASTEXITCODE -ne 0) {
+    throw "Die ORhom-Abhängigkeiten konnten nicht reproduzierbar wiederhergestellt werden (Exitcode $LASTEXITCODE)."
+}
+
 & dotnet publish $projectPath `
     -c Release `
     -r win-x64 `
     --self-contained true `
+    --no-restore `
+    --nologo `
+    -p:TreatWarningsAsErrors=true `
     -p:PublishProfile=WindowsSelfContained `
     -o $publishDir
 if ($LASTEXITCODE -ne 0) {
@@ -171,17 +186,30 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $publishedExe = Join-Path $publishDir 'ORhom.exe'
+$publishedNotices = Join-Path $repoRoot 'THIRD-PARTY-NOTICES.md'
 if (-not (Test-Path -LiteralPath $publishedExe)) {
     throw "Die veröffentlichte ORhom.exe wurde nicht gefunden."
 }
-$publishedFiles = @(Get-ChildItem -LiteralPath $publishDir -File -Recurse)
-if ($publishedFiles.Count -ne 1 -or
-    -not $publishedFiles[0].FullName.Equals($publishedExe, [StringComparison]::OrdinalIgnoreCase)) {
-    $publishedNames = ($publishedFiles | ForEach-Object { $_.FullName }) -join ', '
-    throw "Der Publish ist nicht mehr eine einzelne ORhom.exe. Gefundene Dateien: $publishedNames"
+if (-not (Test-Path -LiteralPath $publishedNotices)) {
+    throw "Die Drittanbieterhinweise wurden im Repository nicht gefunden."
 }
-if ($publishedFiles[0].Length -le 0) {
-    throw 'Die veröffentlichte ORhom.exe ist leer.'
+$expectedPublishedFiles = @('ORhom.exe')
+$publishPrefix = $publishDir.TrimEnd(
+    [IO.Path]::DirectorySeparatorChar,
+    [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+$actualPublishedFiles = @(
+    Get-ChildItem -LiteralPath $publishDir -File -Recurse |
+        ForEach-Object { $_.FullName.Substring($publishPrefix.Length) }
+)
+$publishDifference = @(
+    Compare-Object -ReferenceObject $expectedPublishedFiles -DifferenceObject $actualPublishedFiles
+)
+if ($publishDifference.Count -ne 0) {
+    throw "Unerwarteter Publish-Inhalt: $($actualPublishedFiles -join ', ')"
+}
+if ((Get-Item -LiteralPath $publishedExe).Length -le 0 -or
+    (Get-Item -LiteralPath $publishedNotices).Length -le 0) {
+    throw 'Die veröffentlichte ORhom.exe oder die Drittanbieterhinweise sind leer.'
 }
 $publishedVersionInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($publishedExe)
 if ($publishedVersionInfo.ProductName -ne 'ORhom' -or
@@ -255,6 +283,7 @@ for ($attempt = 1; $attempt -le 20; $attempt++) {
 if (-not $copyCompleted) {
     throw 'Die installierte ORhom.exe konnte nicht aktualisiert werden.'
 }
+Copy-Item -LiteralPath $publishedNotices -Destination $installedNotices -Force
 
 $shell = New-Object -ComObject WScript.Shell
 $desktopShortcutPath = Join-Path $desktop 'ORhom.lnk'
@@ -275,6 +304,7 @@ else {
     Join-Path $env:APPDATA 'Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar'
 }
 $legacyShortcutNames = @(
+    'OpenAI Flow Dictation.lnk',
     'OliSpeechToText.lnk',
     'SpeechToText.lnk'
 )
@@ -319,9 +349,16 @@ $legacyInstalledExecutables = @(
     }
 ) + $legacyStandaloneExecutables
 foreach ($legacyInstalledExecutable in $legacyInstalledExecutables) {
-    if (Test-Path -LiteralPath $legacyInstalledExecutable -PathType Leaf) {
-        Remove-Item -LiteralPath $legacyInstalledExecutable -Force
+    if (-not (Test-Path -LiteralPath $legacyInstalledExecutable -PathType Leaf)) {
+        continue
     }
+
+    if (-not (Test-IsLegacyExecutablePath -CandidatePath $legacyInstalledExecutable)) {
+        Write-Warning "Eine nicht eindeutig ORhom zuordenbare Datei bleibt unangetastet: $legacyInstalledExecutable"
+        continue
+    }
+
+    Remove-Item -LiteralPath $legacyInstalledExecutable -Force
 }
 
 foreach ($legacyInstallDir in $legacyInstallDirs) {
@@ -341,6 +378,7 @@ if (-not $NoLaunch) {
 
 [PSCustomObject]@{
     Executable = $installedExe
+    ThirdPartyNotices = $installedNotices
     DesktopShortcut = $desktopShortcutPath
     StartMenuShortcut = $startMenuShortcutPath
     TaskbarRepinRequired = $taskbarRepinRequired

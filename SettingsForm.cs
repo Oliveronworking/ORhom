@@ -26,6 +26,11 @@ internal sealed class SettingsForm : Form
     private readonly TableLayoutPanel _profileCard;
     private readonly Label _providerHintLabel;
     private readonly TextBox _hotkeyBox;
+    private readonly ComboBox _recordingOverlaySizeCombo;
+    private readonly CheckBox _showRecordingOverlayCheckBox;
+    private readonly CheckBox _hybridPushToTalkCheckBox;
+    private readonly CheckBox _audioDuckingCheckBox;
+    private readonly NumericUpDown _audioDuckingVolumeInput;
     private readonly Label _statusLabel;
     private readonly Button _profileRefreshButton;
     private readonly Button _microphoneRefreshButton;
@@ -52,7 +57,7 @@ internal sealed class SettingsForm : Form
         Text = "ORhom – Diktieren";
         AccessibleName = "ORhom Einstellungen";
         AccessibleDescription =
-            "Richtet Diktiermodus, Mikrofon und Tastenkombination für ORhom ein.";
+            "Richtet Diktiermodus, Mikrofon, Tastenkombination und Anzeige für ORhom ein.";
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = WindowBackground;
         ClientSize = new Size(740, 720);
@@ -251,8 +256,8 @@ internal sealed class SettingsForm : Form
 
         var hotkeyStep = CreateStepCard(
             "3",
-            "Shortcut festlegen",
-            "Drücke ihn in jeder App, um die Aufnahme zu starten oder zu stoppen.");
+            "Shortcut und Anzeige",
+            "Lege den Aufnahme-Shortcut und die Größe des Sprachfelds fest.");
         hotkeyStep.Name = "hotkeyStepCard";
         hotkeyStep.TabIndex = 2;
         AddStackRow(stepsLayout, hotkeyStep, Padding.Empty);
@@ -306,6 +311,172 @@ internal sealed class SettingsForm : Form
             TextMuted,
             new Font("Segoe UI", 8.75f));
         AddFullWidthRow(hotkeyStep, hotkeyHelp, new Padding(44, 7, 0, 0));
+
+        var overlaySizeLayout = new TableLayoutPanel
+        {
+            Name = "recordingOverlaySizeLayout",
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent,
+            ColumnCount = 2,
+            RowCount = 1,
+            Padding = Padding.Empty,
+            Margin = Padding.Empty,
+            TabStop = false,
+            AccessibleRole = AccessibleRole.Grouping,
+            AccessibleName = "Anzeige des Sprachfelds"
+        };
+        overlaySizeLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        overlaySizeLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 174));
+        overlaySizeLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var overlaySizeLabel = CreateBodyLabel(
+            "Größe des Sprachfelds",
+            TextSecondary);
+        overlaySizeLabel.Name = "recordingOverlaySizeLabel";
+        overlaySizeLabel.Margin = new Padding(0, 7, 14, 0);
+        overlaySizeLabel.AccessibleName = "Größe des Sprachfelds";
+        overlaySizeLayout.Controls.Add(overlaySizeLabel, 0, 0);
+
+        _recordingOverlaySizeCombo = CreateComboBox(
+            "Größe des Sprachfelds",
+            "Legt fest, ob das Sprachfeld klein, mittel oder groß angezeigt wird.");
+        _recordingOverlaySizeCombo.Name = "recordingOverlaySizeCombo";
+        _recordingOverlaySizeCombo.TabIndex = 1;
+        _recordingOverlaySizeCombo.Items.Add(new RecordingOverlaySizeOption(
+            RecordingOverlaySize.Small,
+            "Klein"));
+        _recordingOverlaySizeCombo.Items.Add(new RecordingOverlaySizeOption(
+            RecordingOverlaySize.Medium,
+            "Mittel"));
+        _recordingOverlaySizeCombo.Items.Add(new RecordingOverlaySizeOption(
+            RecordingOverlaySize.Large,
+            "Groß"));
+        SelectRecordingOverlaySize(_settings.RecordingOverlaySize);
+        _recordingOverlaySizeCombo.SelectedIndexChanged += (_, _) =>
+            UpdateRecordingOverlaySizeAccessibility();
+        overlaySizeLayout.Controls.Add(_recordingOverlaySizeCombo, 1, 0);
+        AddFullWidthRow(hotkeyStep, overlaySizeLayout, new Padding(44, 14, 0, 0));
+
+        var overlaySizeHelp = CreateBodyLabel(
+            "Klein spart Platz, Mittel ist ausgewogen und Groß bietet die beste Lesbarkeit.",
+            TextMuted,
+            new Font("Segoe UI", 8.75f));
+        overlaySizeHelp.Name = "recordingOverlaySizeHelp";
+        AddFullWidthRow(hotkeyStep, overlaySizeHelp, new Padding(44, 7, 0, 0));
+
+        var recordingOptionsPanel = new TableLayoutPanel
+        {
+            Name = "recordingOptionsPanel",
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Fill,
+            BackColor = RaisedSurface,
+            BorderStyle = BorderStyle.FixedSingle,
+            ColumnCount = 2,
+            RowCount = 0,
+            Padding = new Padding(14, 12, 14, 12),
+            Margin = Padding.Empty,
+            TabStop = false,
+            AccessibleRole = AccessibleRole.Grouping,
+            AccessibleName = "Aufnahmeoptionen",
+            AccessibleDescription =
+                "Steuert Diktierleiste, Push-to-talk und das Absenken anderer Apps."
+        };
+        recordingOptionsPanel.ColumnStyles.Add(
+            new ColumnStyle(SizeType.Percent, 100));
+        recordingOptionsPanel.ColumnStyles.Add(
+            new ColumnStyle(SizeType.Absolute, 98));
+
+        var recordingOptionsTitle = CreateBodyLabel(
+            "Aufnahmeoptionen",
+            TextPrimary,
+            new Font("Segoe UI", 9.25f, FontStyle.Bold));
+        AddFullWidthRow(
+            recordingOptionsPanel,
+            recordingOptionsTitle,
+            new Padding(0, 0, 0, 7));
+
+        _showRecordingOverlayCheckBox = CreateOptionCheckBox(
+            "recordingOverlayVisibilityCheckBox",
+            "Diktierleiste anzeigen",
+            "Zeigt Status, Aufnahmepegel sowie Stopp- und Verwerfen-Aktionen an.",
+            _settings.ShowRecordingOverlay);
+        AddFullWidthRow(
+            recordingOptionsPanel,
+            _showRecordingOverlayCheckBox,
+            new Padding(0, 3, 0, 3));
+
+        _hybridPushToTalkCheckBox = CreateOptionCheckBox(
+            "hybridPushToTalkCheckBox",
+            "Hotkey halten = Push-to-talk",
+            "Kurzes Drücken schaltet um; längeres Halten beendet die Aufnahme beim Loslassen.",
+            _settings.EnableHybridPushToTalk);
+        AddFullWidthRow(
+            recordingOptionsPanel,
+            _hybridPushToTalkCheckBox,
+            new Padding(0, 3, 0, 3));
+
+        _audioDuckingCheckBox = CreateOptionCheckBox(
+            "audioDuckingCheckBox",
+            "Andere Apps während der Aufnahme leiser",
+            "Senkt andere Wiedergabe-Apps vorübergehend ab und stellt ihre Lautstärke danach wieder her.",
+            _settings.EnableAudioDucking);
+        _audioDuckingCheckBox.CheckedChanged += (_, _) =>
+            UpdateAudioDuckingInputState();
+        AddFullWidthRow(
+            recordingOptionsPanel,
+            _audioDuckingCheckBox,
+            new Padding(0, 3, 0, 5));
+
+        var duckingVolumeLabel = CreateBodyLabel(
+            "Restlautstärke anderer Apps",
+            TextSecondary);
+        duckingVolumeLabel.Name = "audioDuckingVolumeLabel";
+        duckingVolumeLabel.Margin = new Padding(24, 6, 12, 0);
+        duckingVolumeLabel.AccessibleName =
+            "Restlautstärke anderer Apps";
+        var duckingVolumeRow = recordingOptionsPanel.RowCount;
+        recordingOptionsPanel.RowCount++;
+        recordingOptionsPanel.RowStyles.Add(
+            new RowStyle(SizeType.AutoSize));
+        recordingOptionsPanel.Controls.Add(
+            duckingVolumeLabel,
+            0,
+            duckingVolumeRow);
+
+        _audioDuckingVolumeInput = new NumericUpDown
+        {
+            Name = "audioDuckingVolumeInput",
+            Minimum = 0,
+            Maximum = 100,
+            Increment = 5,
+            Value = Math.Clamp(
+                _settings.AudioDuckingVolumePercent,
+                0,
+                100),
+            DecimalPlaces = 0,
+            TextAlign = HorizontalAlignment.Right,
+            BorderStyle = BorderStyle.FixedSingle,
+            BackColor = Surface,
+            ForeColor = TextPrimary,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 2, 0, 0),
+            TabIndex = 3,
+            AccessibleName = "Restlautstärke in Prozent",
+            AccessibleDescription =
+                "Lautstärke anderer Apps während der Aufnahme, von 0 bis 100 Prozent."
+        };
+        recordingOptionsPanel.Controls.Add(
+            _audioDuckingVolumeInput,
+            1,
+            duckingVolumeRow);
+        AddFullWidthRow(
+            hotkeyStep,
+            recordingOptionsPanel,
+            new Padding(44, 14, 0, 0));
+        UpdateAudioDuckingInputState();
 
         var footer = new TableLayoutPanel
         {
@@ -469,6 +640,18 @@ internal sealed class SettingsForm : Form
         _hotkeyBox.Text = _settings.ToggleHotkey;
         _hotkeyBox.AccessibleDescription =
             $"Gewählter Aufnahme-Shortcut: {_hotkeyBox.Text}. Klicken und drücken, um ihn zu ändern.";
+        SelectRecordingOverlaySize(_settings.RecordingOverlaySize);
+        _showRecordingOverlayCheckBox.Checked =
+            _settings.ShowRecordingOverlay;
+        _hybridPushToTalkCheckBox.Checked =
+            _settings.EnableHybridPushToTalk;
+        _audioDuckingCheckBox.Checked =
+            _settings.EnableAudioDucking;
+        _audioDuckingVolumeInput.Value = Math.Clamp(
+            _settings.AudioDuckingVolumePercent,
+            0,
+            100);
+        UpdateAudioDuckingInputState();
 
         UpdateProviderUi(updateStatus: false);
         ReloadChromeProfiles(showStatus: false, preferSettings: true);
@@ -621,7 +804,12 @@ internal sealed class SettingsForm : Form
                 microphone.Id,
                 microphone.DisplayName,
                 _hotkeyBox.Text.Trim(),
-                chromeProfile));
+                chromeProfile,
+                SelectedRecordingOverlaySize,
+                _showRecordingOverlayCheckBox.Checked,
+                _hybridPushToTalkCheckBox.Checked,
+                _audioDuckingCheckBox.Checked,
+                decimal.ToInt32(_audioDuckingVolumeInput.Value)));
             if (!result.Ok)
             {
                 SetStatus(result.Message, Error);
@@ -656,6 +844,40 @@ internal sealed class SettingsForm : Form
         _profileRefreshButton.Enabled = enabled && !IsLocalProvider;
         _profileCard.Enabled = enabled && !IsLocalProvider;
         _hotkeyBox.Enabled = enabled;
+        _recordingOverlaySizeCombo.Enabled = enabled;
+        _showRecordingOverlayCheckBox.Enabled = enabled;
+        _hybridPushToTalkCheckBox.Enabled = enabled;
+        _audioDuckingCheckBox.Enabled = enabled;
+        _audioDuckingVolumeInput.Enabled =
+            enabled && _audioDuckingCheckBox.Checked;
+    }
+
+    private void UpdateAudioDuckingInputState()
+    {
+        _audioDuckingVolumeInput.Enabled =
+            !_saveInProgress && _audioDuckingCheckBox.Checked;
+    }
+
+    private RecordingOverlaySize SelectedRecordingOverlaySize =>
+        (_recordingOverlaySizeCombo.SelectedItem as RecordingOverlaySizeOption)?.Value
+        ?? RecordingOverlaySize.Small;
+
+    private void SelectRecordingOverlaySize(RecordingOverlaySize size)
+    {
+        _recordingOverlaySizeCombo.SelectedItem = _recordingOverlaySizeCombo.Items
+            .Cast<RecordingOverlaySizeOption>()
+            .FirstOrDefault(option => option.Value == size)
+            ?? _recordingOverlaySizeCombo.Items
+                .Cast<RecordingOverlaySizeOption>()
+                .First(option => option.Value == RecordingOverlaySize.Small);
+        UpdateRecordingOverlaySizeAccessibility();
+    }
+
+    private void UpdateRecordingOverlaySizeAccessibility()
+    {
+        _recordingOverlaySizeCombo.AccessibleDescription =
+            $"Ausgewählte Größe des Sprachfelds: {_recordingOverlaySizeCombo.Text}. " +
+            "Zur Auswahl stehen Klein, Mittel und Groß.";
     }
 
     private void CaptureHotkey(object? sender, KeyEventArgs e)
@@ -859,6 +1081,27 @@ internal sealed class SettingsForm : Form
         AccessibleDescription = accessibleDescription
     };
 
+    private static CheckBox CreateOptionCheckBox(
+        string name,
+        string text,
+        string accessibleDescription,
+        bool isChecked) => new()
+        {
+            Name = name,
+            Text = text,
+            Checked = isChecked,
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.Transparent,
+            ForeColor = TextPrimary,
+            Font = new Font("Segoe UI", 9.25f),
+            UseVisualStyleBackColor = false,
+            TabStop = true,
+            AccessibleName = text,
+            AccessibleDescription = accessibleDescription
+        };
+
     private static Label CreateBodyLabel(string text, Color color, Font? font = null) => new()
     {
         Text = text,
@@ -947,7 +1190,19 @@ internal sealed record SettingsFormValues(
     string MicrophoneId,
     string MicrophoneName,
     string Hotkey,
-    ChromeProfileInfo? ChromeProfile);
+    ChromeProfileInfo? ChromeProfile,
+    RecordingOverlaySize RecordingOverlaySize,
+    bool ShowRecordingOverlay,
+    bool EnableHybridPushToTalk,
+    bool EnableAudioDucking,
+    int AudioDuckingVolumePercent);
+
+internal sealed record RecordingOverlaySizeOption(
+    RecordingOverlaySize Value,
+    string DisplayName)
+{
+    public override string ToString() => DisplayName;
+}
 
 internal sealed record SettingsApplyResult(
     bool Ok,

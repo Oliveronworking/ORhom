@@ -344,12 +344,14 @@ internal static class FocusTargetSafetyPolicy
         IntPtr originalWindow,
         uint originalProcessId,
         string originalWindowClass,
+        string originalWindowTitle,
         SafeFocusMetadata originalMetadata,
         string originalWebViewRootIdentity,
         SafeFocusLayoutFingerprint originalLayout,
         IntPtr candidateWindow,
         uint candidateProcessId,
         string candidateWindowClass,
+        string candidateWindowTitle,
         SafeFocusMetadata candidateMetadata,
         string candidateWebViewRootIdentity,
         SafeFocusLayoutFingerprint candidateLayout,
@@ -360,6 +362,11 @@ internal static class FocusTargetSafetyPolicy
             originalProcessId,
             candidateWindow,
             candidateProcessId) &&
+        HasSameViewIdentity(
+            originalWindowClass,
+            originalWindowTitle,
+            candidateWindowClass,
+            candidateWindowTitle) &&
         HasSameWebViewRootIdentity(
             originalWebViewRootIdentity,
             candidateWebViewRootIdentity) &&

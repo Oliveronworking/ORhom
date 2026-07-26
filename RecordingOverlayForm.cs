@@ -4,12 +4,6 @@ namespace ORhom;
 
 internal sealed class RecordingOverlayForm : Form
 {
-    internal static readonly Size LogicalSize = new(300, 56);
-    internal static readonly RectangleF RecordingStopActionBounds =
-        new(150, 9, 104, 38);
-    internal static readonly RectangleF RecordingAbortActionBounds =
-        new(260, 9, 30, 38);
-
     private const int WsExTopMost = 0x00000008;
     private const int WsExToolWindow = 0x00000080;
     private const int WsExNoActivate = 0x08000000;
@@ -17,11 +11,19 @@ internal sealed class RecordingOverlayForm : Form
     private const int WmSettingChange = 0x001A;
     private const int WmDisplayChange = 0x007E;
     private const int MaNoActivate = 3;
+    private const int ActiveAnimationIntervalMs = 90;
+    private const int IdleAnimationIntervalMs = 500;
+    private const int PassiveMaintenanceIntervalMs = 2000;
+    private const int ActiveOcclusionProbeIntervalTicks = 3;
+    private const int IdleOcclusionProbeIntervalTicks = 4;
+    private const int IdleAnimationFrameStep = 5;
 
     private readonly System.Windows.Forms.Timer _animationTimer;
     private readonly System.Windows.Forms.Timer _errorTimer;
     private readonly ToolTip _toolTip;
     private readonly int _bottomOffsetPx;
+    private RecordingOverlaySize _sizePreset = RecordingOverlaySize.Small;
+    private OverlayLayout _layout = OverlayLayout.For(RecordingOverlaySize.Small);
     private RecordingOverlayPlacement? _placement;
     private string _toggleHotkey;
     private string _transientError = string.Empty;
@@ -36,11 +38,15 @@ internal sealed class RecordingOverlayForm : Form
     private bool _interactionEnabled = true;
     private bool _positionInitialized;
     private int _animationFrame;
+    private int _refreshTick;
+    private OverlayRefreshMode _refreshMode = OverlayRefreshMode.IdleAnimation;
     private DateTime? _recordingStartedAtUtc;
     private IntPtr? _lastForegroundWindow;
     private InteractionTarget _pressedTarget;
     private InteractionTarget _hoveredTarget;
     private string _toolTipText = string.Empty;
+    private float _microphoneLevel;
+    private bool _hasLiveMicrophoneLevel;
 
     public RecordingOverlayForm(
         int bottomOffsetPx,
@@ -64,13 +70,11 @@ internal sealed class RecordingOverlayForm : Form
         AccessibleName = "ORhom Diktierleiste";
         AccessibleRole = AccessibleRole.ToolBar;
 
-        _animationTimer = new System.Windows.Forms.Timer { Interval = 90 };
-        _animationTimer.Tick += (_, _) =>
+        _animationTimer = new System.Windows.Forms.Timer
         {
-            _animationFrame = (_animationFrame + 1) % 120;
-            MaintainTopMost(checkForOcclusion: _animationFrame % 3 == 0);
-            Invalidate();
+            Interval = ActiveAnimationIntervalMs
         };
+        _animationTimer.Tick += (_, _) => OnRefreshTimerTick();
 
         _errorTimer = new System.Windows.Forms.Timer { Interval = 4500 };
         _errorTimer.Tick += (_, _) =>
@@ -79,6 +83,7 @@ internal sealed class RecordingOverlayForm : Form
             _transientError = string.Empty;
             RefreshInteractionPresentation();
             UpdateAccessibilityText();
+            UpdateRefreshTimer();
             Invalidate();
         };
 
@@ -98,6 +103,20 @@ internal sealed class RecordingOverlayForm : Form
     public event EventHandler? AbortRequested;
 
     public event EventHandler<RecordingOverlayPlacementEventArgs>? PlacementCommitted;
+
+    internal Size LogicalSize => _layout.LogicalSize;
+
+    internal RectangleF RecordingStopActionBounds =>
+        _layout.StopActionBounds;
+
+    internal RectangleF RecordingAbortActionBounds =>
+        _layout.AbortActionBounds;
+
+    internal RecordingOverlaySize SizePreset => _sizePreset;
+
+    internal float MicrophoneLevel => _microphoneLevel;
+
+    internal bool HasLiveMicrophoneLevel => _hasLiveMicrophoneLevel;
 
     protected override bool ShowWithoutActivation => true;
 
@@ -119,12 +138,65 @@ internal sealed class RecordingOverlayForm : Form
         Invalidate();
     }
 
+    public void ApplySizePreset(RecordingOverlaySize size)
+    {
+        if (!Enum.IsDefined(size))
+        {
+            size = RecordingOverlaySize.Small;
+        }
+
+        if (_sizePreset == size)
+        {
+            return;
+        }
+
+        Screen? placementScreen = null;
+        RecordingOverlayPlacement? currentPlacement = null;
+        if (_positionInitialized && Width > 0 && Height > 0)
+        {
+            placementScreen = Screen.FromRectangle(Bounds);
+            currentPlacement = RecordingOverlayPlacementCalculator.Capture(
+                placementScreen.DeviceName,
+                placementScreen.WorkingArea,
+                Bounds);
+        }
+
+        _sizePreset = size;
+        _layout = OverlayLayout.For(size);
+        ClientSize = ScaleLogicalSize(DeviceDpi);
+
+        if (placementScreen is not null && currentPlacement is not null)
+        {
+            _placement = currentPlacement;
+            Location = RecordingOverlayPlacementCalculator.Restore(
+                placementScreen.WorkingArea,
+                Size,
+                currentPlacement.RelativeX,
+                currentPlacement.RelativeY);
+        }
+        else if (Visible)
+        {
+            _positionInitialized = false;
+            EnsurePosition();
+        }
+
+        RefreshInteractionPresentation();
+        UpdateRoundedRegion();
+        Invalidate();
+    }
+
     public void SetInteractionEnabled(bool enabled)
     {
         _interactionEnabled = enabled;
         RefreshInteractionPresentation();
         UpdateAccessibilityText();
         Invalidate();
+    }
+
+    public void SetMicrophoneLevel(float level)
+    {
+        _microphoneLevel = AudioLevelMeter.NormalizeLevel(level);
+        _hasLiveMicrophoneLevel = true;
     }
 
     public void ShowStatus(AppStatus status)
@@ -134,10 +206,14 @@ internal sealed class RecordingOverlayForm : Form
              _recordingStartedAtUtc is null))
         {
             _recordingStartedAtUtc = DateTime.UtcNow;
+            _microphoneLevel = 0f;
+            _hasLiveMicrophoneLevel = false;
         }
         else if (status != AppStatus.Recording)
         {
             _recordingStartedAtUtc = null;
+            _microphoneLevel = 0f;
+            _hasLiveMicrophoneLevel = false;
         }
 
         _status = status;
@@ -154,7 +230,7 @@ internal sealed class RecordingOverlayForm : Form
         }
 
         MaintainTopMost(force: true);
-        _animationTimer.Start();
+        UpdateRefreshTimer();
         Invalidate();
     }
 
@@ -172,6 +248,7 @@ internal sealed class RecordingOverlayForm : Form
         else
         {
             MaintainTopMost(force: true);
+            UpdateRefreshTimer();
             Invalidate();
         }
     }
@@ -190,7 +267,7 @@ internal sealed class RecordingOverlayForm : Form
         }
 
         MaintainTopMost(force: true);
-        _animationTimer.Start();
+        UpdateRefreshTimer();
         Invalidate();
     }
 
@@ -200,6 +277,7 @@ internal sealed class RecordingOverlayForm : Form
         _operationHint = string.Empty;
         RefreshInteractionPresentation();
         UpdateAccessibilityText();
+        UpdateRefreshTimer();
         Invalidate();
     }
 
@@ -211,7 +289,10 @@ internal sealed class RecordingOverlayForm : Form
         _operationTitle = string.Empty;
         _operationHint = string.Empty;
         _recordingStartedAtUtc = null;
+        _microphoneLevel = 0f;
+        _hasLiveMicrophoneLevel = false;
         _pressedTarget = InteractionTarget.None;
+        _refreshTick = 0;
         if (Visible)
         {
             Hide();
@@ -231,6 +312,7 @@ internal sealed class RecordingOverlayForm : Form
     {
         base.OnShown(e);
         MaintainTopMost(force: true);
+        UpdateRefreshTimer();
     }
 
     protected override void OnDpiChanged(DpiChangedEventArgs e)
@@ -387,8 +469,14 @@ internal sealed class RecordingOverlayForm : Form
         var scale = GetScale();
         e.Graphics.ScaleTransform(scale, scale);
 
-        var logicalBounds = new RectangleF(0.5f, 0.5f, LogicalSize.Width - 1, LogicalSize.Height - 1);
-        using var backgroundPath = CreateRoundedRectangle(logicalBounds, 16);
+        var logicalBounds = new RectangleF(
+            0.5f,
+            0.5f,
+            LogicalSize.Width - 1,
+            LogicalSize.Height - 1);
+        using var backgroundPath = CreateRoundedRectangle(
+            logicalBounds,
+            _layout.CornerRadius);
         var backgroundAlpha = _hovered ? 253 : 248;
         using var backgroundBrush = new LinearGradientBrush(
             logicalBounds,
@@ -450,12 +538,12 @@ internal sealed class RecordingOverlayForm : Form
         {
             using var recordingTitleFont = new Font(
                 "Segoe UI",
-                13,
+                _layout.RecordingTitleFontSize,
                 FontStyle.Bold,
                 GraphicsUnit.Pixel);
             using var durationFont = new Font(
                 "Segoe UI",
-                13,
+                _layout.RecordingDurationFontSize,
                 FontStyle.Bold,
                 GraphicsUnit.Pixel);
             using var recordingTitleBrush = new SolidBrush(
@@ -468,23 +556,33 @@ internal sealed class RecordingOverlayForm : Form
             };
 
             graphics.DrawString(
-                "Aufnahme",
+                _sizePreset == RecordingOverlaySize.Small
+                    ? "Aufn."
+                    : "Aufnahme",
                 recordingTitleFont,
                 recordingTitleBrush,
-                new RectangleF(59, 9, 84, 18),
+                _layout.RecordingTitleBounds,
                 recordingFormat);
             graphics.DrawString(
                 GetRecordingDurationText(),
                 durationFont,
                 durationBrush,
-                new RectangleF(59, 29, 84, 18),
+                _layout.RecordingDurationBounds,
                 recordingFormat);
             return;
         }
 
         var (title, hint) = GetText();
-        using var titleFont = new Font("Segoe UI", 14, FontStyle.Bold, GraphicsUnit.Pixel);
-        using var hintFont = new Font("Segoe UI", 11, FontStyle.Regular, GraphicsUnit.Pixel);
+        using var titleFont = new Font(
+            "Segoe UI",
+            _layout.TitleFontSize,
+            FontStyle.Bold,
+            GraphicsUnit.Pixel);
+        using var hintFont = new Font(
+            "Segoe UI",
+            _layout.HintFontSize,
+            FontStyle.Regular,
+            GraphicsUnit.Pixel);
         using var titleBrush = new SolidBrush(Color.White);
         using var hintBrush = new SolidBrush(Color.FromArgb(185, 228, 228, 231));
         using var format = new StringFormat
@@ -493,24 +591,62 @@ internal sealed class RecordingOverlayForm : Form
             FormatFlags = StringFormatFlags.NoWrap
         };
 
-        graphics.DrawString(title, titleFont, titleBrush, new RectangleF(62, 8, 210, 19), format);
-        graphics.DrawString(hint, hintFont, hintBrush, new RectangleF(63, 30, 211, 16), format);
+        graphics.DrawString(
+            title,
+            titleFont,
+            titleBrush,
+            _layout.TitleBounds,
+            format);
+        graphics.DrawString(
+            hint,
+            hintFont,
+            hintBrush,
+            _layout.HintBounds,
+            format);
     }
 
     private void DrawStatusIndicator(Graphics graphics)
     {
+        var indicator = _layout.IndicatorBounds;
+        var indicatorScale = indicator.Width / 38f;
+        RectangleF IndicatorRectangle(
+            float x,
+            float y,
+            float width,
+            float height) =>
+            new(
+                indicator.Left + x * indicatorScale,
+                indicator.Top + y * indicatorScale,
+                width * indicatorScale,
+                height * indicatorScale);
+        PointF IndicatorPoint(float x, float y) =>
+            new(
+                indicator.Left + x * indicatorScale,
+                indicator.Top + y * indicatorScale);
+        float IndicatorValue(float value) => value * indicatorScale;
+
         if (_transientError.Length > 0)
         {
             using var errorBrush = new SolidBrush(Color.FromArgb(58, 248, 70, 80));
-            using var errorPen = new Pen(Color.FromArgb(255, 248, 70, 80), 2.6f)
+            using var errorPen = new Pen(
+                Color.FromArgb(255, 248, 70, 80),
+                Math.Max(1.8f, IndicatorValue(2.6f)))
             {
                 StartCap = LineCap.Round,
                 EndCap = LineCap.Round
             };
-            graphics.FillEllipse(errorBrush, 14, 10, 38, 38);
-            graphics.DrawEllipse(errorPen, 23, 17, 20, 20);
-            graphics.DrawLine(errorPen, 33, 22, 33, 28);
-            graphics.DrawLine(errorPen, 33, 32, 33, 32.2f);
+            graphics.FillEllipse(errorBrush, indicator);
+            graphics.DrawEllipse(
+                errorPen,
+                IndicatorRectangle(9, 7, 20, 20));
+            graphics.DrawLine(
+                errorPen,
+                IndicatorPoint(19, 12),
+                IndicatorPoint(19, 18));
+            graphics.DrawLine(
+                errorPen,
+                IndicatorPoint(19, 22),
+                IndicatorPoint(19, 22.2f));
             return;
         }
 
@@ -518,36 +654,83 @@ internal sealed class RecordingOverlayForm : Form
         {
             var pulse = (float)(0.5 + 0.5 * Math.Sin(_animationFrame * Math.PI / 18));
             using var pulseBrush = new SolidBrush(Color.FromArgb(22 + (int)(pulse * 24), 96, 165, 250));
-            using var microphonePen = new Pen(Color.FromArgb(255, 96, 165, 250), 2.4f)
+            using var microphonePen = new Pen(
+                Color.FromArgb(255, 96, 165, 250),
+                Math.Max(1.7f, IndicatorValue(2.4f)))
             {
                 StartCap = LineCap.Round,
                 EndCap = LineCap.Round
             };
-            graphics.FillEllipse(pulseBrush, 14, 10, 38, 38);
-            graphics.DrawArc(microphonePen, 27, 17, 12, 17, 0, 180);
-            graphics.DrawLine(microphonePen, 27, 25, 27, 27);
-            graphics.DrawLine(microphonePen, 39, 25, 39, 27);
-            graphics.DrawArc(microphonePen, 24, 21, 18, 14, 0, 180);
-            graphics.DrawLine(microphonePen, 33, 35, 33, 39);
-            graphics.DrawLine(microphonePen, 29, 39, 37, 39);
+            graphics.FillEllipse(pulseBrush, indicator);
+            graphics.DrawArc(
+                microphonePen,
+                IndicatorRectangle(13, 7, 12, 17),
+                0,
+                180);
+            graphics.DrawLine(
+                microphonePen,
+                IndicatorPoint(13, 15),
+                IndicatorPoint(13, 17));
+            graphics.DrawLine(
+                microphonePen,
+                IndicatorPoint(25, 15),
+                IndicatorPoint(25, 17));
+            graphics.DrawArc(
+                microphonePen,
+                IndicatorRectangle(10, 11, 18, 14),
+                0,
+                180);
+            graphics.DrawLine(
+                microphonePen,
+                IndicatorPoint(19, 25),
+                IndicatorPoint(19, 29));
+            graphics.DrawLine(
+                microphonePen,
+                IndicatorPoint(15, 29),
+                IndicatorPoint(23, 29));
             return;
         }
 
         if (ShowsRecordingControls)
         {
-            var pulse = (float)(0.5 + 0.5 * Math.Sin(_animationFrame * Math.PI / 10));
+            var pulse = _hasLiveMicrophoneLevel
+                ? MathF.Sqrt(_microphoneLevel)
+                : (float)(0.5 +
+                          0.5 *
+                          Math.Sin(_animationFrame * Math.PI / 10));
             using var pulseBrush = new SolidBrush(Color.FromArgb(45 + (int)(pulse * 45), 248, 70, 80));
-            graphics.FillEllipse(pulseBrush, 14, 10, 38, 38);
+            graphics.FillEllipse(pulseBrush, indicator);
 
             var heights = new[] { 10, 18, 25, 18, 10 };
+            using var barBrush = new SolidBrush(Color.FromArgb(255, 248, 70, 80));
             for (var index = 0; index < heights.Length; index++)
             {
-                var wave = Math.Sin((_animationFrame + index * 2) * Math.PI / 8);
-                var height = Math.Max(5, heights[index] + (int)(wave * 5));
-                var x = 21 + index * 6;
-                var y = 28 - height / 2;
-                using var barBrush = new SolidBrush(Color.FromArgb(255, 248, 70, 80));
-                graphics.FillRoundedRectangle(barBrush, new RectangleF(x, y, 3, height), 1.5f);
+                float logicalHeight;
+                if (_hasLiveMicrophoneLevel)
+                {
+                    var perceptualLevel = MathF.Sqrt(_microphoneLevel);
+                    logicalHeight =
+                        5 + (heights[index] - 5) * perceptualLevel;
+                }
+                else
+                {
+                    var wave = Math.Sin(
+                        (_animationFrame + index * 2) *
+                        Math.PI /
+                        8);
+                    logicalHeight = heights[index] + (float)wave * 5;
+                }
+
+                var height = Math.Max(
+                    IndicatorValue(5),
+                    IndicatorValue(logicalHeight));
+                var x = indicator.Left + IndicatorValue(7 + index * 6);
+                var y = indicator.Top + indicator.Height / 2 - height / 2;
+                var barWidth = Math.Max(2.2f, IndicatorValue(3));
+                graphics.FillRoundedRectangle(
+                    barBrush,
+                    new RectangleF(x, y, barWidth, height),
+                    barWidth / 2);
             }
 
             return;
@@ -556,22 +739,36 @@ internal sealed class RecordingOverlayForm : Form
         if (_status == AppStatus.Pasting)
         {
             using var successBrush = new SolidBrush(Color.FromArgb(45, 74, 222, 128));
-            using var successPen = new Pen(Color.FromArgb(255, 74, 222, 128), 3)
+            using var successPen = new Pen(
+                Color.FromArgb(255, 74, 222, 128),
+                Math.Max(2, IndicatorValue(3)))
             {
                 StartCap = LineCap.Round,
                 EndCap = LineCap.Round
             };
-            graphics.FillEllipse(successBrush, 14, 10, 38, 38);
-            graphics.DrawLines(successPen, [new PointF(24, 28), new PointF(30, 34), new PointF(42, 21)]);
+            graphics.FillEllipse(successBrush, indicator);
+            graphics.DrawLines(
+                successPen,
+                [
+                    IndicatorPoint(10, 18),
+                    IndicatorPoint(16, 24),
+                    IndicatorPoint(28, 11)
+                ]);
             return;
         }
 
-        using var spinnerPen = new Pen(Color.FromArgb(255, 96, 165, 250), 3.5f)
+        using var spinnerPen = new Pen(
+            Color.FromArgb(255, 96, 165, 250),
+            Math.Max(2.2f, IndicatorValue(3.5f)))
         {
             StartCap = LineCap.Round,
             EndCap = LineCap.Round
         };
-        graphics.DrawArc(spinnerPen, 22, 17, 22, 22, _animationFrame * 12, 245);
+        graphics.DrawArc(
+            spinnerPen,
+            IndicatorRectangle(8, 7, 22, 22),
+            _animationFrame * 12,
+            245);
     }
 
     private void DrawDragHandle(Graphics graphics)
@@ -581,10 +778,30 @@ internal sealed class RecordingOverlayForm : Form
             228,
             228,
             231));
+        var dotSize = _sizePreset == RecordingOverlaySize.Small
+            ? 2f
+            : 2.3f;
+        var rowStep = _sizePreset == RecordingOverlaySize.Small
+            ? 5f
+            : 6f;
+        var left = LogicalSize.Width - (_sizePreset == RecordingOverlaySize.Small
+            ? 16f
+            : 18f);
+        var top = (LogicalSize.Height - (dotSize + rowStep * 2)) / 2;
         for (var row = 0; row < 3; row++)
         {
-            graphics.FillEllipse(brush, 282, 20 + row * 6, 2.3f, 2.3f);
-            graphics.FillEllipse(brush, 287, 20 + row * 6, 2.3f, 2.3f);
+            graphics.FillEllipse(
+                brush,
+                left,
+                top + row * rowStep,
+                dotSize,
+                dotSize);
+            graphics.FillEllipse(
+                brush,
+                left + 5,
+                top + row * rowStep,
+                dotSize,
+                dotSize);
         }
     }
 
@@ -611,7 +828,7 @@ internal sealed class RecordingOverlayForm : Form
                 : Color.FromArgb(55, 255, 255, 255));
         using var primaryPath = CreateRoundedRectangle(
             RecordingStopActionBounds,
-            10);
+            _layout.ActionCornerRadius);
         graphics.FillPath(primaryBrush, primaryPath);
         graphics.DrawPath(primaryBorder, primaryPath);
 
@@ -621,17 +838,17 @@ internal sealed class RecordingOverlayForm : Form
                 : Color.FromArgb(115, 251, 113, 133));
         graphics.FillRoundedRectangle(
             stopBrush,
-            new RectangleF(161, 22, 10, 10),
-            2);
+            _layout.StopIconBounds,
+            _layout.StopIconBounds.Width / 5);
 
         using var actionTitleFont = new Font(
             "Segoe UI",
-            11,
+            _layout.ActionTitleFontSize,
             FontStyle.Bold,
             GraphicsUnit.Pixel);
         using var actionHintFont = new Font(
             "Segoe UI",
-            9.5f,
+            _layout.ActionHintFontSize,
             FontStyle.Regular,
             GraphicsUnit.Pixel);
         using var actionTitleBrush = new SolidBrush(
@@ -651,13 +868,13 @@ internal sealed class RecordingOverlayForm : Form
             "Stopp",
             actionTitleFont,
             actionTitleBrush,
-            new RectangleF(178, 12, 66, 15),
+            _layout.StopTitleBounds,
             actionFormat);
         graphics.DrawString(
             "& einfügen",
             actionHintFont,
             actionHintBrush,
-            new RectangleF(178, 27, 68, 14),
+            _layout.StopHintBounds,
             actionFormat);
 
         var abortHovered =
@@ -681,7 +898,7 @@ internal sealed class RecordingOverlayForm : Form
                 : Color.FromArgb(42, 248, 113, 113));
         using var abortPath = CreateRoundedRectangle(
             RecordingAbortActionBounds,
-            10);
+            _layout.ActionCornerRadius);
         graphics.FillPath(abortBrush, abortPath);
         graphics.DrawPath(abortBorder, abortPath);
 
@@ -694,8 +911,26 @@ internal sealed class RecordingOverlayForm : Form
             StartCap = LineCap.Round,
             EndCap = LineCap.Round
         };
-        graphics.DrawLine(abortPen, 270, 22, 280, 32);
-        graphics.DrawLine(abortPen, 280, 22, 270, 32);
+        var abortCenter = new PointF(
+            RecordingAbortActionBounds.Left +
+            RecordingAbortActionBounds.Width / 2,
+            RecordingAbortActionBounds.Top +
+            RecordingAbortActionBounds.Height / 2);
+        var abortIconRadius = _sizePreset == RecordingOverlaySize.Small
+            ? 4
+            : 5;
+        graphics.DrawLine(
+            abortPen,
+            abortCenter.X - abortIconRadius,
+            abortCenter.Y - abortIconRadius,
+            abortCenter.X + abortIconRadius,
+            abortCenter.Y + abortIconRadius);
+        graphics.DrawLine(
+            abortPen,
+            abortCenter.X + abortIconRadius,
+            abortCenter.Y - abortIconRadius,
+            abortCenter.X - abortIconRadius,
+            abortCenter.Y + abortIconRadius);
     }
 
     private (string Title, string Hint) GetText()
@@ -945,6 +1180,81 @@ internal sealed class RecordingOverlayForm : Form
             new RecordingOverlayPlacementEventArgs(_placement));
     }
 
+    private void UpdateRefreshTimer()
+    {
+        if (!Visible || IsDisposed || Disposing)
+        {
+            _animationTimer.Stop();
+            return;
+        }
+
+        var nextMode = ResolveRefreshMode();
+        var nextInterval = nextMode switch
+        {
+            OverlayRefreshMode.ActiveAnimation => ActiveAnimationIntervalMs,
+            OverlayRefreshMode.IdleAnimation => IdleAnimationIntervalMs,
+            _ => PassiveMaintenanceIntervalMs
+        };
+        if (_refreshMode != nextMode)
+        {
+            _refreshMode = nextMode;
+            _refreshTick = 0;
+        }
+
+        if (_animationTimer.Interval != nextInterval)
+        {
+            _animationTimer.Interval = nextInterval;
+        }
+
+        if (!_animationTimer.Enabled)
+        {
+            _animationTimer.Start();
+        }
+    }
+
+    private OverlayRefreshMode ResolveRefreshMode()
+    {
+        if (_transientError.Length > 0 || _status == AppStatus.Pasting)
+        {
+            return OverlayRefreshMode.PassiveMaintenance;
+        }
+
+        if (_status == AppStatus.Idle && _operationTitle.Length == 0)
+        {
+            return OverlayRefreshMode.IdleAnimation;
+        }
+
+        return OverlayRefreshMode.ActiveAnimation;
+    }
+
+    private void OnRefreshTimerTick()
+    {
+        _refreshTick++;
+        switch (_refreshMode)
+        {
+            case OverlayRefreshMode.ActiveAnimation:
+                _animationFrame = (_animationFrame + 1) % 120;
+                MaintainTopMost(
+                    checkForOcclusion:
+                        _refreshTick % ActiveOcclusionProbeIntervalTicks == 0);
+                Invalidate();
+                break;
+
+            case OverlayRefreshMode.IdleAnimation:
+                _animationFrame =
+                    (_animationFrame + IdleAnimationFrameStep) % 120;
+                MaintainTopMost(
+                    checkForOcclusion:
+                        _refreshTick % IdleOcclusionProbeIntervalTicks == 0);
+                Invalidate();
+                break;
+
+            case OverlayRefreshMode.PassiveMaintenance:
+                MaintainTopMost(checkForOcclusion: true);
+                break;
+        }
+    }
+
     private void MaintainTopMost(
         bool force = false,
         bool checkForOcclusion = false)
@@ -994,12 +1304,14 @@ internal sealed class RecordingOverlayForm : Form
 
         using var path = CreateRoundedRectangle(
             new RectangleF(0, 0, Width, Height),
-            ScaleValue(16));
+            (int)Math.Round(
+                _layout.CornerRadius * GetScale(),
+                MidpointRounding.AwayFromZero));
         Region?.Dispose();
         Region = new Region(path);
     }
 
-    private bool HasExceededDragThreshold(Size delta)
+    private static bool HasExceededDragThreshold(Size delta)
     {
         var threshold = SystemInformation.DragSize;
         return Math.Abs(delta.Width) >= Math.Max(threshold.Width / 2, 2) ||
@@ -1011,7 +1323,7 @@ internal sealed class RecordingOverlayForm : Form
     private int ScaleValue(int logicalValue) =>
         (int)Math.Round(logicalValue * GetScale(), MidpointRounding.AwayFromZero);
 
-    private static Size ScaleLogicalSize(int dpi)
+    private Size ScaleLogicalSize(int dpi)
     {
         var scale = Math.Max(dpi, 96) / 96d;
         return new Size(
@@ -1036,12 +1348,131 @@ internal sealed class RecordingOverlayForm : Form
             [' ', '\t', '\r', '\n'],
             StringSplitOptions.RemoveEmptyEntries));
 
+    private sealed class OverlayLayout
+    {
+        public required Size LogicalSize { get; init; }
+
+        public required float CornerRadius { get; init; }
+
+        public required RectangleF IndicatorBounds { get; init; }
+
+        public required RectangleF TitleBounds { get; init; }
+
+        public required RectangleF HintBounds { get; init; }
+
+        public required RectangleF RecordingTitleBounds { get; init; }
+
+        public required RectangleF RecordingDurationBounds { get; init; }
+
+        public required RectangleF StopActionBounds { get; init; }
+
+        public required RectangleF AbortActionBounds { get; init; }
+
+        public required RectangleF StopIconBounds { get; init; }
+
+        public required RectangleF StopTitleBounds { get; init; }
+
+        public required RectangleF StopHintBounds { get; init; }
+
+        public required float TitleFontSize { get; init; }
+
+        public required float HintFontSize { get; init; }
+
+        public required float RecordingTitleFontSize { get; init; }
+
+        public required float RecordingDurationFontSize { get; init; }
+
+        public required float ActionTitleFontSize { get; init; }
+
+        public required float ActionHintFontSize { get; init; }
+
+        public required float ActionCornerRadius { get; init; }
+
+        public static OverlayLayout For(RecordingOverlaySize size) =>
+            size switch
+            {
+                RecordingOverlaySize.Large => new OverlayLayout
+                {
+                    LogicalSize = new Size(300, 56),
+                    CornerRadius = 16,
+                    IndicatorBounds = new RectangleF(14, 10, 38, 38),
+                    TitleBounds = new RectangleF(62, 8, 210, 19),
+                    HintBounds = new RectangleF(63, 30, 211, 16),
+                    RecordingTitleBounds = new RectangleF(59, 9, 84, 18),
+                    RecordingDurationBounds = new RectangleF(59, 29, 84, 18),
+                    StopActionBounds = new RectangleF(150, 9, 104, 38),
+                    AbortActionBounds = new RectangleF(260, 9, 30, 38),
+                    StopIconBounds = new RectangleF(161, 22, 10, 10),
+                    StopTitleBounds = new RectangleF(178, 12, 66, 15),
+                    StopHintBounds = new RectangleF(178, 27, 68, 14),
+                    TitleFontSize = 14,
+                    HintFontSize = 11,
+                    RecordingTitleFontSize = 13,
+                    RecordingDurationFontSize = 13,
+                    ActionTitleFontSize = 11,
+                    ActionHintFontSize = 9.5f,
+                    ActionCornerRadius = 10
+                },
+                RecordingOverlaySize.Medium => new OverlayLayout
+                {
+                    LogicalSize = new Size(255, 50),
+                    CornerRadius = 15,
+                    IndicatorBounds = new RectangleF(10, 7, 36, 36),
+                    TitleBounds = new RectangleF(53, 6, 176, 18),
+                    HintBounds = new RectangleF(53, 27, 176, 14),
+                    RecordingTitleBounds = new RectangleF(52, 6, 66, 17),
+                    RecordingDurationBounds = new RectangleF(52, 26, 66, 16),
+                    StopActionBounds = new RectangleF(123, 6, 88, 38),
+                    AbortActionBounds = new RectangleF(216, 6, 32, 38),
+                    StopIconBounds = new RectangleF(132, 20.5f, 9, 9),
+                    StopTitleBounds = new RectangleF(147, 9, 56, 14),
+                    StopHintBounds = new RectangleF(147, 24, 58, 13),
+                    TitleFontSize = 13,
+                    HintFontSize = 10,
+                    RecordingTitleFontSize = 12,
+                    RecordingDurationFontSize = 12,
+                    ActionTitleFontSize = 10.5f,
+                    ActionHintFontSize = 9,
+                    ActionCornerRadius = 9.5f
+                },
+                _ => new OverlayLayout
+                {
+                    LogicalSize = new Size(210, 42),
+                    CornerRadius = 13,
+                    IndicatorBounds = new RectangleF(7, 5, 32, 32),
+                    TitleBounds = new RectangleF(45, 4, 141, 16),
+                    HintBounds = new RectangleF(45, 21, 141, 14),
+                    RecordingTitleBounds = new RectangleF(44, 4, 49, 15),
+                    RecordingDurationBounds = new RectangleF(44, 21, 49, 15),
+                    StopActionBounds = new RectangleF(97, 5, 72, 32),
+                    AbortActionBounds = new RectangleF(173, 5, 32, 32),
+                    StopIconBounds = new RectangleF(104, 17, 8, 8),
+                    StopTitleBounds = new RectangleF(117, 7, 47, 12),
+                    StopHintBounds = new RectangleF(117, 19, 48, 11),
+                    TitleFontSize = 12,
+                    HintFontSize = 9,
+                    RecordingTitleFontSize = 10.5f,
+                    RecordingDurationFontSize = 11,
+                    ActionTitleFontSize = 10,
+                    ActionHintFontSize = 8.5f,
+                    ActionCornerRadius = 8
+                }
+            };
+    }
+
     private enum InteractionTarget
     {
         None,
         Body,
         PrimaryAction,
         AbortAction
+    }
+
+    private enum OverlayRefreshMode
+    {
+        ActiveAnimation,
+        IdleAnimation,
+        PassiveMaintenance
     }
 }
 
