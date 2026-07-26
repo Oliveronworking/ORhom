@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   validate:
-    runs-on: windows-2022
+    runs-on: windows-2025
     timeout-minutes: 15
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
@@ -32,6 +32,10 @@ jobs:
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 8.0.423
+          cache: true
+          cache-dependency-path: |
+            packages.lock.json
+            ORhom.Tests/packages.lock.json
 
       - name: Restore
         run: |
@@ -42,7 +46,14 @@ jobs:
         run: dotnet format ORhom.sln --verify-no-changes --no-restore
 
       - name: Test release build
-        run: dotnet test ORhom.sln -c Release --no-restore --nologo -p:TreatWarningsAsErrors=true
+        run: |
+          dotnet test ORhom.Tests/ORhom.Tests.csproj -c Release --no-restore --nologo `
+            --logger "trx;LogFileName=orhom-tests.trx" `
+            --results-directory artifacts/test-results `
+            --blame-hang `
+            --blame-hang-timeout 5m `
+            -p:TreatWarningsAsErrors=true `
+            -p:TreatNoTestsAsError=true
 
       - name: Verify self-contained Windows publish
         run: |
@@ -62,3 +73,12 @@ jobs:
           if ($versionInfo.ProductName -ne "ORhom" -or $versionInfo.FileDescription -ne "ORhom") {
             throw "The published executable metadata must use ORhom for ProductName and FileDescription."
           }
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: orhom-test-results
+          path: artifacts/test-results/
+          if-no-files-found: warn
+          retention-days: 7

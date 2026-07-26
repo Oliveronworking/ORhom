@@ -14,8 +14,12 @@ concurrency:
 
 jobs:
   build:
-    runs-on: windows-2022
+    runs-on: windows-2025
     timeout-minutes: 30
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
     outputs:
       version: ${{ steps.release-version.outputs.version }}
     env:
@@ -33,6 +37,10 @@ jobs:
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 8.0.423
+          cache: true
+          cache-dependency-path: |
+            packages.lock.json
+            ORhom.Tests/packages.lock.json
 
       - name: Validate release tag
         id: release-version
@@ -66,6 +74,12 @@ jobs:
           Invoke-WebRequest `
             -Uri "https://github.com/jrsoftware/issrc/releases/download/is-7_0_2/innosetup-7.0.2-x64.exe" `
             -OutFile $installerPath
+          $expectedInstallerSha256 = "5ad54ca3def786f8f4212552e54cc6d8d61329e2d24a1cfee0571d42c2684ff1"
+          $actualInstallerSha256 =
+            (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualInstallerSha256 -ne $expectedInstallerSha256) {
+            throw "The downloaded Inno Setup compiler does not match the pinned SHA-256 checksum."
+          }
           $signature = Get-AuthenticodeSignature -LiteralPath $installerPath
           if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid -or
               $signature.SignerCertificate.Subject -notmatch '(^|,\s*)CN=Pyrsys B\.V\.(,|$)') {
@@ -106,8 +120,14 @@ jobs:
         run: |
           $redistPath = Join-Path $env:RUNNER_TEMP "vc_redist.x64.exe"
           Invoke-WebRequest `
-            -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" `
+            -Uri "https://download.visualstudio.microsoft.com/download/pr/ebdab8e5-1d7b-4d9f-a11b-cbb1720c3b12/843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C/VC_redist.x64.exe" `
             -OutFile $redistPath
+          $expectedRedistSha256 = "843068991daaa1f73ad9f6239bce4d0f6a07a51f18c37ea2a867e9beca71295c"
+          $actualRedistSha256 =
+            (Get-FileHash -LiteralPath $redistPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualRedistSha256 -ne $expectedRedistSha256) {
+            throw "The downloaded Visual C++ runtime does not match the pinned SHA-256 checksum."
+          }
           $signature = Get-AuthenticodeSignature -LiteralPath $redistPath
           if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid -or
               $signature.SignerCertificate.Subject -notmatch '(^|,\s*)CN=Microsoft Corporation(,|$)') {
@@ -125,6 +145,67 @@ jobs:
             -InnoCompilerPath $env:INNO_COMPILER `
             -VcRedistPath $env:VC_REDIST_PATH `
             -OutputDirectory $releaseDir
+
+      - name: Smoke-test installer lifecycle
+        shell: pwsh
+        run: |
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE "artifacts\release-output"
+          $installer = Join-Path $releaseDir "ORhom-Setup-$env:RELEASE_VERSION-win-x64.exe"
+          $installDir = Join-Path $env:RUNNER_TEMP "orhom-installer-smoke"
+          $installArguments = @(
+            "/VERYSILENT",
+            "/SUPPRESSMSGBOXES",
+            "/NORESTART",
+            "/SP-",
+            "/TASKS=`"`"",
+            "/DIR=`"$installDir`""
+          )
+          $installProcess = Start-Process `
+            -FilePath $installer `
+            -ArgumentList $installArguments `
+            -Wait `
+            -PassThru `
+            -WindowStyle Hidden
+          if ($installProcess.ExitCode -ne 0) {
+            throw "Silent installer smoke test failed with exit code $($installProcess.ExitCode)."
+          }
+
+          $installedExecutable = Join-Path $installDir "ORhom.exe"
+          $installedNotices = Join-Path $installDir "THIRD-PARTY-NOTICES.md"
+          if (-not (Test-Path -LiteralPath $installedExecutable -PathType Leaf) -or
+              -not (Test-Path -LiteralPath $installedNotices -PathType Leaf)) {
+            throw "The installer smoke test did not install the expected application payload."
+          }
+          $installedVersion =
+            [Diagnostics.FileVersionInfo]::GetVersionInfo($installedExecutable).ProductVersion
+          if (-not $installedVersion.StartsWith(
+              $env:RELEASE_VERSION,
+              [StringComparison]::Ordinal)) {
+            throw "The installed executable has an unexpected product version: $installedVersion"
+          }
+
+          $uninstallers = @(Get-ChildItem -LiteralPath $installDir -Filter "unins*.exe" -File)
+          if ($uninstallers.Count -ne 1) {
+            throw "The installer smoke test expected exactly one uninstaller."
+          }
+          $uninstallProcess = Start-Process `
+            -FilePath $uninstallers[0].FullName `
+            -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") `
+            -Wait `
+            -PassThru `
+            -WindowStyle Hidden
+          if ($uninstallProcess.ExitCode -ne 0) {
+            throw "Silent uninstaller smoke test failed with exit code $($uninstallProcess.ExitCode)."
+          }
+          if ((Test-Path -LiteralPath $installedExecutable) -or
+              (Test-Path -LiteralPath $installedNotices)) {
+            throw "The uninstaller smoke test left application payload files behind."
+          }
+
+      - name: Attest release asset provenance
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: artifacts/release-output/*
 
       - name: Upload verified release assets
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -167,14 +248,31 @@ jobs:
               @($expectedAssets | Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }).Count -ne 0) {
             throw "The downloaded release artifact does not contain exactly the expected four assets."
           }
-          foreach ($line in Get-Content -LiteralPath $checksums) {
-            if ($line -notmatch '^(?<hash>[0-9a-f]{64}) \*(?<name>.+)$') {
+          $expectedChecksumNames = @(
+            [IO.Path]::GetFileName($installer),
+            [IO.Path]::GetFileName($portable),
+            [IO.Path]::GetFileName($notices)
+          )
+          $checksumLines = @(Get-Content -LiteralPath $checksums)
+          if ($checksumLines.Count -ne $expectedChecksumNames.Count) {
+            throw "SHA256SUMS.txt must contain exactly one entry for each release payload."
+          }
+          $seenChecksumNames =
+            [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+          foreach ($line in $checksumLines) {
+            if ($line -notmatch '^(?<hash>[0-9a-f]{64}) \*(?<name>[^\\/]+)$') {
               throw "Invalid SHA256SUMS.txt line: $line"
             }
-            $assetPath = Join-Path $releaseDir $Matches.name
+            $assetName = $Matches.name
+            $expectedHash = $Matches.hash
+            if ($expectedChecksumNames -cnotcontains $assetName -or
+                -not $seenChecksumNames.Add($assetName)) {
+              throw "SHA256SUMS.txt contains an unexpected or duplicate asset: $assetName"
+            }
+            $assetPath = Join-Path $releaseDir $assetName
             if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf) -or
-                (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Matches.hash) {
-              throw "Checksum validation failed for $($Matches.name)."
+                (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedHash) {
+              throw "Checksum validation failed for $assetName."
             }
           }
           $notes = @"
@@ -182,11 +280,13 @@ jobs:
 
           Für die normale Installation unter Windows 11 x64 bitte **ORhom-Setup-$version-win-x64.exe** herunterladen und starten. Der Installer enthält die benötigte .NET-8-Laufzeit, installiert bei Bedarf die Microsoft-Visual-C++-Laufzeit und legt Startmenü- sowie optional Desktop-Verknüpfungen an.
 
-          **ORhom-$version-win-x64-portable.exe** kopiert ORhom nicht in den Programme-Ordner. Auf dem Rechner muss dafür die aktuelle Microsoft Visual C++ 2015–2022 Redistributable (x64) bereits installiert sein; für einen neuen Rechner wird der Installer empfohlen.
+          **ORhom-$version-win-x64-portable.exe** kopiert ORhom nicht in den Programme-Ordner. Auf dem Rechner muss dafür die aktuelle Microsoft Visual C++ v14 Redistributable (x64) bereits installiert sein; für einen neuen Rechner wird der Installer empfohlen.
 
           Beim ersten Start wird das geprüfte Whisper-Modell (ca. 1,6 GB) heruntergeladen. Für die lokale Transkription wird weiterhin ein aktueller Vulkan-fähiger Grafiktreiber benötigt.
 
           Der Build ist derzeit nicht mit einem kommerziellen Windows-Code-Signing-Zertifikat signiert; Windows kann deshalb einen SmartScreen-Hinweis anzeigen. Die SHA-256-Prüfsummen stehen in **SHA256SUMS.txt**.
+
+          GitHub veröffentlicht für jedes Asset außerdem eine signierte Build-Provenienz. Sie lässt sich mit `gh attestation verify <Datei> --repo ${{ github.repository }}` prüfen.
 
           macOS und Linux werden von dieser Version noch nicht unterstützt.
           "@

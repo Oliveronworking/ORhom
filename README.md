@@ -19,7 +19,7 @@ bereit:
 
 Alternativ enthält jedes Release eine portable
 `ORhom-<Version>-win-x64-portable.exe`. Dafür muss die aktuelle Microsoft Visual
-C++ 2015–2022 Redistributable (x64) bereits installiert sein; auf einem neuen
+C++ v14 Redistributable (x64) bereits installiert sein; auf einem neuen
 Rechner wird deshalb der Installer empfohlen. Die Datei `SHA256SUMS.txt` enthält
 die SHA-256-Prüfsummen des Installers, der portablen EXE und der mitgelieferten
 `THIRD-PARTY-NOTICES.md`. Der Release-Workflow prüft diese drei Einträge vor
@@ -47,6 +47,15 @@ $entries | ForEach-Object {
 
     "OK: $name"
 }
+```
+
+Der Release-Workflow stellt außerdem für jedes Asset eine signierte
+Build-Provenienz bereit. Mit aktueller GitHub CLI lässt sie sich unabhängig
+prüfen:
+
+```powershell
+gh attestation verify .\ORhom-Setup-<Version>-win-x64.exe `
+    --repo Oliveronworking/ORhom
 ```
 
 Die ORhom-Programmdateien sind derzeit nicht Authenticode-signiert; Windows kann
@@ -159,13 +168,13 @@ Fehlt das ausgewählte Profil später, startet die Diktierung nicht und die Tray
 5. **Stopp & einfügen** anklicken, den Hotkey erneut drücken oder einen gehaltenen Hotkey loslassen. Die App lässt dem letzten gesprochenen Wort noch einen kurzen Audiopuffer und löst den Stop-Befehl genau einmal aus. Lokal wird das auf 16-kHz-Mono normalisierte Audio unmittelbar mit dem warmen Vulkan-Modell transkribiert. Die längeren Stabilitäts- und Composer-Prüfungen gelten nur für den Browser-Fallback.
 6. Der Text wird am ursprünglichen Cursor eingefügt und die vorherige Zwischenablage wiederhergestellt.
 
-Jede regulär transkribierte Diktierung wird vor dem Einfügeversuch lokal gespeichert. Über **Diktierverlauf** im Tray-Menü lassen sich die letzten zehn Einträge ansehen und wieder in die Zwischenablage kopieren. Sobald ein elfter Eintrag hinzukommt, wird automatisch der älteste entfernt. Einfügefehler erscheinen ebenfalls im Verlauf. Mit **X** oder Escape ausdrücklich verworfene Aufnahmen werden dagegen nicht transkribiert, nicht in den Verlauf geschrieben und nicht in die Zwischenablage kopiert. Im Browser-Fallback wird der zugehörige Composer nach bestätigtem Aufnahmestopp ohne Textlesen geleert. Vor Profilwechsel oder Beenden prüft ORhom einen sonst verbliebenen Browser-Composer erneut und sichert dessen stabilen Text atomar im Verlauf. Scheitern Prüfung oder Speicherung, wird das Fenster nicht unsichtbar verworfen, sondern bei Bedarf sichtbar zur manuellen Rettung freigegeben. Der Verlauf liegt ausschließlich lokal unter `%LOCALAPPDATA%\ORhom\dictation-history.json` und kann im Verlaufsfenster vollständig gelöscht werden.
+Jede regulär transkribierte Diktierung wird vor dem Einfügeversuch lokal gespeichert. Über **Diktierverlauf** im Tray-Menü lassen sich die letzten zehn Einträge ansehen und wieder in die Zwischenablage kopieren. Sobald ein elfter Eintrag hinzukommt, wird automatisch der älteste entfernt. Einfügefehler erscheinen ebenfalls im Verlauf. Mit **X** oder Escape ausdrücklich verworfene Aufnahmen werden dagegen nicht transkribiert, nicht in den Verlauf geschrieben und nicht in die Zwischenablage kopiert. Im Browser-Fallback wird der zugehörige Composer nach bestätigtem Aufnahmestopp ohne Textlesen geleert. Vor Profilwechsel oder Beenden prüft ORhom einen sonst verbliebenen Browser-Composer erneut und sichert dessen stabilen Text atomar im Verlauf. Scheitern Prüfung oder Speicherung, wird das Fenster nicht unsichtbar verworfen, sondern bei Bedarf sichtbar zur manuellen Rettung freigegeben. Der Verlauf liegt ausschließlich lokal unter `%LOCALAPPDATA%\ORhom\dictation-history.json` und kann im Verlaufsfenster einschließlich vorhandener Quarantäne-Sicherungen vollständig gelöscht werden.
 
-Falls das Ziel während der Verarbeitung geschlossen wird oder das Einfügen anderweitig fehlschlägt, bleibt der fertige Text zusätzlich direkt in der Zwischenablage, sofern diese noch sicher unter Kontrolle der App ist. Er kann dann sofort mit `Strg+V` eingefügt werden. Hat zwischenzeitlich eine andere Anwendung das Clipboard geändert, überschreibt ORhom diese Änderung nicht und sichert das Diktat stattdessen im Verlauf.
+Falls das Ziel während der Verarbeitung geschlossen wird oder das Einfügen anderweitig fehlschlägt, bleibt der fertige Text zusätzlich direkt in der Zwischenablage, sofern diese noch sicher unter Kontrolle der App ist. Er kann dann sofort mit `Strg+V` eingefügt werden. Von ORhom geschriebene Diktate werden mit den offiziellen Windows-Markern vom Zwischenablageverlauf und von der Cloud-Synchronisierung ausgeschlossen. Hat zwischenzeitlich eine andere Anwendung das Clipboard geändert, überschreibt ORhom diese Änderung nicht und sichert das Diktat stattdessen im Verlauf.
 
 Der große Audio-/Sprachmodus-Button für Voice Conversations wird nicht als Diktierbutton akzeptiert. `Ctrl+Shift+D` wird nur als Fallback verwendet, wenn kein kleiner Diktier-/Mikrofonbutton gefunden wurde; auch danach muss die Oberfläche den Aufnahme- beziehungsweise Stop-Zustand bestätigen.
 
-Passwortfelder werden blockiert. Browser-Adressleiste, Lesezeichendialoge und URLs werden nicht als Diktat übernommen. Diktierte Inhalte werden nie geloggt. Nur der lokale Diktierverlauf enthält die letzten zehn Texte.
+Passwortfelder werden blockiert. Browser-Adressleiste, Lesezeichendialoge und URLs werden nicht als Diktat übernommen. Diktierte Inhalte werden nie geloggt. Dauerhaft speichert ausschließlich der lokale Diktierverlauf die letzten zehn Texte.
 
 ## Status und Fehler
 
@@ -243,7 +252,7 @@ Die mitgelieferte `settings.json` enthält insbesondere:
 
 `enableHybridPushToTalk` lässt den vorhandenen Hotkey gleichzeitig als Toggle und als Halten-zum-Sprechen-Taste arbeiten. Ein Tastendruck ab `pushToTalkHoldThresholdMs` wird beim Loslassen automatisch beendet; kürzere Tastendrücke verhalten sich weiterhin wie bisher.
 
-Einstellungs- und Verlaufsdateien werden atomar ersetzt. Eine vorübergehend nicht lesbare vorhandene Datei wird niemals mit leeren Standardwerten überschrieben. Defektes JSON wird zuerst als zeitgestempelte `*.unreadable-*.json`-Sicherung im selben Ordner erhalten; erst danach darf eine neue Datei entstehen.
+Einstellungs- und Verlaufsdateien werden atomar ersetzt. Eine vorübergehend nicht lesbare vorhandene Datei wird niemals mit leeren Standardwerten überschrieben. Defektes JSON wird zuerst als zeitgestempelte `*.unreadable-*.json`-Sicherung im selben Ordner erhalten; erst danach darf eine neue Datei entstehen. **Verlauf löschen** entfernt auch solche zum aktiven Verlauf gehörenden Sicherungen.
 
 Mit `enableAudioDucking` werden andere laufende Windows-Wiedergabesitzungen erst nach einem bestätigten Aufnahmestart leiser. `audioDuckingVolumePercent` legt ihren verbleibenden Anteil am jeweiligen Ausgangspegel fest (Standard: 10 %). Sobald die Aufnahme beendet oder abgebrochen wird, ein Fehler zurück auf Idle führt oder die App geschlossen wird, werden die zuvor gespeicherten Pegel wiederhergestellt.
 
