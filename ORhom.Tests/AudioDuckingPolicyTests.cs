@@ -18,4 +18,22 @@ public sealed class AudioDuckingPolicyTests
                 currentVolume,
                 appliedVolume));
     }
+
+    [Theory]
+    [InlineData("endpoint", "instance", "endpoint|instance")]
+    [InlineData(" endpoint ", " instance ", "endpoint|instance")]
+    [InlineData("", "instance", null)]
+    [InlineData("endpoint", "", null)]
+    [InlineData("endpoint", "   ", null)]
+    public void DuckingRequiresAUniqueSessionInstanceIdentifier(
+        string endpointId,
+        string sessionInstanceId,
+        string? expected)
+    {
+        Assert.Equal(
+            expected,
+            AudioDuckingService.CreateSessionKey(
+                endpointId,
+                sessionInstanceId));
+    }
 }

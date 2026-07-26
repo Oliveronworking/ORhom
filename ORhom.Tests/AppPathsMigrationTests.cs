@@ -62,6 +62,44 @@ public sealed class AppPathsMigrationTests : IDisposable
     }
 
     [Fact]
+    public void FirstStartMergesMissingDataFromEveryLegacyRoot()
+    {
+        var immediatePredecessor = Path.Combine(_directory, "OpenAIFlow");
+        var olderProduct = Path.Combine(_directory, "OliSpeechToText");
+        var olderModel = Path.Combine(
+            olderProduct,
+            "models",
+            "whisper.cpp",
+            "ggml-large-v3-turbo.bin");
+        Directory.CreateDirectory(immediatePredecessor);
+        Directory.CreateDirectory(Path.GetDirectoryName(olderModel)!);
+        File.WriteAllText(
+            Path.Combine(immediatePredecessor, "settings.json"),
+            "immediate");
+        File.WriteAllText(
+            Path.Combine(olderProduct, "dictation-history.json"),
+            "older-history");
+        File.WriteAllBytes(olderModel, [8, 6, 7, 5, 3, 0, 9]);
+
+        var paths = AppPaths.Create(_directory);
+
+        Assert.Equal("immediate", File.ReadAllText(paths.SettingsPath));
+        Assert.Equal(
+            "older-history",
+            File.ReadAllText(Path.Combine(
+                paths.DataDirectory,
+                "dictation-history.json")));
+        Assert.Equal(
+            [8, 6, 7, 5, 3, 0, 9],
+            File.ReadAllBytes(Path.Combine(
+                paths.DataDirectory,
+                "models",
+                "whisper.cpp",
+                "ggml-large-v3-turbo.bin")));
+        Assert.False(File.Exists(olderModel));
+    }
+
+    [Fact]
     public void ExistingOrhomDataIsNeverOverwrittenByLegacyData()
     {
         var currentDirectory = Path.Combine(_directory, "ORhom");

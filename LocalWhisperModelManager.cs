@@ -267,12 +267,6 @@ internal sealed class LocalWhisperModelManager : IDisposable
             return false;
         }
 
-        var sidecar = await TryReadSidecarAsync(cancellationToken).ConfigureAwait(false);
-        if (SidecarMatches(sidecar, modelInfo))
-        {
-            return true;
-        }
-
         progress?.Report(new LocalWhisperModelProgress(
             LocalWhisperModelProgressStage.VerifyingCache,
             0,
@@ -289,7 +283,12 @@ internal sealed class LocalWhisperModelManager : IDisposable
             return false;
         }
 
-        await WriteSidecarAsync(modelInfo).ConfigureAwait(false);
+        var sidecar = await TryReadSidecarAsync(cancellationToken).ConfigureAwait(false);
+        if (!SidecarMatches(sidecar, modelInfo))
+        {
+            await WriteSidecarAsync(modelInfo).ConfigureAwait(false);
+        }
+
         return true;
     }
 

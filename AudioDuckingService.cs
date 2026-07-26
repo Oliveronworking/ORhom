@@ -117,9 +117,15 @@ internal sealed class AudioDuckingService : IDisposable
                         try
                         {
                             var processId = control.GetProcessID;
-                            var instanceId = GetStableSessionId(control, processId, sessionIndex);
-                            var key = $"{endpointId}|{instanceId}";
-                            if (processId == _currentProcessId || _sessions.ContainsKey(key))
+                            if (processId == _currentProcessId)
+                            {
+                                continue;
+                            }
+
+                            var key = CreateSessionKey(
+                                endpointId,
+                                TryGetStableSessionInstanceId(control));
+                            if (key is null || _sessions.ContainsKey(key))
                             {
                                 continue;
                             }
@@ -165,29 +171,30 @@ internal sealed class AudioDuckingService : IDisposable
         }
     }
 
-    private static string GetStableSessionId(AudioSessionControl control, uint processId, int sessionIndex)
+    private static string? TryGetStableSessionInstanceId(AudioSessionControl control)
     {
         try
         {
             var instanceId = control.GetSessionInstanceIdentifier;
-            if (!string.IsNullOrWhiteSpace(instanceId))
-            {
-                return instanceId;
-            }
-
-            var sessionId = control.GetSessionIdentifier;
-            if (!string.IsNullOrWhiteSpace(sessionId))
-            {
-                return sessionId;
-            }
+            return string.IsNullOrWhiteSpace(instanceId)
+                ? null
+                : instanceId;
         }
         catch
         {
-            // Some driver-owned and system sessions do not expose identifiers.
+            // A non-unique fallback could cause the same session to be ducked
+            // twice and then restored to the wrong volume. Skip it instead.
+            return null;
         }
-
-        return $"pid:{processId}:slot:{sessionIndex}";
     }
+
+    internal static string? CreateSessionKey(
+        string? endpointId,
+        string? sessionInstanceId) =>
+        string.IsNullOrWhiteSpace(endpointId) ||
+        string.IsNullOrWhiteSpace(sessionInstanceId)
+            ? null
+            : $"{endpointId.Trim()}|{sessionInstanceId.Trim()}";
 
     private int GetVolumePercent() => Math.Clamp(_settings.AudioDuckingVolumePercent, 0, 100);
 

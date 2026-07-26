@@ -52,9 +52,13 @@ internal sealed record AppPaths(string DataDirectory, string SettingsPath, strin
                     // Keep every data consumer on the same usable root when Windows
                     // cannot complete the atomic migration yet.
                     dataDirectory = legacyDataDirectory;
+                    break;
                 }
 
-                break;
+                // The primary predecessor is now the ORhom root. Continue so any
+                // non-conflicting data from older product roots is merged during
+                // this same first start instead of being stranded until a retry.
+                continue;
             }
 
             MergeMissingKnownData(legacyDataDirectory, dataDirectory);
