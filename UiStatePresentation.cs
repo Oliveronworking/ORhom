@@ -39,7 +39,7 @@ internal sealed record UiStatePresentation(
                 VisibleStatus: "Hört zu",
                 TrayTooltip: "ORhom – Hört zu",
                 PrimaryAction: "Aufnahme stoppen",
-                Hint: $"{hotkey} zum Stoppen · Esc zum Abbrechen",
+                Hint: $"{hotkey} zum Stoppen · Esc zum Verwerfen",
                 CanToggle: true,
                 CanAbort: true,
                 IsBusy: false),

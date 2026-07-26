@@ -18,9 +18,9 @@ internal sealed class PasteService
 
     public PasteResult PasteIntoTarget(string text, FocusTarget target, AppSettings settings)
     {
-        if (target.IsPasswordField)
+        if (target.IsPasswordFieldOrUnverifiable)
         {
-            _logger.Info("Paste skipped because captured target is a password field.");
+            _logger.Info("Paste skipped because the captured target is a password field or could not be verified safely.");
             return PasteResult.FailedWithClipboardFallback;
         }
 
@@ -31,9 +31,11 @@ internal sealed class PasteService
         }
 
         var focusedBeforePaste = AutomationHelpers.GetFocusedElement(_logger);
-        if (settings.BlockPasswordFields && AutomationHelpers.IsPasswordElement(focusedBeforePaste))
+        if (AutomationHelpers.ShouldBlockPasswordField(
+                focusedBeforePaste,
+                settings.BlockPasswordFields))
         {
-            _logger.Info("Paste skipped because current target is a password field.");
+            _logger.Info("Paste skipped because the current target is a password field or could not be verified safely.");
             return PasteResult.FailedWithClipboardFallback;
         }
 
@@ -49,6 +51,7 @@ internal sealed class PasteService
             return PasteResult.FailedWithoutClipboardFallback;
         }
 
+        using var ownedClipboardSnapshot = clipboardSnapshot as IDisposable;
         if (settings.RestoreClipboard &&
             NativeMethods.GetClipboardSequenceNumber() != capturedClipboardSequence)
         {
@@ -173,7 +176,9 @@ internal sealed class PasteService
         }
 
         var focused = AutomationHelpers.GetFocusedElement(_logger);
-        if (settings.BlockPasswordFields && AutomationHelpers.IsPasswordElement(focused))
+        if (AutomationHelpers.ShouldBlockPasswordField(
+                focused,
+                settings.BlockPasswordFields))
         {
             return TargetFocusProbeResult.Unsafe;
         }
@@ -330,7 +335,13 @@ internal sealed class PasteService
     private bool IsExpectedTargetFocused(FocusTarget target, AutomationElement? focused)
     {
         var candidateWindowClass = NativeMethods.GetWindowClass(target.WindowHandle);
+        var candidateWindowTitle = NativeMethods.GetWindowTitle(target.WindowHandle);
         if (!HasExpectedWindowIdentity(target) ||
+            !FocusTargetSafetyPolicy.HasSameViewIdentity(
+                target.WindowClass,
+                target.WindowTitle,
+                candidateWindowClass,
+                candidateWindowTitle) ||
             !AutomationHelpers.IsElementInWindow(focused, target.WindowHandle))
         {
             return false;
@@ -359,16 +370,20 @@ internal sealed class PasteService
             target.WindowHandle,
             target.OwningProcessId,
             target.WindowClass,
+            target.WindowTitle,
             target.FocusMetadata,
             target.WebViewRootIdentity,
             target.LayoutFingerprint,
             target.WindowHandle,
             NativeMethods.GetOwningProcessId(target.WindowHandle),
             candidateWindowClass,
+            candidateWindowTitle,
             focusedMetadata,
             focusedWebViewRootIdentity,
             focusedLayoutFingerprint,
-            AutomationHelpers.IsPasswordElement(focused));
+            AutomationHelpers.ShouldBlockPasswordField(
+                focused,
+                blockPasswordFields: true));
         if (semanticMatch)
         {
             _logger.Info($"Target focus accepted through a strong semantic editor fingerprint after the UI Automation runtime identity changed. AutomationId='{focusedMetadata.AutomationId}' Class='{focusedMetadata.ClassName}'");

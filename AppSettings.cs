@@ -18,7 +18,7 @@ internal sealed class AppSettings
     public string DictationProvider { get; set; } = DictationProviders.LocalWhisper;
     public string PreferredMicrophoneId { get; set; } = string.Empty;
     public string PreferredMicrophoneName { get; set; } = string.Empty;
-    public bool SetupCompleted { get; set; } = false;
+    public bool SetupCompleted { get; set; }
     public string ChatGptDictationHotkey { get; set; } = "Ctrl+Shift+D";
     public string ChatGptUrl { get; set; } = "https://chatgpt.com";
     public string[] ChatGptWindowTitleContains { get; set; } = ["ChatGPT", "chatgpt.com"];
@@ -27,9 +27,9 @@ internal sealed class AppSettings
     public string ChromeUserDataDir { get; set; } = string.Empty;
     public string ChromeProfileDirectory { get; set; } = string.Empty;
     public bool RequireConfiguredChromeProfile { get; set; } = true;
-    public bool AllowGuestProfile { get; set; } = false;
-    public bool AllowIncognitoProfile { get; set; } = false;
-    public bool AllowTemporaryProfile { get; set; } = false;
+    public bool AllowGuestProfile { get; set; }
+    public bool AllowIncognitoProfile { get; set; }
+    public bool AllowTemporaryProfile { get; set; }
     public bool OpenChatGptProfileVisibleForSetup { get; set; } = true;
     public bool WarnIfConfiguredChromeProfileUnavailable { get; set; } = true;
     public bool LaunchChatGptIfMissing { get; set; } = true;
@@ -54,7 +54,7 @@ internal sealed class AppSettings
     public int DictationStopConfirmationTimeoutMs { get; set; } = 9000;
     public int DictationResultTimeoutMs { get; set; } = 300000;
     public int DictationResultPollIntervalMs { get; set; } = 100;
-    public int DictationSettleDelayMs { get; set; } = 0;
+    public int DictationSettleDelayMs { get; set; }
     public int DictationTextStableMs { get; set; } = 3000;
     public int DictationStopGracePeriodMs { get; set; } = 250;
     public int LocalMaxRecordingSeconds { get; set; } = 300;
@@ -133,6 +133,7 @@ internal sealed class AppSettings
 
         try
         {
+            NormalizeDeserializedValues();
             var settingsPath = Path.GetFullPath(SettingsPath);
             var settingsDirectory = Path.GetDirectoryName(settingsPath) ?? AppContext.BaseDirectory;
             Directory.CreateDirectory(settingsDirectory);
@@ -205,13 +206,68 @@ internal sealed class AppSettings
         DictationProvider = DictationProviders.Normalize(DictationProvider);
         PreferredMicrophoneId ??= string.Empty;
         PreferredMicrophoneName ??= string.Empty;
+        RecordingOverlayBottomOffsetPx = Math.Clamp(
+            RecordingOverlayBottomOffsetPx,
+            0,
+            500);
+        PushToTalkHoldThresholdMs = Math.Clamp(
+            PushToTalkHoldThresholdMs,
+            100,
+            2_000);
+        BrowserChromeExclusionTopPx = Math.Clamp(
+            BrowserChromeExclusionTopPx,
+            0,
+            500);
+        MaxChatGptInputHeightPx = Math.Clamp(
+            MaxChatGptInputHeightPx,
+            100,
+            2_000);
+        MaxChatGptInputWindowWidthRatio =
+            double.IsFinite(MaxChatGptInputWindowWidthRatio)
+                ? Math.Clamp(MaxChatGptInputWindowWidthRatio, 0.1, 1)
+                : 0.92;
+        RecordingStateTimeoutMs = Math.Clamp(
+            RecordingStateTimeoutMs,
+            3_000,
+            5_000);
+        DictationStopConfirmationTimeoutMs = Math.Clamp(
+            DictationStopConfirmationTimeoutMs,
+            1_000,
+            30_000);
+        DictationResultTimeoutMs = Math.Clamp(
+            DictationResultTimeoutMs,
+            1_000,
+            600_000);
+        DictationResultPollIntervalMs = Math.Clamp(
+            DictationResultPollIntervalMs,
+            100,
+            1_000);
+        DictationSettleDelayMs = Math.Clamp(
+            DictationSettleDelayMs,
+            0,
+            5_000);
+        DictationTextStableMs = Math.Clamp(
+            DictationTextStableMs,
+            3_000,
+            10_000);
+        DictationStopGracePeriodMs = Math.Clamp(
+            DictationStopGracePeriodMs,
+            0,
+            1_000);
         LocalMaxRecordingSeconds = Math.Clamp(LocalMaxRecordingSeconds, 30, 600);
+        AudioDuckingVolumePercent = Math.Clamp(
+            AudioDuckingVolumePercent,
+            0,
+            100);
+        PasteDelayMs = Math.Clamp(PasteDelayMs, 0, 2_000);
+        RestoreClipboardDelayMs = Math.Clamp(
+            RestoreClipboardDelayMs,
+            0,
+            5_000);
         ChatGptDictationHotkey = string.IsNullOrWhiteSpace(ChatGptDictationHotkey)
             ? "Ctrl+Shift+D"
             : ChatGptDictationHotkey.Trim();
-        ChatGptUrl = string.IsNullOrWhiteSpace(ChatGptUrl)
-            ? "https://chatgpt.com"
-            : ChatGptUrl.Trim();
+        ChatGptUrl = ChatGptOriginPolicy.NormalizeConfiguredUrl(ChatGptUrl);
         ChatGptWindowTitleContains = ChatGptWindowTitleContains?
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => value.Trim())
@@ -244,6 +300,6 @@ internal sealed class AppSettings
 
     private static bool IsValidRelativePosition(double? value) =>
         value is { } coordinate &&
-        !double.IsNaN(coordinate) &&
-        !double.IsInfinity(coordinate);
+        double.IsFinite(coordinate) &&
+        coordinate is >= 0 and <= 1;
 }

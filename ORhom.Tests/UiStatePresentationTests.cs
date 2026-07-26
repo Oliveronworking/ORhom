@@ -4,7 +4,7 @@ public sealed class UiStatePresentationTests
 {
     [Theory]
     [InlineData(
-        (int)AppStatus.Idle,
+        0, // Idle
         "Bereit",
         "ORhom – Bereit",
         "Diktieren",
@@ -13,7 +13,7 @@ public sealed class UiStatePresentationTests
         false,
         false)]
     [InlineData(
-        (int)AppStatus.Starting,
+        1, // Starting
         "Wird gestartet",
         "ORhom – Wird gestartet",
         "Stoppen",
@@ -22,16 +22,16 @@ public sealed class UiStatePresentationTests
         false,
         true)]
     [InlineData(
-        (int)AppStatus.Recording,
+        2, // Recording
         "Hört zu",
         "ORhom – Hört zu",
         "Aufnahme stoppen",
-        "F8 zum Stoppen · Esc zum Abbrechen",
+        "F8 zum Stoppen · Esc zum Verwerfen",
         true,
         true,
         false)]
     [InlineData(
-        (int)AppStatus.Stopping,
+        3, // Stopping
         "Aufnahme wird beendet",
         "ORhom – Aufnahme wird beendet",
         "Verarbeitung abbrechen",
@@ -40,7 +40,7 @@ public sealed class UiStatePresentationTests
         true,
         true)]
     [InlineData(
-        (int)AppStatus.ReadingText,
+        4, // ReadingText
         "Wird transkribiert",
         "ORhom – Wird transkribiert",
         "Verarbeitung abbrechen",
@@ -49,7 +49,7 @@ public sealed class UiStatePresentationTests
         true,
         true)]
     [InlineData(
-        (int)AppStatus.Pasting,
+        5, // Pasting
         "Wird eingefügt",
         "ORhom – Wird eingefügt",
         "Bitte warten",
@@ -79,11 +79,11 @@ public sealed class UiStatePresentationTests
     }
 
     [Theory]
-    [InlineData((int)AppStatus.Idle)]
-    [InlineData((int)AppStatus.Starting)]
-    [InlineData((int)AppStatus.Recording)]
-    [InlineData((int)AppStatus.Stopping)]
-    [InlineData((int)AppStatus.ReadingText)]
+    [InlineData(0)] // Idle
+    [InlineData(1)] // Starting
+    [InlineData(2)] // Recording
+    [InlineData(3)] // Stopping
+    [InlineData(4)] // ReadingText
     public void ActionableStateHintUsesCurrentHotkey(int status)
     {
         var presentation = UiStatePresentation.For(

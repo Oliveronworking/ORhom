@@ -350,13 +350,13 @@ public sealed class PendingComposerStartRecoveryTests
 public sealed class UnexpectedFailureStatePolicyTests
 {
     [Theory]
-    [InlineData((int)AppStatus.Starting, true, true)]
-    [InlineData((int)AppStatus.Recording, true, true)]
-    [InlineData((int)AppStatus.Stopping, true, true)]
-    [InlineData((int)AppStatus.ReadingText, true, true)]
-    [InlineData((int)AppStatus.Pasting, true, false)]
-    [InlineData((int)AppStatus.Idle, true, false)]
-    [InlineData((int)AppStatus.Recording, false, false)]
+    [InlineData(1, true, true)] // Starting
+    [InlineData(2, true, true)] // Recording
+    [InlineData(3, true, true)] // Stopping
+    [InlineData(4, true, true)] // ReadingText
+    [InlineData(5, true, false)] // Pasting
+    [InlineData(0, true, false)] // Idle
+    [InlineData(2, false, false)] // Recording without an active session
     public void OnlyActiveOrStartingSessionRemainsRecording(
         int status,
         bool hasSession,
@@ -464,13 +464,41 @@ public sealed class FocusTargetSafetyPolicyTests
             Window,
             ProcessId,
             "Chrome_WidgetWin_1",
+            WindowTitle,
             captured,
             WebViewRoot,
             CapturedEditorLayout,
             Window,
             ProcessId,
             "Chrome_WidgetWin_1",
+            WindowTitle,
             rebuilt,
+            WebViewRoot,
+            NearbyEditorLayout,
+            candidateIsPassword: false));
+    }
+
+    [Fact]
+    public void FinalPasteSemanticReplacementRejectsChangedChromiumViewTitle()
+    {
+        var metadata = Metadata(
+            "ControlType.Edit",
+            "ProseMirror ProseMirror-focused",
+            "prompt-textarea");
+
+        Assert.False(FocusTargetSafetyPolicy.CanAcceptSemanticEditorReplacement(
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            WindowTitle,
+            metadata,
+            WebViewRoot,
+            CapturedEditorLayout,
+            Window,
+            ProcessId,
+            "Chrome_WidgetWin_1",
+            "Other conversation",
+            metadata,
             WebViewRoot,
             NearbyEditorLayout,
             candidateIsPassword: false));
@@ -492,12 +520,14 @@ public sealed class FocusTargetSafetyPolicyTests
             Window,
             ProcessId,
             "Chrome_WidgetWin_1",
+            WindowTitle,
             Metadata("ControlType.Edit", "ProseMirror ProseMirror-focused", "prompt-textarea"),
             WebViewRoot,
             CapturedEditorLayout,
             Window,
             candidateProcessId,
             "Chrome_WidgetWin_1",
+            WindowTitle,
             Metadata(candidateControlType, candidateClass, candidateAutomationId),
             WebViewRoot,
             NearbyEditorLayout,
@@ -516,12 +546,14 @@ public sealed class FocusTargetSafetyPolicyTests
             Window,
             ProcessId,
             "Chrome_WidgetWin_1",
+            WindowTitle,
             metadata,
             WebViewRoot,
             CapturedEditorLayout,
             Window,
             ProcessId,
             "Chrome_WidgetWin_1",
+            WindowTitle,
             metadata,
             "2A:00005678:00000001",
             NearbyEditorLayout,
@@ -544,12 +576,14 @@ public sealed class FocusTargetSafetyPolicyTests
             Window,
             ProcessId,
             "Chrome_WidgetWin_1",
+            WindowTitle,
             metadata,
             originalWebViewRoot,
             CapturedEditorLayout,
             Window,
             ProcessId,
             "Chrome_WidgetWin_1",
+            WindowTitle,
             metadata,
             candidateWebViewRoot,
             NearbyEditorLayout,
@@ -568,12 +602,14 @@ public sealed class FocusTargetSafetyPolicyTests
             Window,
             ProcessId,
             "Chrome_WidgetWin_1",
+            WindowTitle,
             metadata,
             WebViewRoot,
             CapturedEditorLayout,
             Window,
             ProcessId,
             "Chrome_WidgetWin_1",
+            WindowTitle,
             metadata,
             WebViewRoot,
             new SafeFocusLayoutFingerprint(0.10, 0.20, 0.80, 0.12),
@@ -592,12 +628,14 @@ public sealed class FocusTargetSafetyPolicyTests
             Window,
             ProcessId,
             "Chrome_WidgetWin_1",
+            WindowTitle,
             metadata,
             WebViewRoot,
             new SafeFocusLayoutFingerprint(0.40, 0.70, 0.03, 0.10),
             Window,
             ProcessId,
             "Chrome_WidgetWin_1",
+            WindowTitle,
             metadata,
             WebViewRoot,
             new SafeFocusLayoutFingerprint(0.44, 0.70, 0.03, 0.10),
@@ -722,12 +760,14 @@ public sealed class FocusTargetSafetyPolicyTests
             Window,
             ProcessId,
             "Chrome_WidgetWin_1",
+            WindowTitle,
             metadata,
             WebViewRoot,
             originalLayout,
             Window,
             ProcessId,
             "Chrome_WidgetWin_1",
+            WindowTitle,
             metadata,
             WebViewRoot,
             candidateLayout,

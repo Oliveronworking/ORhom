@@ -7,6 +7,19 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        ApplicationConfiguration.Initialize();
+        if (!WindowsCompatibility.IsCurrentVersionSupported())
+        {
+            MessageBox.Show(
+                "ORhom benötigt Windows 11 (Build 22000) oder neuer. "
+                + "Die lokale Whisper-Vulkan-Laufzeit unterstützt diese "
+                + "Windows-Version nicht sicher.",
+                "ORhom",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return;
+        }
+
         // Keep the established mutex identity so ORhom and an older installed build
         // cannot record or manipulate the same profile at the same time.
         using var mutex = new Mutex(
@@ -24,7 +37,6 @@ internal static class Program
         }
 
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-        ApplicationConfiguration.Initialize();
         var paths = AppPaths.Create();
         var logger = new AppLogger(paths.LogDirectory);
         RegisterGlobalExceptionLogging(logger);
@@ -118,7 +130,8 @@ internal static class Program
             using var applicationContext = new DictationTrayAppContext(
                 settings,
                 logger,
-                discovery);
+                discovery,
+                paths);
             Application.Run(applicationContext);
         }
         catch (Exception ex)

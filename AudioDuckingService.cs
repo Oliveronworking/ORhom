@@ -49,6 +49,7 @@ internal sealed class AudioDuckingService : IDisposable
 
         _active = false;
         var restoredCount = 0;
+        var userChangedCount = 0;
         Exception? restoreError = null;
         try
         {
@@ -56,8 +57,17 @@ internal sealed class AudioDuckingService : IDisposable
             {
                 try
                 {
-                    snapshot.Volume.Volume = snapshot.OriginalVolume;
-                    restoredCount++;
+                    if (ShouldRestoreVolume(
+                            snapshot.Volume.Volume,
+                            snapshot.AppliedVolume))
+                    {
+                        snapshot.Volume.Volume = snapshot.OriginalVolume;
+                        restoredCount++;
+                    }
+                    else
+                    {
+                        userChangedCount++;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -71,14 +81,17 @@ internal sealed class AudioDuckingService : IDisposable
         }
         finally
         {
-            var failedCount = Math.Max(_sessions.Count - restoredCount, 0);
+            var failedCount = Math.Max(
+                _sessions.Count - restoredCount - userChangedCount,
+                0);
             _sessions.Clear();
             if (restoreError is not null)
             {
                 _logger.Error("Audio session volumes could not be fully restored.", restoreError);
             }
 
-            _logger.Info($"Audio ducking stopped. RestoredSessions={restoredCount} FailedSessions={failedCount}");
+            _logger.Info(
+                $"Audio ducking stopped. RestoredSessions={restoredCount} UserChangedSessions={userChangedCount} FailedSessions={failedCount}");
         }
     }
 
@@ -113,10 +126,18 @@ internal sealed class AudioDuckingService : IDisposable
 
                             var volume = control.SimpleAudioVolume;
                             var originalVolume = volume.Volume;
-                            _sessions[key] = new SessionSnapshot(originalVolume, control, volume);
+                            var appliedVolume = Math.Clamp(
+                                originalVolume * factor,
+                                0f,
+                                1f);
+                            _sessions[key] = new SessionSnapshot(
+                                originalVolume,
+                                appliedVolume,
+                                control,
+                                volume);
                             try
                             {
-                                volume.Volume = Math.Clamp(originalVolume * factor, 0f, 1f);
+                                volume.Volume = appliedVolume;
                             }
                             catch
                             {
@@ -170,8 +191,14 @@ internal sealed class AudioDuckingService : IDisposable
 
     private int GetVolumePercent() => Math.Clamp(_settings.AudioDuckingVolumePercent, 0, 100);
 
+    internal static bool ShouldRestoreVolume(
+        float currentVolume,
+        float appliedVolume) =>
+        Math.Abs(currentVolume - appliedVolume) <= 0.001f;
+
     private sealed record SessionSnapshot(
         float OriginalVolume,
+        float AppliedVolume,
         AudioSessionControl Control,
         SimpleAudioVolume Volume);
 }

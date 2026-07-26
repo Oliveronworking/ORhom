@@ -453,6 +453,19 @@ internal sealed class ChatGptDictationController : IDisposable
                     isTerminationConfirmed: true);
             }
 
+            if (!IsExpectedChatGptOrigin(chatWindow))
+            {
+                _logger.Info(
+                    "ChatGPT stop rejected an owned window with an unexpected origin; closing the dedicated background window instead.");
+                var closed = await CloseBackgroundWindowAfterFailureAsync(
+                    chatWindow,
+                    "unexpected-origin-stop");
+                return ChatGptStopResult.Fail(
+                    ChatGptFailure.StopFailed,
+                    MessageFor(ChatGptFailure.StopFailed),
+                    isTerminationConfirmed: closed);
+            }
+
             if (!ChatGptWindowFinder.PrepareForBackgroundAutomation(chatWindow, _settings, _logger))
             {
                 _logger.Info("ChatGPT stop window is unavailable; recording state is preserved for a retry.");
@@ -588,6 +601,18 @@ internal sealed class ChatGptDictationController : IDisposable
                     false);
             }
 
+            if (!IsExpectedChatGptOrigin(chatWindow))
+            {
+                _logger.Info(
+                    "ChatGPT text read skipped because the owned window no longer displays the approved origin.");
+                return new ChatGptDictationReadResult(
+                    string.Empty,
+                    "OriginMismatch",
+                    0,
+                    null,
+                    false);
+            }
+
             return await AutomationHelpers.ReadChatGptTextRobustlyAsync(
                 chatWindow,
                 _settings,
@@ -619,6 +644,15 @@ internal sealed class ChatGptDictationController : IDisposable
                 _recordingComposerRect = null;
                 _logger.Info("ChatGPT recording inactivity inferred because the owned session window no longer exists.");
                 return true;
+            }
+
+            if (!IsExpectedChatGptOrigin(chatWindow))
+            {
+                _logger.Info(
+                    "ChatGPT recording state was not inspected on an unexpected origin; closing the dedicated background window instead.");
+                return await CloseBackgroundWindowAfterFailureAsync(
+                    chatWindow,
+                    "unexpected-origin-confirmation");
             }
 
             if (!ChatGptWindowFinder.PrepareForBackgroundAutomation(chatWindow, _settings, _logger))
@@ -934,6 +968,7 @@ internal sealed class ChatGptDictationController : IDisposable
         try
         {
             if (!IsCurrentProfileWindow(chatWindow) ||
+                !IsExpectedChatGptOrigin(chatWindow) ||
                 !ChatGptWindowFinder.PrepareForBackgroundAutomation(chatWindow, _settings, _logger))
             {
                 _logger.Info("Persisted dictation cleanup skipped because the background window is unavailable; text remains preserved in ChatGPT.");
@@ -1049,6 +1084,10 @@ internal sealed class ChatGptDictationController : IDisposable
 
     private bool IsCurrentProfileWindow(IntPtr window) =>
         ChatGptWindowFinder.IsOwnedBackgroundWindow(window, _settings);
+
+    private static bool IsExpectedChatGptOrigin(IntPtr window) =>
+        ChatGptOriginPolicy.IsAllowedObservedUrl(
+            ChromeWindowUrlCorrelation.TryReadOmniboxUrl(window));
 
     private bool TryNavigateWindow(IntPtr chatWindow, string url)
     {
@@ -1204,11 +1243,12 @@ internal sealed class ChatGptDictationController : IDisposable
             .FirstOrDefault();
     }
 
-    private IReadOnlyList<AutomationElement> FindComposerButtons(IntPtr chatWindow, System.Windows.Rect composerRect)
+    private List<AutomationElement> FindComposerButtons(IntPtr chatWindow, System.Windows.Rect composerRect)
     {
         try
         {
-            if (!IsCurrentProfileWindow(chatWindow))
+            if (!IsCurrentProfileWindow(chatWindow) ||
+                !IsExpectedChatGptOrigin(chatWindow))
             {
                 return [];
             }
@@ -1287,7 +1327,8 @@ internal sealed class ChatGptDictationController : IDisposable
 
     private RecordingUiState DetectRecordingState(IntPtr chatWindow, System.Windows.Rect composerRect)
     {
-        if (!IsCurrentProfileWindow(chatWindow))
+        if (!IsCurrentProfileWindow(chatWindow) ||
+            !IsExpectedChatGptOrigin(chatWindow))
         {
             return RecordingUiState.Unknown;
         }
@@ -1346,6 +1387,17 @@ internal sealed class ChatGptDictationController : IDisposable
             {
                 _logger.Info($"ChatGPT recording cleanup rejected a window without current-profile ownership. Context={context}");
                 return RecordingFailureCleanupResult.NotRecoverable;
+            }
+
+            if (!IsExpectedChatGptOrigin(chatWindow))
+            {
+                _logger.Info(
+                    $"ChatGPT recording cleanup rejected an unexpected origin and will close the dedicated background window. Context={context}");
+                return await CloseBackgroundWindowAfterFailureAsync(
+                    chatWindow,
+                    $"{context}-unexpected-origin")
+                    ? RecordingFailureCleanupResult.NotRecoverable
+                    : RecordingFailureCleanupResult.Unconfirmed;
             }
 
             if (!ChatGptWindowFinder.PrepareForAutomation(chatWindow, _settings, _logger))
@@ -1560,6 +1612,7 @@ internal sealed class ChatGptDictationController : IDisposable
         try
         {
             if (!IsCurrentProfileWindow(chatWindow) ||
+                !IsExpectedChatGptOrigin(chatWindow) ||
                 !AutomationHelpers.IsElementInWindow(button, chatWindow) ||
                 !ChatGptWindowFinder.PrepareForBackgroundAutomation(chatWindow, _settings, _logger))
             {
@@ -1579,6 +1632,7 @@ internal sealed class ChatGptDictationController : IDisposable
                 try
                 {
                     if (!IsCurrentProfileWindow(chatWindow) ||
+                        !IsExpectedChatGptOrigin(chatWindow) ||
                         !AutomationHelpers.IsElementInWindow(button, chatWindow))
                     {
                         return ControlInvocationOutcome.NotDispatched;
@@ -1601,6 +1655,7 @@ internal sealed class ChatGptDictationController : IDisposable
             }
 
             if (!IsCurrentProfileWindow(chatWindow) ||
+                !IsExpectedChatGptOrigin(chatWindow) ||
                 !ChatGptWindowFinder.PrepareForAutomation(chatWindow, _settings, _logger))
             {
                 _logger.Info("ChatGPT physical control invocation skipped because foreground activation failed.");
@@ -1613,6 +1668,7 @@ internal sealed class ChatGptDictationController : IDisposable
                 var clickX = (int)Math.Round(rect.Left + rect.Width / 2);
                 var clickY = (int)Math.Round(rect.Top + rect.Height / 2);
                 if (IsCurrentProfileWindow(chatWindow) &&
+                    IsExpectedChatGptOrigin(chatWindow) &&
                     AutomationHelpers.IsElementInWindow(button, chatWindow) &&
                     NativeMethods.ClickAt(clickX, clickY, chatWindow))
                 {
@@ -1626,7 +1682,8 @@ internal sealed class ChatGptDictationController : IDisposable
             var focused = AutomationHelpers.GetFocusedElement(_logger);
             if (NativeMethods.GetForegroundWindow() != chatWindow ||
                 !AutomationHelpers.IsElementInWindow(focused, chatWindow) ||
-                !IsCurrentProfileWindow(chatWindow))
+                !IsCurrentProfileWindow(chatWindow) ||
+                !IsExpectedChatGptOrigin(chatWindow))
             {
                 _logger.Info("ChatGPT control keyboard invocation skipped because focus left the background window.");
                 return ControlInvocationOutcome.NotDispatched;

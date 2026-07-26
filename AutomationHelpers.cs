@@ -1,6 +1,14 @@
+using System.Globalization;
 using System.Windows.Automation;
 
 namespace ORhom;
+
+internal enum PasswordFieldState
+{
+    Unknown,
+    NotPassword,
+    Password
+}
 
 internal static class AutomationHelpers
 {
@@ -97,23 +105,44 @@ internal static class AutomationHelpers
         return false;
     }
 
-    public static bool IsPasswordElement(AutomationElement? element)
+    public static PasswordFieldState GetPasswordFieldState(AutomationElement? element)
     {
         if (element is null)
         {
-            return false;
+            return PasswordFieldState.Unknown;
         }
 
+        return ProbePasswordField(() =>
+            element.GetCurrentPropertyValue(AutomationElement.IsPasswordProperty, true));
+    }
+
+    internal static PasswordFieldState ProbePasswordField(Func<object?> propertyReader)
+    {
         try
         {
-            var value = element.GetCurrentPropertyValue(AutomationElement.IsPasswordProperty, true);
-            return value is bool isPassword && isPassword;
+            return propertyReader() switch
+            {
+                true => PasswordFieldState.Password,
+                false => PasswordFieldState.NotPassword,
+                _ => PasswordFieldState.Unknown
+            };
         }
         catch
         {
-            return false;
+            return PasswordFieldState.Unknown;
         }
     }
+
+    public static bool ShouldBlockPasswordField(
+        AutomationElement? element,
+        bool blockPasswordFields) =>
+        blockPasswordFields &&
+        GetPasswordFieldState(element) != PasswordFieldState.NotPassword;
+
+    internal static bool ShouldBlockPasswordField(
+        PasswordFieldState state,
+        bool blockPasswordFields) =>
+        blockPasswordFields && state != PasswordFieldState.NotPassword;
 
     public static bool TryFocusElement(AutomationElement? element, AppLogger logger)
     {
@@ -200,7 +229,10 @@ internal static class AutomationHelpers
                     var runtimeId = current.GetRuntimeId();
                     return runtimeId.Length == 0
                         ? string.Empty
-                        : string.Join(":", runtimeId.Select(value => value.ToString("X8")));
+                        : string.Join(
+                            ":",
+                            runtimeId.Select(value =>
+                                value.ToString("X8", CultureInfo.InvariantCulture)));
                 }
 
                 current = TreeWalker.RawViewWalker.GetParent(current);
@@ -1239,6 +1271,12 @@ internal static class AutomationHelpers
 
     private static AutomationElement? FindBestInputCandidate(AutomationElement root, IntPtr chatWindow, AppSettings settings)
     {
+        if (!ChatGptOriginPolicy.IsAllowedObservedUrl(
+                ChromeWindowUrlCorrelation.TryReadOmniboxUrl(chatWindow)))
+        {
+            return null;
+        }
+
         var condition = new OrCondition(InputControlTypes
             .Select(type => new PropertyCondition(AutomationElement.ControlTypeProperty, type))
             .Cast<Condition>()
@@ -1247,7 +1285,12 @@ internal static class AutomationHelpers
         var elements = root.FindAll(TreeScope.Descendants, condition);
         return elements
             .Cast<AutomationElement>()
-            .Where(element => IsSafeChatGptInput(element, chatWindow, settings))
+            .Where(element =>
+                GetChatGptInputSafetyRejectionReasonCore(
+                    element,
+                    chatWindow,
+                    settings,
+                    originAlreadyVerified: true) is null)
             .OrderByDescending(ScoreInputCandidate)
             .FirstOrDefault();
     }
@@ -1392,7 +1435,21 @@ internal static class AutomationHelpers
         logger.Info($"ChatGPT dictated text rejected from {method}. Attempt={attempt} TextLength={trimmed.Length} Unsafe={IsUnsafeCapturedText(trimmed)} Placeholder={IsPlaceholder(trimmed)}");
     }
 
-    public static string? GetChatGptInputSafetyRejectionReason(AutomationElement? element, IntPtr chatWindow, AppSettings settings)
+    public static string? GetChatGptInputSafetyRejectionReason(
+        AutomationElement? element,
+        IntPtr chatWindow,
+        AppSettings settings) =>
+        GetChatGptInputSafetyRejectionReasonCore(
+            element,
+            chatWindow,
+            settings,
+            originAlreadyVerified: false);
+
+    private static string? GetChatGptInputSafetyRejectionReasonCore(
+        AutomationElement? element,
+        IntPtr chatWindow,
+        AppSettings settings,
+        bool originAlreadyVerified)
     {
         if (element is null)
         {
@@ -1402,6 +1459,13 @@ internal static class AutomationHelpers
         if (chatWindow == IntPtr.Zero || !NativeMethods.GetWindowRect(chatWindow, out var windowRect))
         {
             return "missing-window-rect";
+        }
+
+        if (!originAlreadyVerified &&
+            !ChatGptOriginPolicy.IsAllowedObservedUrl(
+                ChromeWindowUrlCorrelation.TryReadOmniboxUrl(chatWindow)))
+        {
+            return "unexpected-chatgpt-origin";
         }
 
         if (!IsElementInWindow(element, chatWindow))
@@ -1418,9 +1482,12 @@ internal static class AutomationHelpers
                 return "unsupported-control-type";
             }
 
-            if (IsPasswordElement(element))
+            var passwordFieldState = GetPasswordFieldState(element);
+            if (passwordFieldState != PasswordFieldState.NotPassword)
             {
-                return "password-element";
+                return passwordFieldState == PasswordFieldState.Password
+                    ? "password-element"
+                    : "password-state-unknown";
             }
 
             var rect = current.BoundingRectangle;
@@ -1534,7 +1601,7 @@ internal static class AutomationHelpers
                    metadata.Contains("omnibox", StringComparison.OrdinalIgnoreCase) ||
                    LooksLikeKnownNonComposerMetadata(metadata) ||
                    LooksLikeUnsafeBrowserDialog(name, className) ||
-                   IsPasswordElement(element);
+                    ShouldBlockPasswordField(element, blockPasswordFields: true);
         }
         catch
         {

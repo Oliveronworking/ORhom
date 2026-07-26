@@ -54,6 +54,7 @@ internal static class ClipboardHelper
                 return true;
             }
 
+            (candidate as IDisposable)?.Dispose();
             if (attempt < maximumAttempts)
             {
                 delay(GetClipboardCaptureRetryDelayMs(attempt));
@@ -70,15 +71,16 @@ internal static class ClipboardHelper
 
     public static IDataObject? Capture(AppLogger logger)
     {
+        DisposableDataObject? snapshot = null;
         try
         {
             var source = Clipboard.GetDataObject();
             if (source is null)
             {
-                return new DataObject();
+                return new DisposableDataObject();
             }
 
-            var snapshot = new DataObject();
+            snapshot = new DisposableDataObject();
             var snapshotFailed = false;
             foreach (var format in source.GetFormats(autoConvert: false))
             {
@@ -100,10 +102,17 @@ internal static class ClipboardHelper
                 }
             }
 
-            return snapshotFailed ? null : snapshot;
+            if (snapshotFailed)
+            {
+                snapshot.Dispose();
+                return null;
+            }
+
+            return snapshot;
         }
         catch (Exception ex)
         {
+            snapshot?.Dispose();
             logger.Error("Clipboard capture failed.", ex);
             return null;
         }
@@ -213,6 +222,91 @@ internal static class ClipboardHelper
         var clone = new StringCollection();
         clone.AddRange(source.Cast<string>().ToArray());
         return clone;
+    }
+}
+
+internal sealed class DisposableDataObject : IDataObject, IDisposable
+{
+    private readonly DataObject _inner = new();
+    private readonly HashSet<IDisposable> _ownedValues = new(
+        ReferenceEqualityComparer.Instance);
+    private bool _disposed;
+
+    public object? GetData(string format, bool autoConvert) =>
+        _inner.GetData(format, autoConvert);
+
+    public object? GetData(string format) => _inner.GetData(format);
+
+    public object? GetData(Type format) => _inner.GetData(format);
+
+    public bool GetDataPresent(string format, bool autoConvert) =>
+        _inner.GetDataPresent(format, autoConvert);
+
+    public bool GetDataPresent(string format) =>
+        _inner.GetDataPresent(format);
+
+    public bool GetDataPresent(Type format) =>
+        _inner.GetDataPresent(format);
+
+    public string[] GetFormats(bool autoConvert) =>
+        _inner.GetFormats(autoConvert);
+
+    public string[] GetFormats() => _inner.GetFormats();
+
+    public void SetData(string format, bool autoConvert, object? data)
+    {
+        Track(data);
+        _inner.SetData(format, autoConvert, data);
+    }
+
+    public void SetData(string format, object? data)
+    {
+        Track(data);
+        _inner.SetData(format, data);
+    }
+
+    public void SetData(Type format, object? data)
+    {
+        Track(data);
+        _inner.SetData(format, data);
+    }
+
+    public void SetData(object? data)
+    {
+        Track(data);
+        _inner.SetData(data);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        foreach (var value in _ownedValues)
+        {
+            try
+            {
+                value.Dispose();
+            }
+            catch
+            {
+                // Clipboard cleanup is best-effort after the OS has copied the data.
+            }
+        }
+
+        _ownedValues.Clear();
+    }
+
+    private void Track(object? data)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (data is IDisposable disposable)
+        {
+            _ownedValues.Add(disposable);
+        }
     }
 }
 
