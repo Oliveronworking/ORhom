@@ -177,6 +177,8 @@ if ($LASTEXITCODE -ne 0) {
     -r win-x64 `
     --self-contained true `
     --no-restore `
+    --nologo `
+    -p:TreatWarningsAsErrors=true `
     -p:PublishProfile=WindowsSelfContained `
     -o $publishDir
 if ($LASTEXITCODE -ne 0) {
