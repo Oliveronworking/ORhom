@@ -38,7 +38,7 @@ internal static class Program
 
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         var paths = AppPaths.Create();
-        var logger = new AppLogger(paths.LogDirectory);
+        using var logger = new AppLogger(paths.LogDirectory);
         RegisterGlobalExceptionLogging(logger);
         logger.Info($"Application bootstrap. Version={Application.ProductVersion} ProcessId={Environment.ProcessId} Executable='{Environment.ProcessPath ?? Application.ExecutablePath}'.");
         paths.MigrateLegacySettingsIfNeeded(logger);
