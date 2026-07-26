@@ -349,7 +349,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             !_exitInProgress &&
             !_settingsForm.Visible;
         _overlayVisibilityItem.Text = _settings.ShowRecordingOverlay
-            ? "Diktierleiste anzeigen"
+            ? "Diktierleiste ausblenden"
             : "Diktierleiste einblenden";
 
         var browserMode = !DictationProviders.IsLocal(
@@ -544,7 +544,11 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             device.DisplayName,
             _settings.ToggleHotkey,
             chromeProfile,
-            _settings.RecordingOverlaySize));
+            _settings.RecordingOverlaySize,
+            _settings.ShowRecordingOverlay,
+            _settings.EnableHybridPushToTalk,
+            _settings.EnableAudioDucking,
+            _settings.AudioDuckingVolumePercent));
         if (!result.Ok)
         {
             ShowErrorMessage(result.Message);
@@ -2174,13 +2178,21 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var recordingOverlaySize = Enum.IsDefined(values.RecordingOverlaySize)
             ? values.RecordingOverlaySize
             : RecordingOverlaySize.Small;
+        var audioDuckingVolumePercent = Math.Clamp(
+            values.AudioDuckingVolumePercent,
+            0,
+            100);
         if (DictationProviders.IsLocal(provider))
         {
             return await ApplyLocalSettingsCoreAsync(
                 microphoneId,
                 microphoneName,
                 hotkey,
-                recordingOverlaySize);
+                recordingOverlaySize,
+                values.ShowRecordingOverlay,
+                values.EnableHybridPushToTalk,
+                values.EnableAudioDucking,
+                audioDuckingVolumePercent);
         }
 
         if (values.ChromeProfile is not { } chromeProfile)
@@ -2200,6 +2212,12 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var previousMicrophoneName = _settings.PreferredMicrophoneName;
         var previousHotkey = _settings.ToggleHotkey;
         var previousRecordingOverlaySize = _settings.RecordingOverlaySize;
+        var previousShowRecordingOverlay = _settings.ShowRecordingOverlay;
+        var previousEnableHybridPushToTalk =
+            _settings.EnableHybridPushToTalk;
+        var previousEnableAudioDucking = _settings.EnableAudioDucking;
+        var previousAudioDuckingVolumePercent =
+            _settings.AudioDuckingVolumePercent;
         var previousSetupCompleted = _settings.SetupCompleted;
         var profileChanged =
             !previousUserDataDirectory.Equals(chromeProfile.UserDataDirectory, StringComparison.OrdinalIgnoreCase) ||
@@ -2309,6 +2327,12 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _settings.PreferredMicrophoneName = microphoneName;
         _settings.ToggleHotkey = hotkey;
         _settings.RecordingOverlaySize = recordingOverlaySize;
+        _settings.ShowRecordingOverlay = values.ShowRecordingOverlay;
+        _settings.EnableHybridPushToTalk =
+            values.EnableHybridPushToTalk;
+        _settings.EnableAudioDucking = values.EnableAudioDucking;
+        _settings.AudioDuckingVolumePercent =
+            audioDuckingVolumePercent;
         _settings.SetupCompleted = true;
         if (!_settings.Save(_logger))
         {
@@ -2317,6 +2341,13 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _settings.PreferredMicrophoneName = previousMicrophoneName;
             _settings.ToggleHotkey = previousHotkey;
             _settings.RecordingOverlaySize = previousRecordingOverlaySize;
+            _settings.ShowRecordingOverlay =
+                previousShowRecordingOverlay;
+            _settings.EnableHybridPushToTalk =
+                previousEnableHybridPushToTalk;
+            _settings.EnableAudioDucking = previousEnableAudioDucking;
+            _settings.AudioDuckingVolumePercent =
+                previousAudioDuckingVolumePercent;
             _settings.SetupCompleted = previousSetupCompleted;
             if (!_hotkeyWindow.TryUpdateToggleHotkey(previousHotkey, out var rollbackFailure))
             {
@@ -2339,9 +2370,11 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             SetStatus(AppStatus.Idle);
         }
 
-        _recordingOverlay.SetToggleHotkey(hotkey);
-        _recordingOverlay.ApplySizePreset(recordingOverlaySize);
-        _logger.Info($"Settings applied from UI. ChromeProfileDirectory='{chromeProfile.DirectoryName}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}' RecordingOverlaySize='{recordingOverlaySize}'.");
+        ApplyRecordingUiSettings(
+            hotkey,
+            recordingOverlaySize,
+            values.ShowRecordingOverlay);
+        _logger.Info($"Settings applied from UI. ChromeProfileDirectory='{chromeProfile.DirectoryName}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}' RecordingOverlaySize='{recordingOverlaySize}' ShowRecordingOverlay={values.ShowRecordingOverlay} HybridPushToTalk={values.EnableHybridPushToTalk} AudioDucking={values.EnableAudioDucking} AudioDuckingVolumePercent={audioDuckingVolumePercent}.");
         ShowMessage(localResourcesReleased
             ? $"ORhom läuft jetzt mit {hotkey} im Hintergrund."
             : "Die Browser-Diktierung ist aktiv, aber das lokale GPU-Modell konnte nicht freigegeben werden. Ein Neustart von ORhom gibt die Ressourcen frei.");
@@ -2352,7 +2385,11 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         string microphoneId,
         string microphoneName,
         string hotkey,
-        RecordingOverlaySize recordingOverlaySize)
+        RecordingOverlaySize recordingOverlaySize,
+        bool showRecordingOverlay,
+        bool enableHybridPushToTalk,
+        bool enableAudioDucking,
+        int audioDuckingVolumePercent)
     {
         if (!_audioInputDevices.IsMicrophoneActive(microphoneId, microphoneName))
         {
@@ -2364,6 +2401,12 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var previousMicrophoneName = _settings.PreferredMicrophoneName;
         var previousHotkey = _settings.ToggleHotkey;
         var previousRecordingOverlaySize = _settings.RecordingOverlaySize;
+        var previousShowRecordingOverlay = _settings.ShowRecordingOverlay;
+        var previousEnableHybridPushToTalk =
+            _settings.EnableHybridPushToTalk;
+        var previousEnableAudioDucking = _settings.EnableAudioDucking;
+        var previousAudioDuckingVolumePercent =
+            _settings.AudioDuckingVolumePercent;
         var previousSetupCompleted = _settings.SetupCompleted;
 
         if (!_hotkeyWindow.TryUpdateToggleHotkey(hotkey, out var hotkeyFailure))
@@ -2399,6 +2442,11 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _settings.PreferredMicrophoneName = microphoneName;
         _settings.ToggleHotkey = hotkey;
         _settings.RecordingOverlaySize = recordingOverlaySize;
+        _settings.ShowRecordingOverlay = showRecordingOverlay;
+        _settings.EnableHybridPushToTalk = enableHybridPushToTalk;
+        _settings.EnableAudioDucking = enableAudioDucking;
+        _settings.AudioDuckingVolumePercent =
+            audioDuckingVolumePercent;
         _settings.SetupCompleted = true;
         if (!_settings.Save(_logger))
         {
@@ -2407,18 +2455,44 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _settings.PreferredMicrophoneName = previousMicrophoneName;
             _settings.ToggleHotkey = previousHotkey;
             _settings.RecordingOverlaySize = previousRecordingOverlaySize;
+            _settings.ShowRecordingOverlay =
+                previousShowRecordingOverlay;
+            _settings.EnableHybridPushToTalk =
+                previousEnableHybridPushToTalk;
+            _settings.EnableAudioDucking = previousEnableAudioDucking;
+            _settings.AudioDuckingVolumePercent =
+                previousAudioDuckingVolumePercent;
             _settings.SetupCompleted = previousSetupCompleted;
             _ = _hotkeyWindow.TryUpdateToggleHotkey(previousHotkey, out _);
             return SettingsApplyResult.Fail(
                 "Die Einstellungen konnten nicht sicher gespeichert werden. Bitte Schreibrechte und freien Speicherplatz prüfen.");
         }
 
-        _recordingOverlay.SetToggleHotkey(hotkey);
-        _recordingOverlay.ApplySizePreset(recordingOverlaySize);
+        ApplyRecordingUiSettings(
+            hotkey,
+            recordingOverlaySize,
+            showRecordingOverlay);
         QueueLocalWhisperPreparation();
-        _logger.Info($"Local settings applied. MicrophoneId='{microphoneId}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}' RecordingOverlaySize='{recordingOverlaySize}'.");
+        _logger.Info($"Local settings applied. MicrophoneId='{microphoneId}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}' RecordingOverlaySize='{recordingOverlaySize}' ShowRecordingOverlay={showRecordingOverlay} HybridPushToTalk={enableHybridPushToTalk} AudioDucking={enableAudioDucking} AudioDuckingVolumePercent={audioDuckingVolumePercent}.");
         ShowMessage($"Lokale deutsche Diktierung läuft jetzt mit {hotkey} im Hintergrund.");
         return SettingsApplyResult.Success(microphoneName, hotkey);
+    }
+
+    private void ApplyRecordingUiSettings(
+        string hotkey,
+        RecordingOverlaySize recordingOverlaySize,
+        bool showRecordingOverlay)
+    {
+        _recordingOverlay.SetToggleHotkey(hotkey);
+        _recordingOverlay.ApplySizePreset(recordingOverlaySize);
+        if (showRecordingOverlay)
+        {
+            _recordingOverlay.ShowStatus(_status);
+        }
+        else
+        {
+            _recordingOverlay.HideOverlay();
+        }
     }
 
     private void OpenSettings()
