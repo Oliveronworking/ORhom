@@ -96,6 +96,32 @@ public sealed class RecordingOverlayPlacementTests
     }
 
     [Fact]
+    public void LiveMicrophoneLevelIsClampedAndResetWithRecordingState()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = new RecordingOverlayForm(72, "Ctrl+Space")
+            {
+                Opacity = 0
+            };
+
+            form.ShowStatus(AppStatus.Recording);
+            Assert.False(form.HasLiveMicrophoneLevel);
+
+            form.SetMicrophoneLevel(1.4f);
+            Assert.True(form.HasLiveMicrophoneLevel);
+            Assert.Equal(1f, form.MicrophoneLevel);
+
+            form.SetMicrophoneLevel(float.NaN);
+            Assert.Equal(0f, form.MicrophoneLevel);
+
+            form.ShowStatus(AppStatus.Idle);
+            Assert.False(form.HasLiveMicrophoneLevel);
+            Assert.Equal(0f, form.MicrophoneLevel);
+        });
+    }
+
+    [Fact]
     public void RefreshTimerAdaptsCadenceAndStopsWhenOverlayIsHidden()
     {
         RunOnStaThread(() =>

@@ -45,6 +45,8 @@ internal sealed class RecordingOverlayForm : Form
     private InteractionTarget _pressedTarget;
     private InteractionTarget _hoveredTarget;
     private string _toolTipText = string.Empty;
+    private float _microphoneLevel;
+    private bool _hasLiveMicrophoneLevel;
 
     public RecordingOverlayForm(
         int bottomOffsetPx,
@@ -111,6 +113,10 @@ internal sealed class RecordingOverlayForm : Form
         _layout.AbortActionBounds;
 
     internal RecordingOverlaySize SizePreset => _sizePreset;
+
+    internal float MicrophoneLevel => _microphoneLevel;
+
+    internal bool HasLiveMicrophoneLevel => _hasLiveMicrophoneLevel;
 
     protected override bool ShowWithoutActivation => true;
 
@@ -187,6 +193,12 @@ internal sealed class RecordingOverlayForm : Form
         Invalidate();
     }
 
+    public void SetMicrophoneLevel(float level)
+    {
+        _microphoneLevel = AudioLevelMeter.NormalizeLevel(level);
+        _hasLiveMicrophoneLevel = true;
+    }
+
     public void ShowStatus(AppStatus status)
     {
         if (status == AppStatus.Recording &&
@@ -194,10 +206,14 @@ internal sealed class RecordingOverlayForm : Form
              _recordingStartedAtUtc is null))
         {
             _recordingStartedAtUtc = DateTime.UtcNow;
+            _microphoneLevel = 0f;
+            _hasLiveMicrophoneLevel = false;
         }
         else if (status != AppStatus.Recording)
         {
             _recordingStartedAtUtc = null;
+            _microphoneLevel = 0f;
+            _hasLiveMicrophoneLevel = false;
         }
 
         _status = status;
@@ -273,6 +289,8 @@ internal sealed class RecordingOverlayForm : Form
         _operationTitle = string.Empty;
         _operationHint = string.Empty;
         _recordingStartedAtUtc = null;
+        _microphoneLevel = 0f;
+        _hasLiveMicrophoneLevel = false;
         _pressedTarget = InteractionTarget.None;
         _refreshTick = 0;
         if (Visible)
@@ -675,7 +693,11 @@ internal sealed class RecordingOverlayForm : Form
 
         if (ShowsRecordingControls)
         {
-            var pulse = (float)(0.5 + 0.5 * Math.Sin(_animationFrame * Math.PI / 10));
+            var pulse = _hasLiveMicrophoneLevel
+                ? MathF.Sqrt(_microphoneLevel)
+                : (float)(0.5 +
+                          0.5 *
+                          Math.Sin(_animationFrame * Math.PI / 10));
             using var pulseBrush = new SolidBrush(Color.FromArgb(45 + (int)(pulse * 45), 248, 70, 80));
             graphics.FillEllipse(pulseBrush, indicator);
 
@@ -683,10 +705,25 @@ internal sealed class RecordingOverlayForm : Form
             using var barBrush = new SolidBrush(Color.FromArgb(255, 248, 70, 80));
             for (var index = 0; index < heights.Length; index++)
             {
-                var wave = Math.Sin((_animationFrame + index * 2) * Math.PI / 8);
+                float logicalHeight;
+                if (_hasLiveMicrophoneLevel)
+                {
+                    var perceptualLevel = MathF.Sqrt(_microphoneLevel);
+                    logicalHeight =
+                        5 + (heights[index] - 5) * perceptualLevel;
+                }
+                else
+                {
+                    var wave = Math.Sin(
+                        (_animationFrame + index * 2) *
+                        Math.PI /
+                        8);
+                    logicalHeight = heights[index] + (float)wave * 5;
+                }
+
                 var height = Math.Max(
                     IndicatorValue(5),
-                    IndicatorValue(heights[index] + (float)wave * 5));
+                    IndicatorValue(logicalHeight));
                 var x = indicator.Left + IndicatorValue(7 + index * 6);
                 var y = indicator.Top + indicator.Height / 2 - height / 2;
                 var barWidth = Math.Max(2.2f, IndicatorValue(3));

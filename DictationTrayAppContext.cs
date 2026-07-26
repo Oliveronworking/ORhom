@@ -946,7 +946,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                 _settings.PreferredMicrophoneId,
                 _settings.PreferredMicrophoneName,
                 TimeSpan.FromSeconds(_settings.LocalMaxRecordingSeconds),
-                OnLocalCaptureUnexpectedlyStopped);
+                OnLocalCaptureUnexpectedlyStopped,
+                OnLocalAudioLevelChanged);
             capture.RecordingLimitReached += OnLocalRecordingLimitReached;
             _localSession = new LocalRecordingSession(target, capture);
             _audioDucking.Begin();
@@ -1009,6 +1010,27 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             ShowMessage(
                 $"Die maximale lokale Aufnahmedauer von {_settings.LocalMaxRecordingSeconds / 60} Minuten ist erreicht. Das Diktat wird jetzt transkribiert.");
             RunUserOperation(StopAfterQueuedRequestAsync, "local-duration-limit");
+        });
+    }
+
+    private void OnLocalAudioLevelChanged(
+        object? sender,
+        LocalAudioLevelChangedEventArgs e)
+    {
+        if (sender is not LocalAudioCaptureSession capture)
+        {
+            return;
+        }
+
+        RunOnUiThread(() =>
+        {
+            if (_localSession?.Capture != capture ||
+                _status != AppStatus.Recording)
+            {
+                return;
+            }
+
+            _recordingOverlay.SetMicrophoneLevel(e.Level);
         });
     }
 
@@ -2598,6 +2620,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         {
             localSession.Capture.RecordingLimitReached -= OnLocalRecordingLimitReached;
             localSession.Capture.UnexpectedlyStopped -= OnLocalCaptureUnexpectedlyStopped;
+            localSession.Capture.AudioLevelChanged -= OnLocalAudioLevelChanged;
             localSession.Capture.Dispose();
             _localSession = null;
         }
