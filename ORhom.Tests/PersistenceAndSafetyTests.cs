@@ -759,16 +759,21 @@ public sealed class SafetyPolicyTests
             Guid.NewGuid().ToString("N"));
         try
         {
-            using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+            using var cancellation = new CancellationTokenSource();
             var settings = new AppSettings { DictationResultTimeoutMs = 300_000 };
             var logger = new AppLogger(Path.Combine(directory, "logs"));
 
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            var readTask =
                 AutomationHelpers.ReadChatGptTextRobustlyAsync(
                     IntPtr.Zero,
                     settings,
                     logger,
-                    cancellationToken: cancellation.Token));
+                    cancellationToken: cancellation.Token);
+            Assert.False(readTask.IsCompleted);
+
+            cancellation.Cancel();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => readTask);
         }
         finally
         {
