@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Text;
 
 namespace ORhom;
 
@@ -67,11 +66,25 @@ internal static class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     public static extern int GetWindowTextLength(IntPtr hWnd);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+    [DllImport(
+        "user32.dll",
+        EntryPoint = "GetWindowTextW",
+        CharSet = CharSet.Unicode,
+        SetLastError = true)]
+    private static extern int GetWindowText(
+        IntPtr hWnd,
+        [Out] char[] lpString,
+        int nMaxCount);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+    [DllImport(
+        "user32.dll",
+        EntryPoint = "GetClassNameW",
+        CharSet = CharSet.Unicode,
+        SetLastError = true)]
+    private static extern int GetClassName(
+        IntPtr hWnd,
+        [Out] char[] lpClassName,
+        int nMaxCount);
 
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out Rect lpRect);
@@ -147,16 +160,20 @@ internal static class NativeMethods
     public static string GetWindowTitle(IntPtr hWnd)
     {
         var length = Math.Max(GetWindowTextLength(hWnd), 0);
-        var builder = new StringBuilder(length + 1);
-        _ = GetWindowText(hWnd, builder, builder.Capacity);
-        return builder.ToString();
+        var buffer = new char[length + 1];
+        var written = GetWindowText(hWnd, buffer, buffer.Length);
+        return written > 0
+            ? new string(buffer, 0, written)
+            : string.Empty;
     }
 
     public static string GetWindowClass(IntPtr hWnd)
     {
-        var builder = new StringBuilder(256);
-        _ = GetClassName(hWnd, builder, builder.Capacity);
-        return builder.ToString();
+        var buffer = new char[256];
+        var written = GetClassName(hWnd, buffer, buffer.Length);
+        return written > 0
+            ? new string(buffer, 0, written)
+            : string.Empty;
     }
 
     public static bool ClickAt(int x, int y, IntPtr expectedWindow)

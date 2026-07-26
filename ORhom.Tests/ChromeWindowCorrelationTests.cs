@@ -60,6 +60,16 @@ public sealed class ChromeWindowUrlCorrelationTests
 
 public sealed class ChromeProfileLauncherArgumentTests
 {
+    private static readonly string[] ExpectedVisibleChromeArguments =
+    [
+        @"--user-data-dir=C:\Users\Test User\Chrome Data",
+        "--profile-directory=Profile 7",
+        "--new-window",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "https://chatgpt.com/#orhom-window-correlation"
+    ];
+
     [Fact]
     public void BackgroundMarkerContainsTheExactCorrelationGuid()
     {
@@ -115,17 +125,7 @@ public sealed class ChromeProfileLauncherArgumentTests
 
         Assert.Equal(@"C:\Program Files\Google\Chrome\Application\chrome.exe", startInfo.FileName);
         Assert.False(startInfo.UseShellExecute);
-        Assert.Equal(
-            new[]
-            {
-                @"--user-data-dir=C:\Users\Test User\Chrome Data",
-                "--profile-directory=Profile 7",
-                "--new-window",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "https://chatgpt.com/#orhom-window-correlation"
-            },
-            startInfo.ArgumentList);
+        Assert.Equal(ExpectedVisibleChromeArguments, startInfo.ArgumentList);
     }
 
     [Fact]

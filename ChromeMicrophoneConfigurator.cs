@@ -162,7 +162,9 @@ internal sealed class ChromeMicrophoneConfigurator
                 while (Environment.TickCount64 < closeDeadline &&
                        IsOwnedSettingsWindow(settingsWindow, ownershipProperty))
                 {
-                    await Task.Delay(75);
+                    // Cleanup must finish even when application shutdown cancelled
+                    // the user operation that led into this finally block.
+                    await Task.Delay(75, CancellationToken.None);
                 }
 
                 if (IsOwnedSettingsWindow(settingsWindow, ownershipProperty))
@@ -182,7 +184,7 @@ internal sealed class ChromeMicrophoneConfigurator
     }
 
     private static async Task<IntPtr> WaitForExactMarkerWindowAsync(
-        IReadOnlySet<IntPtr> windowsBeforeLaunch,
+        HashSet<IntPtr> windowsBeforeLaunch,
         string markerUrl,
         int timeoutMs)
     {
@@ -346,7 +348,7 @@ internal sealed class ChromeMicrophoneConfigurator
         }
     }
 
-    private static IReadOnlyList<IntPtr> FindChromeWindows()
+    private static List<IntPtr> FindChromeWindows()
     {
         var windows = new List<IntPtr>();
         _ = NativeMethods.EnumWindows((window, _) =>

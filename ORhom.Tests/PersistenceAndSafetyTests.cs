@@ -139,9 +139,9 @@ public sealed class AppSettingsPersistenceTests : IDisposable
     }
 
     [Theory]
-    [InlineData((int)RecordingOverlaySize.Small)]
-    [InlineData((int)RecordingOverlaySize.Medium)]
-    [InlineData((int)RecordingOverlaySize.Large)]
+    [InlineData(0)] // Small
+    [InlineData(1)] // Medium
+    [InlineData(2)] // Large
     public void RecordingBarSizeSurvivesSettingsRoundTrip(int sizeValue)
     {
         var size = (RecordingOverlaySize)sizeValue;
@@ -666,8 +666,8 @@ public sealed class AbortRecoveryPersistenceTests
 public sealed class PendingComposerPreservationTests
 {
     [Theory]
-    [InlineData((int)PendingComposerState.NoWindow)]
-    [InlineData((int)PendingComposerState.Empty)]
+    [InlineData(0)] // NoWindow
+    [InlineData(1)] // Empty
     public void EmptyOrMissingComposerIsSafeWithoutPersistence(int stateValue)
     {
         var callbackCalled = false;
@@ -767,10 +767,10 @@ public sealed class PasteResultTests
     }
 
     [Theory]
-    [InlineData((int)ClipboardRestoreOutcome.NotRequested)]
-    [InlineData((int)ClipboardRestoreOutcome.Restored)]
-    [InlineData((int)ClipboardRestoreOutcome.SkippedExternalChange)]
-    [InlineData((int)ClipboardRestoreOutcome.Failed)]
+    [InlineData(0)] // NotRequested
+    [InlineData(1)] // Restored
+    [InlineData(2)] // SkippedExternalChange
+    [InlineData(3)] // Failed
     public void PasteSuccessAndClipboardRestoreOutcomeRemainIndependent(int restoreOutcomeValue)
     {
         var restoreOutcome = (ClipboardRestoreOutcome)restoreOutcomeValue;
@@ -815,7 +815,8 @@ public sealed class ClipboardSnapshotTests
         collection[0] = "changed";
 
         Assert.Equal(new byte[] { 1, 2, 3 }, bytesClone);
-        Assert.Equal(new[] { "a.txt", "b.txt" }, pathsClone);
+        Assert.Equal("a.txt", pathsClone[0]);
+        Assert.Equal("b.txt", pathsClone[1]);
         Assert.Equal("eins", collectionClone[0]);
     }
 }

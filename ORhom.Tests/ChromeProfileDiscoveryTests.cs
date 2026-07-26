@@ -4,6 +4,11 @@ namespace ORhom.Tests;
 
 public sealed class ChromeProfileDiscoveryTests : IDisposable
 {
+    private static readonly string[] ExpectedFallbackProfileDirectories =
+        ["Default", "Profile 2"];
+    private static readonly string[] ExpectedProfileLabels =
+        ["Privat (Default)", "Arbeit (Profile 3)"];
+
     private readonly string _directory = Path.Combine(
         Path.GetTempPath(),
         "ORhom.Tests",
@@ -74,7 +79,9 @@ public sealed class ChromeProfileDiscoveryTests : IDisposable
 
         var result = new ChromeProfileDiscovery().Discover(configuredUserDataDirectory: userData);
 
-        Assert.Equal(new[] { "Default", "Profile 2" }, result.Profiles.Select(profile => profile.DirectoryName));
+        Assert.Equal(
+            ExpectedFallbackProfileDirectories,
+            result.Profiles.Select(profile => profile.DirectoryName));
     }
 
     [Fact]
@@ -103,7 +110,9 @@ public sealed class ChromeProfileDiscoveryTests : IDisposable
                 form.Show();
                 Application.DoEvents();
                 var profileList = Assert.Single(form.Controls.OfType<ListBox>());
-                Assert.Equal(new[] { "Privat (Default)", "Arbeit (Profile 3)" }, profileList.Items.Cast<object>().Select(item => item.ToString()));
+                Assert.Equal(
+                    ExpectedProfileLabels,
+                    profileList.Items.Cast<object>().Select(item => item.ToString()));
                 Assert.Equal("Arbeit (Profile 3)", profileList.SelectedItem?.ToString());
                 Assert.Contains(form.Controls.OfType<Button>(), button => button.Text == "Profil verwenden" && button.Enabled);
                 form.Close();

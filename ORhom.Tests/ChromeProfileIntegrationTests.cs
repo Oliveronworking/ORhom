@@ -142,7 +142,7 @@ public sealed class ChromeProfileIntegrationTests
             NativeMethods.HasWindowMark(snapshot.Handle, targetIdentity.OwnershipPropertyName));
     }
 
-    private static IReadOnlyList<IntPtr> FindVisibleChromeWindows()
+    private static List<IntPtr> FindVisibleChromeWindows()
     {
         var windows = new List<IntPtr>();
         _ = NativeMethods.EnumWindows((window, _) =>
@@ -161,7 +161,7 @@ public sealed class ChromeProfileIntegrationTests
     }
 
     private static async Task<IntPtr> WaitForCorrelatedWindowAsync(
-        IReadOnlySet<IntPtr> existingWindows,
+        HashSet<IntPtr> existingWindows,
         string markerUrl,
         TimeSpan timeout)
     {

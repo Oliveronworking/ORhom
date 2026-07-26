@@ -580,7 +580,7 @@ internal sealed class LocalWhisperModelManager : IDisposable
         DeleteFileRequired(VerificationPath, "ungültigen Modell-Prüfnachweis");
     }
 
-    private void DeleteFileRequired(string path, string description)
+    private static void DeleteFileRequired(string path, string description)
     {
         if (!File.Exists(path))
         {
@@ -724,10 +724,9 @@ internal sealed class LocalWhisperModelManager : IDisposable
 
     private void ThrowIfDisposed()
     {
-        if (Volatile.Read(ref _disposeState) != 0)
-        {
-            throw new ObjectDisposedException(nameof(LocalWhisperModelManager));
-        }
+        ObjectDisposedException.ThrowIf(
+            Volatile.Read(ref _disposeState) != 0,
+            this);
     }
 
     private void EnsureSufficientDiskSpace()

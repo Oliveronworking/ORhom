@@ -104,7 +104,7 @@ else {
     New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
 }
 
-& dotnet restore $solutionPath -m:1
+& dotnet restore $solutionPath -m:1 --locked-mode
 Assert-CommandSucceeded 'dotnet restore'
 
 & dotnet format $solutionPath --verify-no-changes --no-restore
@@ -113,7 +113,7 @@ Assert-CommandSucceeded 'dotnet format'
 & dotnet test $solutionPath -c Release --no-restore --nologo -m:1 -p:TreatWarningsAsErrors=true
 Assert-CommandSucceeded 'dotnet test'
 
-& dotnet restore $projectPath -r win-x64 -m:1
+& dotnet restore $projectPath -r win-x64 -m:1 --locked-mode
 Assert-CommandSucceeded 'runtime-specific dotnet restore'
 
 & dotnet publish $projectPath `

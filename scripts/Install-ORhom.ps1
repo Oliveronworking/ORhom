@@ -10,9 +10,11 @@ $publishDir = [IO.Path]::GetFullPath((Join-Path $repoRoot 'artifacts\publish\win
 $installDir = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs\ORhom'))
 $dataDir = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'ORhom'))
 $legacyInstallDirs = @(
+    [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs\OpenAIFlow')),
     [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'Programs\OliSpeechToText'))
 )
 $legacyDataDirs = @(
+    [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'OpenAIFlow')),
     [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'OliSpeechToText'))
 )
 $settingsPath = Join-Path $dataDir 'settings.json'
@@ -32,11 +34,14 @@ $legacyStandaloneExecutables = @(
     [IO.Path]::GetFullPath((Join-Path $desktop 'SpeechToText.exe'))
 )
 $legacyExecutableNames = @(
+    'OpenAIFlow.exe',
     'OliSpeechToText.exe',
     'SpeechToText.exe',
     'ChatGptDictationBridge.exe'
 )
 $legacyProductMetadata = @(
+    'OpenAIFlow',
+    'OpenAI Flow Dictation',
     'OliSpeechToText',
     'SpeechToText',
     'ChatGptDictationBridge'
@@ -128,6 +133,7 @@ if (-not $publishDir.StartsWith($repoRoot + [IO.Path]::DirectorySeparatorChar, [
 
 $managedProcessNames = @(
     'ORhom',
+    'OpenAIFlow',
     'OliSpeechToText',
     'SpeechToText',
     'ChatGptDictationBridge'
@@ -161,10 +167,16 @@ if (Test-Path -LiteralPath $publishDir) {
 }
 New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
 
+& dotnet restore $projectPath -r win-x64 -m:1 --locked-mode
+if ($LASTEXITCODE -ne 0) {
+    throw "Die ORhom-Abhängigkeiten konnten nicht reproduzierbar wiederhergestellt werden (Exitcode $LASTEXITCODE)."
+}
+
 & dotnet publish $projectPath `
     -c Release `
     -r win-x64 `
     --self-contained true `
+    --no-restore `
     -p:PublishProfile=WindowsSelfContained `
     -o $publishDir
 if ($LASTEXITCODE -ne 0) {
@@ -290,6 +302,7 @@ else {
     Join-Path $env:APPDATA 'Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar'
 }
 $legacyShortcutNames = @(
+    'OpenAI Flow Dictation.lnk',
     'OliSpeechToText.lnk',
     'SpeechToText.lnk'
 )
@@ -334,9 +347,16 @@ $legacyInstalledExecutables = @(
     }
 ) + $legacyStandaloneExecutables
 foreach ($legacyInstalledExecutable in $legacyInstalledExecutables) {
-    if (Test-Path -LiteralPath $legacyInstalledExecutable -PathType Leaf) {
-        Remove-Item -LiteralPath $legacyInstalledExecutable -Force
+    if (-not (Test-Path -LiteralPath $legacyInstalledExecutable -PathType Leaf)) {
+        continue
     }
+
+    if (-not (Test-IsLegacyExecutablePath -CandidatePath $legacyInstalledExecutable)) {
+        Write-Warning "Eine nicht eindeutig ORhom zuordenbare Datei bleibt unangetastet: $legacyInstalledExecutable"
+        continue
+    }
+
+    Remove-Item -LiteralPath $legacyInstalledExecutable -Force
 }
 
 foreach ($legacyInstallDir in $legacyInstallDirs) {
