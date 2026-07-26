@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -35,7 +34,6 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
     private readonly AppLogger _logger;
     private readonly SemaphoreSlim _initializationGate = new(1, 1);
     private readonly SemaphoreSlim _processingGate = new(1, 1);
-    private readonly ConcurrentQueue<string> _nativeInitializationMessages = new();
     private WhisperFactory? _factory;
     private WhisperProcessor? _processor;
     private IDisposable? _nativeLogSubscription;
@@ -102,7 +100,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
         {
             DisposeWhisperObjects();
             throw new LocalWhisperRecognitionException(
-                "whisper.cpp konnte das deutsche Modell nicht über Vulkan laden. Bitte den aktuellen AMD-Adrenalin-Treiber sowie Microsoft Visual C++ 2015–2022 Redistributable (x64) installieren und ORhom neu starten.",
+                "whisper.cpp konnte das deutsche Modell nicht über Vulkan laden. Bitte den aktuellen AMD-Adrenalin-Treiber sowie Microsoft Visual C++ v14 Redistributable (x64) installieren und ORhom neu starten.",
                 ex);
         }
         finally
@@ -243,9 +241,6 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
         _warmupCompleted = false;
         _vulkanBackendConfirmed = false;
         _rx7700XtDeviceIndex = -1;
-        while (_nativeInitializationMessages.TryDequeue(out _))
-        {
-        }
 
         RuntimeOptions.LibraryPath = null;
         if (RuntimeOptions.LoadedLibrary is { } loadedLibrary &&
@@ -361,11 +356,6 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
         if (FindRx7700XtVulkanDevice(collapsed) is { } rx7700XtDevice)
         {
             Volatile.Write(ref _rx7700XtDeviceIndex, rx7700XtDevice);
-        }
-
-        if (_nativeInitializationMessages.Count < 200)
-        {
-            _nativeInitializationMessages.Enqueue(collapsed);
         }
 
         if (level is WhisperLogLevel.Error or WhisperLogLevel.Warning ||
