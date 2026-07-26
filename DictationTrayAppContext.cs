@@ -37,6 +37,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private readonly SettingsForm _settingsForm;
     private readonly DictationHistoryStore _history;
     private readonly DictationHistoryForm _historyForm;
+    private readonly int _uiThreadId;
     private AppStatus _status = AppStatus.Idle;
     private string _idleReadinessTitle = string.Empty;
     private string _idleReadinessHint = string.Empty;
@@ -59,6 +60,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         ChromeProfileDiscovery chromeProfileDiscovery,
         AppPaths paths)
     {
+        _uiThreadId = Environment.CurrentManagedThreadId;
         _logger = logger;
         _applicationIcon = LoadApplicationIcon();
         _settings = settings;
@@ -597,6 +599,13 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                 return;
             }
 
+            if (result.PasteMayHaveReachedTarget)
+            {
+                ShowMessage(
+                    "Das automatische Einfügen konnte nicht bestätigt werden. Bitte zuerst das Zielfeld prüfen; das Diktat bleibt im Verlauf.");
+                return;
+            }
+
             var availableOnClipboard =
                 result.TextIsOnClipboard ||
                 (result.AllowClipboardFallback &&
@@ -711,13 +720,13 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         _audioDuckingTimer.Dispose();
         _audioDucking.Dispose();
         _localSession?.Capture.Dispose();
-        _dictationController.Dispose();
         _applicationIcon.Dispose();
         var preparationTasks = Task.WhenAll(
             _startupPreparationTask,
             _localPreparationTask);
         if (preparationTasks.IsCompleted)
         {
+            _dictationController.Dispose();
             _localWhisper.Dispose();
             _localPreparationCancellation?.Dispose();
             _startupCancellation.Dispose();
@@ -729,6 +738,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _ = preparationTasks.ContinueWith(
                 _ =>
                 {
+                    _dictationController.Dispose();
                     _localWhisper.Dispose();
                     localPreparationCancellation?.Dispose();
                     _startupCancellation.Dispose();
@@ -1161,18 +1171,33 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                     : DictationHistoryOutcomes.PasteFailed);
         }
 
+        var unconfirmedRecoveryCopied =
+            !historyPersisted &&
+            (pasteResult.TextIsOnClipboard ||
+             (pasteResult.ShouldCopyUnconfirmedTextAsLastResort &&
+              ClipboardHelper.TrySetText(text, _logger)));
         var copied = !pasteResult.Succeeded &&
+                     !pasteResult.PasteMayHaveReachedTarget &&
                      (pasteResult.TextIsOnClipboard ||
                       (pasteResult.ShouldAttemptClipboardFallback &&
                        ClipboardHelper.TrySetText(text, _logger)));
-        _logger.Info($"Local dictation paste completed. Success={pasteResult.Succeeded} TextLength={text.Length} ClipboardRestoreOutcome={pasteResult.ClipboardRestoreOutcome}.");
+        _logger.Info($"Local dictation paste completed. Success={pasteResult.Succeeded} MayHaveReachedTarget={pasteResult.PasteMayHaveReachedTarget} TextLength={text.Length} ClipboardRestoreOutcome={pasteResult.ClipboardRestoreOutcome}.");
         if (!historyPersisted)
         {
-            ShowMessage(pasteResult.Succeeded
+            ShowMessage(pasteResult.PasteMayHaveReachedTarget
+                ? unconfirmedRecoveryCopied
+                    ? "Das Einfügen konnte nicht bestätigt und der Text nicht im Diktierverlauf gesichert werden. Bitte zuerst das Zielfeld prüfen; nur falls er dort fehlt, liegt er als Rettung in der Zwischenablage."
+                    : "Das Einfügen konnte nicht bestätigt und der Text weder im Diktierverlauf noch in der Zwischenablage gesichert werden. Bitte das Zielfeld prüfen."
+                : pasteResult.Succeeded
                 ? "Text wurde eingefügt, konnte aber nicht im Diktierverlauf gesichert werden."
                 : copied
                     ? "Text konnte weder eingefügt noch im Diktierverlauf gesichert werden. Er liegt als Rettung in der Zwischenablage."
                     : "Text konnte weder eingefügt noch sicher im Diktierverlauf oder in der Zwischenablage gesichert werden.");
+        }
+        else if (pasteResult.PasteMayHaveReachedTarget)
+        {
+            ShowMessage(
+                "Das Einfügen konnte nicht bestätigt werden. Bitte zuerst das Zielfeld prüfen; der Text bleibt im Diktierverlauf.");
         }
         else if (!pasteResult.Succeeded)
         {
@@ -1553,10 +1578,12 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                         : DictationHistoryOutcomes.PasteFailed);
         }
 
-        _logger.Info($"Dictation paste completed. Success={pasteResult.Succeeded} TextLength={text.Length} ClipboardRestoreOutcome={pasteResult.ClipboardRestoreOutcome} TextIsOnClipboard={pasteResult.TextIsOnClipboard}");
+        _logger.Info($"Dictation paste completed. Success={pasteResult.Succeeded} MayHaveReachedTarget={pasteResult.PasteMayHaveReachedTarget} TextLength={text.Length} ClipboardRestoreOutcome={pasteResult.ClipboardRestoreOutcome} TextIsOnClipboard={pasteResult.TextIsOnClipboard}");
         if (!historyPersisted)
         {
-            ShowMessage(pasteResult.Succeeded
+            ShowMessage(pasteResult.PasteMayHaveReachedTarget
+                ? "Das Einfügen konnte nicht bestätigt und der Text nicht im Verlauf gespeichert werden. Bitte zuerst das Zielfeld prüfen; der ChatGPT-Entwurf bleibt als Sicherung erhalten."
+                : pasteResult.Succeeded
                 ? "Text wurde eingefügt, aber nicht im Verlauf gespeichert. Der ChatGPT-Entwurf bleibt als Sicherung erhalten."
                 : "Text konnte weder im Verlauf gespeichert noch sicher eingefügt werden. Der ChatGPT-Entwurf bleibt als Sicherung erhalten.");
         }
@@ -1564,7 +1591,14 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         {
             ShowMessage(pasteResult.Succeeded
                 ? "Text wurde eingefügt und im Verlauf gesichert, aber der ChatGPT-Entwurf konnte nicht gelöscht werden. Bitte das ChatGPT-Profil öffnen und den Entwurf löschen."
+                : pasteResult.PasteMayHaveReachedTarget
+                    ? "Das Einfügen konnte nicht bestätigt werden. Bitte zuerst das Zielfeld prüfen. Der Text liegt im Verlauf; der ChatGPT-Entwurf konnte nicht gelöscht werden."
                 : "Text liegt sicher im Verlauf, aber Einfügen und Löschen des ChatGPT-Entwurfs sind fehlgeschlagen. Bitte das ChatGPT-Profil öffnen.");
+        }
+        else if (pasteResult.PasteMayHaveReachedTarget)
+        {
+            ShowMessage(
+                "Das Einfügen konnte nicht bestätigt werden. Bitte zuerst das Zielfeld prüfen; der Text bleibt im Diktierverlauf.");
         }
         else if (!pasteResult.Succeeded)
         {
@@ -1940,19 +1974,42 @@ internal sealed class DictationTrayAppContext : ApplicationContext
 
     private void RunOnUiThread(Action action)
     {
-        if (_recordingOverlay.IsDisposed || _lifetimeCancellation.IsCancellationRequested)
+        if (!CanDispatchUiAction())
         {
             return;
         }
 
-        if (_recordingOverlay.InvokeRequired)
+        if (Environment.CurrentManagedThreadId == _uiThreadId)
         {
-            _recordingOverlay.BeginInvoke(action);
+            if (CanDispatchUiAction())
+            {
+                action();
+            }
+
             return;
         }
 
-        action();
+        try
+        {
+            _hotkeyWindow.BeginInvoke((Action)(() =>
+            {
+                if (CanDispatchUiAction())
+                {
+                    action();
+                }
+            }));
+        }
+        catch (InvalidOperationException) when (!CanDispatchUiAction())
+        {
+            // Shutdown can destroy the dispatcher handle between the checks above.
+        }
     }
+
+    private bool CanDispatchUiAction() =>
+        Volatile.Read(ref _disposeState) == 0 &&
+        !_lifetimeCancellation.IsCancellationRequested &&
+        !_hotkeyWindow.IsDisposed &&
+        _hotkeyWindow.IsHandleCreated;
 
     private static string FormatBytes(long bytes) =>
         bytes >= 1024L * 1024 * 1024
@@ -2650,7 +2707,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                 var profileIdentity = ChromeProfileIdentity.From(_settings);
                 var backgroundWindowWasPresent =
                     ChatGptWindowFinder.FindOwnedBackgroundWindow(_settings) != IntPtr.Zero;
-                var backgroundWindowReleased = ChatGptWindowFinder.CloseOwnedBackgroundWindowAndWait(
+                var backgroundWindowReleased = await ChatGptWindowFinder.CloseOwnedBackgroundWindowAndWaitAsync(
                     profileIdentity,
                     _logger);
                 if (!backgroundWindowReleased)
