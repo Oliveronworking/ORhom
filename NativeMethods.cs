@@ -114,6 +114,7 @@ internal static class NativeMethods
     private const uint MouseEventLeftUp = 0x0004;
     private const uint InputKeyboard = 1;
     private const uint KeyEventKeyUp = 0x0002;
+    private const int KeyReleaseAttemptCount = 3;
     private const uint GetAncestorRoot = 2;
     private const uint GetWindowOwner = 4;
     private const int GwlExStyle = -20;
@@ -282,8 +283,20 @@ internal static class NativeMethods
         return GetForegroundWindow() == targetWindow;
     }
 
-    public static bool SendPasteShortcut()
+    public static PasteShortcutDispatchResult SendPasteShortcut()
     {
+        return SendPasteShortcutCore(
+            inputs => SendInput(
+                (uint)inputs.Length,
+                inputs,
+                Marshal.SizeOf<Input>()));
+    }
+
+    internal static PasteShortcutDispatchResult SendPasteShortcutCore(
+        Func<Input[], uint> sendInputs)
+    {
+        ArgumentNullException.ThrowIfNull(sendInputs);
+
         var inputs = new[]
         {
             CreateKeyboardInput((ushort)Keys.ControlKey, keyUp: false),
@@ -291,7 +304,33 @@ internal static class NativeMethods
             CreateKeyboardInput((ushort)Keys.V, keyUp: true),
             CreateKeyboardInput((ushort)Keys.ControlKey, keyUp: true)
         };
-        return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>()) == (uint)inputs.Length;
+        var acceptedInputCount = sendInputs(inputs);
+        if (acceptedInputCount == (uint)inputs.Length)
+        {
+            return new PasteShortcutDispatchResult(
+                acceptedInputCount,
+                (uint)inputs.Length,
+                CleanupAttempted: false,
+                CleanupSucceeded: true);
+        }
+
+        var cleanupAttempted = acceptedInputCount > 0 &&
+                               acceptedInputCount < (uint)inputs.Length;
+        var cleanupSucceeded = true;
+        if (cleanupAttempted)
+        {
+            // A partial prefix can leave Ctrl or V pressed. Release Ctrl first so
+            // any remaining V-up cannot be interpreted as another Ctrl+V chord.
+            var controlReleased = TrySendKeyUp(sendInputs, Keys.ControlKey);
+            var vReleased = TrySendKeyUp(sendInputs, Keys.V);
+            cleanupSucceeded = controlReleased && vReleased;
+        }
+
+        return new PasteShortcutDispatchResult(
+            acceptedInputCount,
+            (uint)inputs.Length,
+            cleanupAttempted,
+            cleanupSucceeded);
     }
 
     public static bool IsKeyDown(Keys key) => (GetAsyncKeyState((int)key) & 0x8000) != 0;
@@ -474,7 +513,37 @@ internal static class NativeMethods
             }
         };
     }
+
+    private static bool TrySendKeyUp(
+        Func<Input[], uint> sendInputs,
+        Keys key)
+    {
+        var input = CreateKeyboardInput((ushort)key, keyUp: true);
+        for (var attempt = 0; attempt < KeyReleaseAttemptCount; attempt++)
+        {
+            try
+            {
+                if (sendInputs([input]) == 1)
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // Cleanup is retried so a transient injection failure cannot
+                // leave an app-injected key pressed.
+            }
+        }
+
+        return false;
+    }
 }
+
+internal readonly record struct PasteShortcutDispatchResult(
+    uint AcceptedInputCount,
+    uint RequestedInputCount,
+    bool CleanupAttempted,
+    bool CleanupSucceeded);
 
 [Flags]
 internal enum HotkeyModifiers : uint

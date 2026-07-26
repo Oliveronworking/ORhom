@@ -7,6 +7,12 @@ internal static class ClipboardHelper
 {
     private const int ClipboardCaptureAttemptCount = 5;
     private const int ClipboardWriteAttemptCount = 4;
+    internal const string ExcludeClipboardContentFromMonitorProcessingFormat =
+        "ExcludeClipboardContentFromMonitorProcessing";
+    internal const string CanIncludeInClipboardHistoryFormat =
+        "CanIncludeInClipboardHistory";
+    internal const string CanUploadToCloudClipboardFormat =
+        "CanUploadToCloudClipboard";
 
     public static bool TryCaptureStable(
         AppLogger logger,
@@ -180,20 +186,27 @@ internal static class ClipboardHelper
         return ClipboardRestoreOutcome.Failed;
     }
 
-    public static bool TrySetText(string text, AppLogger logger)
+    public static bool TrySetText(string text, AppLogger logger) =>
+        TrySetTextCore(text, logger);
+
+    public static bool TrySetText(string text) =>
+        TrySetTextCore(text, logger: null);
+
+    private static bool TrySetTextCore(string text, AppLogger? logger)
     {
         for (var attempt = 1; attempt <= ClipboardWriteAttemptCount; attempt++)
         {
             try
             {
-                Clipboard.SetText(text);
+                using var dataObject = CreatePrivacyProtectedTextDataObject(text);
+                Clipboard.SetDataObject(dataObject, copy: true);
                 return true;
             }
             catch (Exception ex)
             {
                 if (attempt == ClipboardWriteAttemptCount)
                 {
-                    logger.Error("Clipboard text update failed.", ex);
+                    logger?.Error("Clipboard text update failed.", ex);
                     return false;
                 }
 
@@ -202,6 +215,31 @@ internal static class ClipboardHelper
         }
 
         return false;
+    }
+
+    internal static DisposableDataObject CreatePrivacyProtectedTextDataObject(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        var dataObject = new DisposableDataObject();
+        try
+        {
+            dataObject.SetData(DataFormats.UnicodeText, autoConvert: false, text);
+
+            // Windows accepts any payload for the broad exclusion marker. The
+            // history and cloud-specific markers use a serialized zero DWORD.
+            AddDisabledClipboardFeature(
+                dataObject,
+                ExcludeClipboardContentFromMonitorProcessingFormat);
+            AddDisabledClipboardFeature(dataObject, CanIncludeInClipboardHistoryFormat);
+            AddDisabledClipboardFeature(dataObject, CanUploadToCloudClipboardFormat);
+            return dataObject;
+        }
+        catch
+        {
+            dataObject.Dispose();
+            throw;
+        }
     }
 
     internal static object CloneClipboardValue(object value)
@@ -222,6 +260,16 @@ internal static class ClipboardHelper
         var clone = new StringCollection();
         clone.AddRange(source.Cast<string>().ToArray());
         return clone;
+    }
+
+    private static void AddDisabledClipboardFeature(
+        DisposableDataObject dataObject,
+        string format)
+    {
+        dataObject.SetData(
+            format,
+            autoConvert: false,
+            new MemoryStream(new byte[sizeof(uint)], writable: false));
     }
 }
 

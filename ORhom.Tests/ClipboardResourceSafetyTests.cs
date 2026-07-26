@@ -39,6 +39,61 @@ public sealed class ClipboardResourceSafetyTests
         Assert.Throws<ObjectDisposedException>(() => stream.ReadByte());
     }
 
+    [Fact]
+    public void AppOwnedTextIncludesWindowsClipboardPrivacyFormats()
+    {
+        using var dataObject =
+            ClipboardHelper.CreatePrivacyProtectedTextDataObject("vertrauliches Diktat");
+
+        Assert.Equal(
+            "vertrauliches Diktat",
+            dataObject.GetData(DataFormats.UnicodeText, autoConvert: false));
+        AssertDisabledDword(
+            dataObject,
+            ClipboardHelper.ExcludeClipboardContentFromMonitorProcessingFormat);
+        AssertDisabledDword(
+            dataObject,
+            ClipboardHelper.CanIncludeInClipboardHistoryFormat);
+        AssertDisabledDword(
+            dataObject,
+            ClipboardHelper.CanUploadToCloudClipboardFormat);
+    }
+
+    [Fact]
+    public void ClipboardPrivacyPayloadsAreOwnedAndDisposedWithDataObject()
+    {
+        var dataObject = ClipboardHelper.CreatePrivacyProtectedTextDataObject("sensitiv");
+        var streams = new[]
+        {
+            GetPrivacyStream(
+                dataObject,
+                ClipboardHelper.ExcludeClipboardContentFromMonitorProcessingFormat),
+            GetPrivacyStream(
+                dataObject,
+                ClipboardHelper.CanIncludeInClipboardHistoryFormat),
+            GetPrivacyStream(
+                dataObject,
+                ClipboardHelper.CanUploadToCloudClipboardFormat)
+        };
+
+        dataObject.Dispose();
+
+        Assert.All(
+            streams,
+            stream => Assert.Throws<ObjectDisposedException>(() => stream.ReadByte()));
+    }
+
+    private static void AssertDisabledDword(DisposableDataObject dataObject, string format)
+    {
+        Assert.True(dataObject.GetDataPresent(format, autoConvert: false));
+        Assert.Equal(new byte[sizeof(uint)], GetPrivacyStream(dataObject, format).ToArray());
+    }
+
+    private static MemoryStream GetPrivacyStream(
+        DisposableDataObject dataObject,
+        string format) =>
+        Assert.IsType<MemoryStream>(dataObject.GetData(format, autoConvert: false));
+
     private sealed class TrackingDisposable : IDisposable
     {
         public bool IsDisposed { get; private set; }

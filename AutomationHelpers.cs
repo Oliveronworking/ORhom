@@ -814,17 +814,19 @@ internal static class AutomationHelpers
                 clipboardChangedByUs = true;
                 ownedClipboardSequence = NativeMethods.GetClipboardSequenceNumber();
                 Thread.Sleep(50);
-                if (!IsSafeKeyboardTarget(element, chatWindow, settings, logger))
+                if (!IsSafeKeyboardTarget(element, chatWindow, settings, logger) ||
+                    NativeMethods.GetClipboardSequenceNumber() != ownedClipboardSequence.Value)
                 {
-                    logger.Info("ChatGPT copy skipped because focus changed before select-all dispatch.");
+                    logger.Info("ChatGPT copy skipped because focus or clipboard ownership changed before select-all dispatch.");
                     break;
                 }
 
                 SendKeys.SendWait("^a");
                 Thread.Sleep(80);
-                if (!IsSafeKeyboardTarget(element, chatWindow, settings, logger))
+                if (!IsSafeKeyboardTarget(element, chatWindow, settings, logger) ||
+                    NativeMethods.GetClipboardSequenceNumber() != ownedClipboardSequence.Value)
                 {
-                    logger.Info("ChatGPT copy skipped because focus changed before copy dispatch.");
+                    logger.Info("ChatGPT copy skipped because focus or clipboard ownership changed before copy dispatch.");
                     break;
                 }
 

@@ -19,7 +19,7 @@ public sealed class AppLoggerTests : IDisposable
 
         var exception = Record.Exception(() =>
         {
-            var logger = new AppLogger(pathThatIsAFile);
+            using var logger = new AppLogger(pathThatIsAFile);
             logger.Info("This write cannot succeed.");
             logger.Error("Neither can this one.", new IOException("expected"));
         });
@@ -28,10 +28,27 @@ public sealed class AppLoggerTests : IDisposable
     }
 
     [Fact]
+    public void ConstructorFailureDisablesFutureLoggingAttempts()
+    {
+        Directory.CreateDirectory(_directory);
+        var pathThatIsAFile = Path.Combine(_directory, "not-a-directory");
+        File.WriteAllText(pathThatIsAFile, "occupied");
+        using var logger = new AppLogger(pathThatIsAFile);
+
+        File.Delete(pathThatIsAFile);
+        Directory.CreateDirectory(pathThatIsAFile);
+
+        logger.Info("The path is available now, but this logger stays disabled.");
+        logger.Error("A disabled logger does not retry I/O.", new IOException("expected"));
+
+        Assert.False(File.Exists(logger.LogPath));
+    }
+
+    [Fact]
     public void FullLogIsRotatedBeforeTheNextEntryIsWritten()
     {
         var logDirectory = Path.Combine(_directory, "logs");
-        var logger = new AppLogger(logDirectory);
+        using var logger = new AppLogger(logDirectory);
         File.WriteAllBytes(logger.LogPath, new byte[AppLogger.MaximumLogFileBytes]);
 
         logger.Info("newest-entry");
@@ -39,14 +56,75 @@ public sealed class AppLoggerTests : IDisposable
         var rotatedPath = Path.Combine(logDirectory, AppLogger.RotatedLogFileName);
         Assert.True(File.Exists(rotatedPath));
         Assert.Equal(AppLogger.MaximumLogFileBytes, new FileInfo(rotatedPath).Length);
-        Assert.Contains("newest-entry", File.ReadAllText(logger.LogPath, Encoding.UTF8));
+        Assert.Contains("newest-entry", ReadAllTextShared(logger.LogPath));
         Assert.True(new FileInfo(logger.LogPath).Length < AppLogger.MaximumLogFileBytes);
+    }
+
+    [Fact]
+    public void EntryThatExactlyReachesMaximumSizeIsNotRotatedEarly()
+    {
+        const string exactFitMessage = "exact-fit-entry";
+        var logDirectory = Path.Combine(_directory, "logs");
+        Directory.CreateDirectory(logDirectory);
+        var logPath = Path.Combine(logDirectory, "app.log");
+        var entryBytes = Encoding.UTF8.GetByteCount(
+            $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff zzz} [INFO] {exactFitMessage}{Environment.NewLine}");
+        var initialBytes = checked((int)(AppLogger.MaximumLogFileBytes - entryBytes));
+        File.WriteAllBytes(logPath, new byte[initialBytes]);
+        using var logger = new AppLogger(logDirectory);
+
+        logger.Info(exactFitMessage);
+
+        var rotatedPath = Path.Combine(logDirectory, AppLogger.RotatedLogFileName);
+        Assert.False(File.Exists(rotatedPath));
+        Assert.Equal(AppLogger.MaximumLogFileBytes, new FileInfo(logPath).Length);
+
+        logger.Info("entry-after-exact-fit");
+
+        Assert.Equal(AppLogger.MaximumLogFileBytes, new FileInfo(rotatedPath).Length);
+        Assert.Contains("entry-after-exact-fit", ReadAllTextShared(logPath));
+    }
+
+    [Fact]
+    public async Task ConcurrentWritesAreSerializedWithoutLosingEntries()
+    {
+        const int writerCount = 8;
+        const int entriesPerWriter = 100;
+        using var logger = new AppLogger(Path.Combine(_directory, "logs"));
+        var expectedMessages = Enumerable
+            .Range(0, writerCount)
+            .SelectMany(
+                writer => Enumerable.Range(0, entriesPerWriter),
+                (writer, entry) => $"writer-{writer:D2}-entry-{entry:D3}")
+            .ToHashSet(StringComparer.Ordinal);
+
+        var writers = Enumerable.Range(0, writerCount)
+            .Select(writer => Task.Run(() =>
+            {
+                for (var entry = 0; entry < entriesPerWriter; entry++)
+                {
+                    logger.Info($"writer-{writer:D2}-entry-{entry:D3}");
+                }
+            }));
+
+        await Task.WhenAll(writers);
+
+        var lines = ReadAllLinesShared(logger.LogPath);
+        Assert.Equal(writerCount * entriesPerWriter, lines.Count);
+        var actualMessages = lines
+            .Select(line =>
+            {
+                var separator = line.IndexOf("] ", StringComparison.Ordinal);
+                return separator >= 0 ? line[(separator + 2)..] : line;
+            })
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.True(expectedMessages.SetEquals(actualMessages));
     }
 
     [Fact]
     public void ExceptionsAreLoggedWithTheirStackTrace()
     {
-        var logger = new AppLogger(Path.Combine(_directory, "logs"));
+        using var logger = new AppLogger(Path.Combine(_directory, "logs"));
 
         try
         {
@@ -57,7 +135,7 @@ public sealed class AppLoggerTests : IDisposable
             logger.Error("Expected test failure.", ex);
         }
 
-        var log = File.ReadAllText(logger.LogPath, Encoding.UTF8);
+        var log = ReadAllTextShared(logger.LogPath);
         Assert.Contains("InvalidOperationException", log);
         Assert.Contains(nameof(ThrowLoggedFailure), log);
     }
@@ -72,6 +150,34 @@ public sealed class AppLoggerTests : IDisposable
 
     private static void ThrowLoggedFailure() =>
         throw new InvalidOperationException("stack-trace-test");
+
+    private static string ReadAllTextShared(string path)
+    {
+        using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        return reader.ReadToEnd();
+    }
+
+    private static List<string> ReadAllLinesShared(string path)
+    {
+        using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        var lines = new List<string>();
+        while (reader.ReadLine() is { } line)
+        {
+            lines.Add(line);
+        }
+
+        return lines;
+    }
 }
 
 public sealed class AppSettingsPersistenceTests : IDisposable
@@ -330,6 +436,116 @@ public sealed class DictationHistoryStoreTests : IDisposable
             out _));
         Assert.True(File.Exists(path));
         Assert.Equal("{not-json", File.ReadAllText(quarantinedPath));
+    }
+
+    [Fact]
+    public void QuarantinedHistoryRemainsClearableWhenNoEntriesCouldBeLoaded()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "history.json");
+        File.WriteAllText(path, "{sensitiver-klartext");
+        var store = new DictationHistoryStore(path, CreateLogger());
+
+        Assert.Empty(store.GetEntries());
+        Assert.True(store.CanClear());
+
+        Assert.True(store.Clear());
+        Assert.False(store.CanClear());
+        Assert.Empty(Directory.GetFiles(
+            _directory,
+            "history.unreadable-*.json",
+            SearchOption.TopDirectoryOnly));
+    }
+
+    [Fact]
+    public void SanitizedSensitiveHistoryRemainsClearableWhenNoEntriesSurvive()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "history.json");
+        var rejectedEntry = new DictationHistoryEntry(
+            Guid.Empty,
+            default,
+            "Sensitiver, aber ungültiger Klartext",
+            DictationHistoryOutcomes.Pasted);
+        File.WriteAllText(
+            path,
+            System.Text.Json.JsonSerializer.Serialize(new[] { rejectedEntry }));
+        var store = new DictationHistoryStore(path, CreateLogger());
+
+        Assert.Empty(store.GetEntries());
+        Assert.True(store.CanClear());
+
+        Assert.True(store.Clear());
+        Assert.False(store.CanClear());
+        Assert.DoesNotContain("Sensitiver", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void ClearRemovesActiveTextAndAllTimestampedQuarantines()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "private-history.backup.json");
+        var store = new DictationHistoryStore(path, CreateLogger());
+        Assert.True(store.TryAdd(
+            "Aktiver Klartext",
+            DictationHistoryOutcomes.Pasted,
+            out _));
+        var firstQuarantine = Path.Combine(
+            _directory,
+            "private-history.backup.unreadable-20260101-010203-004.json");
+        var secondQuarantine = Path.Combine(
+            _directory,
+            "private-history.backup.unreadable-20260202-020304-005.json");
+        var unrelatedFile = Path.Combine(
+            _directory,
+            "private-history.backup.unreadable-not-a-timestamp.json");
+        File.WriteAllText(firstQuarantine, "Quarantäne-Klartext 1");
+        File.WriteAllText(secondQuarantine, "Quarantäne-Klartext 2");
+        File.WriteAllText(unrelatedFile, "Nicht vom History-Store erzeugt");
+
+        Assert.True(store.CanClear());
+        var cleared = store.Clear();
+
+        Assert.True(cleared);
+        Assert.False(store.CanClear());
+        Assert.Empty(store.GetEntries());
+        Assert.Empty(new DictationHistoryStore(path, CreateLogger()).GetEntries());
+        Assert.DoesNotContain("Aktiver Klartext", File.ReadAllText(path));
+        Assert.False(File.Exists(firstQuarantine));
+        Assert.False(File.Exists(secondQuarantine));
+        Assert.True(File.Exists(unrelatedFile));
+    }
+
+    [Fact]
+    public void ClearReportsLockedQuarantineAndCanBeRetried()
+    {
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, "history.json");
+        var store = new DictationHistoryStore(path, CreateLogger());
+        Assert.True(store.TryAdd(
+            "Aktiver Klartext",
+            DictationHistoryOutcomes.Pasted,
+            out _));
+        var quarantinePath = Path.Combine(
+            _directory,
+            "history.unreadable-20260303-030405-006.json");
+        File.WriteAllText(quarantinePath, "Gesperrter Quarantäne-Klartext");
+
+        using (new FileStream(
+                   quarantinePath,
+                   FileMode.Open,
+                   FileAccess.Read,
+                   FileShare.None))
+        {
+            Assert.False(store.Clear());
+            Assert.Empty(store.GetEntries());
+            Assert.True(store.CanClear());
+            Assert.True(File.Exists(quarantinePath));
+        }
+
+        Assert.True(store.Clear());
+        Assert.False(store.CanClear());
+        Assert.False(File.Exists(quarantinePath));
     }
 
     [Fact]
@@ -793,6 +1009,35 @@ public sealed class PasteResultTests
             AllowClipboardFallback: true,
             ClipboardRestoreOutcome.NotRequested,
             TextIsOnClipboard: true);
+
+        Assert.False(result.ShouldAttemptClipboardFallback);
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void UnconfirmedPossiblePasteRequestsLastResortCopyOnlyWhenNeeded(
+        bool textIsOnClipboard,
+        bool expected)
+    {
+        var result = new PasteResult(
+            Succeeded: false,
+            AllowClipboardFallback: false,
+            ClipboardRestoreOutcome.Restored,
+            TextIsOnClipboard: textIsOnClipboard,
+            PasteMayHaveReachedTarget: true);
+
+        Assert.Equal(expected, result.ShouldCopyUnconfirmedTextAsLastResort);
+    }
+
+    [Fact]
+    public void UnconfirmedPossiblePasteSuppressesClipboardFallback()
+    {
+        var result = new PasteResult(
+            Succeeded: false,
+            AllowClipboardFallback: true,
+            ClipboardRestoreOutcome.Restored,
+            PasteMayHaveReachedTarget: true);
 
         Assert.False(result.ShouldAttemptClipboardFallback);
     }

@@ -38,6 +38,33 @@ internal sealed class DictationHistoryStore
         }
     }
 
+    public bool CanClear()
+    {
+        lock (_gate)
+        {
+            if (_entries.Count > 0)
+            {
+                return true;
+            }
+
+            try
+            {
+                if (File.Exists(_path) &&
+                    new FileInfo(_path).Length > "[]".Length)
+                {
+                    return true;
+                }
+
+                return GetQuarantinedHistoryPaths().Length > 0;
+            }
+            catch
+            {
+                // Keep the action available when the disk state cannot be inspected.
+                return true;
+            }
+        }
+    }
+
     public Guid Add(string text, string outcome)
     {
         return TryAdd(text, outcome, out var id) ? id : Guid.Empty;
@@ -185,30 +212,39 @@ internal sealed class DictationHistoryStore
         }
     }
 
-    public void Clear()
+    public bool Clear()
     {
-        var cleared = false;
+        var activeHistoryCleared = false;
+        var quarantineFilesCleared = false;
         lock (_gate)
         {
-            if (!EnsurePersistenceAvailableLocked())
+            if (EnsurePersistenceAvailableLocked())
             {
-                return;
+                var previousEntries = _entries.ToList();
+                _entries.Clear();
+                activeHistoryCleared = SaveLocked();
+                if (!activeHistoryCleared)
+                {
+                    _entries = previousEntries;
+                }
             }
 
-            var previousEntries = _entries.ToList();
-            _entries.Clear();
-            cleared = SaveLocked();
-            if (!cleared)
-            {
-                _entries = previousEntries;
-            }
+            quarantineFilesCleared = TryDeleteQuarantinedHistory();
         }
 
-        if (cleared)
+        if (activeHistoryCleared)
         {
-            _logger.Info("Dictation history cleared.");
             Changed?.Invoke(this, EventArgs.Empty);
         }
+
+        if (activeHistoryCleared && quarantineFilesCleared)
+        {
+            _logger.Info("Dictation history and quarantined history files cleared.");
+            return true;
+        }
+
+        _logger.Error("Dictation history could not be cleared completely.");
+        return false;
     }
 
     private List<DictationHistoryEntry> Load(out bool persistenceAvailable)
@@ -317,6 +353,83 @@ internal sealed class DictationHistoryStore
             _logger.Error("Unreadable dictation history could not be quarantined; persistence remains disabled.", ex);
             return false;
         }
+    }
+
+    private bool TryDeleteQuarantinedHistory()
+    {
+        string[] quarantinePaths;
+        try
+        {
+            quarantinePaths = GetQuarantinedHistoryPaths();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Quarantined dictation history files could not be enumerated.", ex);
+            return false;
+        }
+
+        var allDeleted = true;
+        foreach (var quarantinePath in quarantinePaths)
+        {
+            try
+            {
+                File.Delete(quarantinePath);
+            }
+            catch (Exception ex)
+            {
+                allDeleted = false;
+                _logger.Error(
+                    $"Quarantined dictation history file '{quarantinePath}' could not be removed.",
+                    ex);
+            }
+        }
+
+        return allDeleted;
+    }
+
+    private string[] GetQuarantinedHistoryPaths()
+    {
+        var directory = Path.GetDirectoryName(_path) ?? AppContext.BaseDirectory;
+        return Directory
+            .GetFiles(directory, "*", SearchOption.TopDirectoryOnly)
+            .Where(IsQuarantinedHistoryPath)
+            .ToArray();
+    }
+
+    private bool IsQuarantinedHistoryPath(string candidatePath)
+    {
+        var candidateName = Path.GetFileName(candidatePath);
+        var prefix = $"{Path.GetFileNameWithoutExtension(_path)}.unreadable-";
+        var extension = Path.GetExtension(_path);
+        if (!candidateName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+            !candidateName.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var timestampLength = candidateName.Length - prefix.Length - extension.Length;
+        if (timestampLength != 19)
+        {
+            return false;
+        }
+
+        var timestamp = candidateName.AsSpan(prefix.Length, timestampLength);
+        for (var index = 0; index < timestamp.Length; index++)
+        {
+            if (index is 8 or 15)
+            {
+                if (timestamp[index] != '-')
+                {
+                    return false;
+                }
+            }
+            else if (!char.IsAsciiDigit(timestamp[index]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private bool SaveLocked()
