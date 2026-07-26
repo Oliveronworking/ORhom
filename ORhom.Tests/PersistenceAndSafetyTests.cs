@@ -595,6 +595,40 @@ public sealed class DictationHistoryStoreTests : IDisposable
     }
 
     [Fact]
+    public void ThrowingChangeSubscriberCannotInvalidatePersistedEntry()
+    {
+        var store = CreateStore();
+        var healthySubscriberCalls = 0;
+        store.Changed += (_, _) =>
+            throw new InvalidOperationException("Simulated UI teardown.");
+        store.Changed += (_, _) => healthySubscriberCalls++;
+
+        var saved = store.TryAdd(
+            "Bleibt sicher gespeichert",
+            DictationHistoryOutcomes.Pasted,
+            out var id);
+
+        Assert.True(saved);
+        Assert.NotEqual(Guid.Empty, id);
+        Assert.Equal(1, healthySubscriberCalls);
+        var persisted = Assert.Single(CreateStore().GetEntries());
+        Assert.Equal(id, persisted.Id);
+        Assert.Equal("Bleibt sicher gespeichert", persisted.Text);
+    }
+
+    [Fact]
+    public void NewHistoryStoreDoesNotClaimThereIsAnythingToClear()
+    {
+        var missingDirectory = Path.Combine(_directory, "missing");
+        var store = new DictationHistoryStore(
+            Path.Combine(missingDirectory, "history.json"),
+            CreateLogger());
+
+        Assert.False(store.CanClear());
+        Assert.False(Directory.Exists(missingDirectory));
+    }
+
+    [Fact]
     public void FailedHistoryWriteIsReportedAndDoesNotPretendTheEntryExists()
     {
         Directory.CreateDirectory(_directory);

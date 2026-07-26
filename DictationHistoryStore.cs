@@ -137,7 +137,7 @@ internal sealed class DictationHistoryStore
         if (consumed)
         {
             _logger.Info("One-time pending composer cleanup authorization consumed.");
-            Changed?.Invoke(this, EventArgs.Empty);
+            NotifyChanged();
         }
 
         return consumed;
@@ -177,8 +177,8 @@ internal sealed class DictationHistoryStore
         }
 
         _logger.Info($"Dictation history entry saved. Outcome={outcome} TextLength={entry.Text.Length} EntryCount={entryCount}");
-        Changed?.Invoke(this, EventArgs.Empty);
         id = entry.Id;
+        NotifyChanged();
         return true;
     }
 
@@ -208,7 +208,7 @@ internal sealed class DictationHistoryStore
         if (updated)
         {
             _logger.Info($"Dictation history outcome updated. Outcome={outcome}");
-            Changed?.Invoke(this, EventArgs.Empty);
+            NotifyChanged();
         }
     }
 
@@ -234,7 +234,7 @@ internal sealed class DictationHistoryStore
 
         if (activeHistoryCleared)
         {
-            Changed?.Invoke(this, EventArgs.Empty);
+            NotifyChanged();
         }
 
         if (activeHistoryCleared && quarantineFilesCleared)
@@ -245,6 +245,29 @@ internal sealed class DictationHistoryStore
 
         _logger.Error("Dictation history could not be cleared completely.");
         return false;
+    }
+
+    private void NotifyChanged()
+    {
+        var handlers = Changed;
+        if (handlers is null)
+        {
+            return;
+        }
+
+        foreach (EventHandler handler in handlers.GetInvocationList())
+        {
+            try
+            {
+                handler(this, EventArgs.Empty);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(
+                    "A dictation history change subscriber failed after persistence completed.",
+                    ex);
+            }
+        }
     }
 
     private List<DictationHistoryEntry> Load(out bool persistenceAvailable)
@@ -390,10 +413,17 @@ internal sealed class DictationHistoryStore
     private string[] GetQuarantinedHistoryPaths()
     {
         var directory = Path.GetDirectoryName(_path) ?? AppContext.BaseDirectory;
-        return Directory
-            .GetFiles(directory, "*", SearchOption.TopDirectoryOnly)
-            .Where(IsQuarantinedHistoryPath)
-            .ToArray();
+        try
+        {
+            return Directory
+                .GetFiles(directory, "*", SearchOption.TopDirectoryOnly)
+                .Where(IsQuarantinedHistoryPath)
+                .ToArray();
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return [];
+        }
     }
 
     private bool IsQuarantinedHistoryPath(string candidatePath)

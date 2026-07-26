@@ -250,9 +250,33 @@ internal static class ClipboardHelper
             byte[] bytes => bytes.ToArray(),
             string[] paths => paths.ToArray(),
             StringCollection collection => CloneStringCollection(collection),
-            MemoryStream stream => new MemoryStream(stream.ToArray(), writable: false),
+            Stream stream => CloneStream(stream),
+            IDisposable => throw new NotSupportedException(
+                $"Clipboard value type '{value.GetType().FullName}' cannot be snapshotted safely."),
             _ => value
         };
+    }
+
+    private static MemoryStream CloneStream(Stream source)
+    {
+        if (!source.CanRead || !source.CanSeek)
+        {
+            throw new NotSupportedException(
+                "Clipboard streams must be readable and seekable to be snapshotted safely.");
+        }
+
+        var originalPosition = source.Position;
+        try
+        {
+            source.Position = 0;
+            using var buffer = new MemoryStream();
+            source.CopyTo(buffer);
+            return new MemoryStream(buffer.ToArray(), writable: false);
+        }
+        finally
+        {
+            source.Position = originalPosition;
+        }
     }
 
     private static StringCollection CloneStringCollection(StringCollection source)

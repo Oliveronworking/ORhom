@@ -40,6 +40,35 @@ public sealed class ClipboardResourceSafetyTests
     }
 
     [Fact]
+    public void ForeignSeekableStreamIsClonedWithoutTakingOwnership()
+    {
+        using var source = new BufferedStream(new MemoryStream([1, 2, 3]));
+        source.Position = 1;
+
+        var clone = Assert.IsType<MemoryStream>(
+            ClipboardHelper.CloneClipboardValue(source));
+        using (var snapshot = new DisposableDataObject())
+        {
+            snapshot.SetData("ORhom.Test.ForeignStream", clone);
+        }
+
+        Assert.Equal(1, source.Position);
+        Assert.Equal(2, source.ReadByte());
+        Assert.Equal([1, 2, 3], clone.ToArray());
+    }
+
+    [Fact]
+    public void ForeignDisposableValueIsRejectedWithoutDisposal()
+    {
+        var value = new TrackingDisposable();
+
+        Assert.Throws<NotSupportedException>(
+            () => ClipboardHelper.CloneClipboardValue(value));
+
+        Assert.False(value.IsDisposed);
+    }
+
+    [Fact]
     public void AppOwnedTextIncludesWindowsClipboardPrivacyFormats()
     {
         using var dataObject =
