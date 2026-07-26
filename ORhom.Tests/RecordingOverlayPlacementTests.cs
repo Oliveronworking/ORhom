@@ -95,6 +95,76 @@ public sealed class RecordingOverlayPlacementTests
                 TimeSpan.FromSeconds(-1)));
     }
 
+    [Fact]
+    public void RefreshTimerAdaptsCadenceAndStopsWhenOverlayIsHidden()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = new RecordingOverlayForm(72, "Ctrl+Space")
+            {
+                Opacity = 0
+            };
+            var timer = GetAnimationTimer(form);
+
+            form.ShowStatus(AppStatus.Idle);
+            Application.DoEvents();
+            Assert.True(timer.Enabled);
+            Assert.Equal(500, timer.Interval);
+
+            form.ShowStatus(AppStatus.Recording);
+            Assert.True(timer.Enabled);
+            Assert.Equal(90, timer.Interval);
+
+            form.ShowStatus(AppStatus.Pasting);
+            Assert.True(timer.Enabled);
+            Assert.Equal(2000, timer.Interval);
+
+            form.ShowStatus(AppStatus.Idle);
+            form.ShowOperationProgress("Modell wird vorbereitet", "Bitte warten");
+            Assert.Equal(90, timer.Interval);
+
+            form.ClearOperationProgress();
+            Assert.Equal(500, timer.Interval);
+
+            form.ShowTransientError("Testfehler");
+            Assert.Equal(2000, timer.Interval);
+
+            form.HideOverlay();
+            Assert.False(timer.Enabled);
+        });
+    }
+
+    [Fact]
+    public void RefreshTickKeepsActiveAndIdleAnimationsButLeavesStaticStateUnchanged()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = new RecordingOverlayForm(72, "Ctrl+Space")
+            {
+                Opacity = 0
+            };
+
+            form.ShowStatus(AppStatus.Idle);
+            Application.DoEvents();
+            StopAnimationTimer(form);
+            SetPrivateField(form, "_animationFrame", 10);
+            InvokeParameterless(form, "OnRefreshTimerTick");
+            Assert.Equal(15, GetPrivateField<int>(form, "_animationFrame"));
+
+            form.ShowStatus(AppStatus.Recording);
+            StopAnimationTimer(form);
+            SetPrivateField(form, "_animationFrame", 10);
+            InvokeParameterless(form, "OnRefreshTimerTick");
+            Assert.Equal(11, GetPrivateField<int>(form, "_animationFrame"));
+
+            form.ShowStatus(AppStatus.Pasting);
+            StopAnimationTimer(form);
+            SetPrivateField(form, "_animationFrame", 10);
+            InvokeParameterless(form, "OnRefreshTimerTick");
+            Assert.Equal(10, GetPrivateField<int>(form, "_animationFrame"));
+        });
+    }
+
     [Theory]
     [InlineData(0, 210, 42)]
     [InlineData(1, 255, 50)]
@@ -397,13 +467,10 @@ public sealed class RecordingOverlayPlacementTests
                 overlay,
                 "_lastForegroundWindow",
                 foregroundBeforeRefresh);
-            GetAnimationTimer(overlay).Start();
-            var timeoutAt = Environment.TickCount64 + 2_000;
-            while (!IsAbove(overlay.Handle, competingTopMostWindow.Handle) &&
-                   Environment.TickCount64 < timeoutAt)
+            SetPrivateField(overlay, "_refreshTick", 0);
+            for (var tick = 0; tick < 4; tick++)
             {
-                Application.DoEvents();
-                Thread.Sleep(10);
+                InvokeParameterless(overlay, "OnRefreshTimerTick");
             }
 
             Assert.True(IsAbove(
@@ -513,6 +580,18 @@ public sealed class RecordingOverlayPlacementTests
         method.Invoke(form, [eventArgs]);
     }
 
+    private static void InvokeParameterless(
+        RecordingOverlayForm form,
+        string methodName)
+    {
+        var method = typeof(RecordingOverlayForm).GetMethod(
+            methodName,
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        method.Invoke(form, null);
+    }
+
     private static void SetPrivateField(
         RecordingOverlayForm form,
         string fieldName,
@@ -524,6 +603,18 @@ public sealed class RecordingOverlayPlacementTests
             System.Reflection.BindingFlags.NonPublic);
         Assert.NotNull(field);
         field.SetValue(form, value);
+    }
+
+    private static T GetPrivateField<T>(
+        RecordingOverlayForm form,
+        string fieldName)
+    {
+        var field = typeof(RecordingOverlayForm).GetField(
+            fieldName,
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        return Assert.IsType<T>(field.GetValue(form));
     }
 
     private static void StopAnimationTimer(RecordingOverlayForm form)

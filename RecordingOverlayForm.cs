@@ -11,6 +11,12 @@ internal sealed class RecordingOverlayForm : Form
     private const int WmSettingChange = 0x001A;
     private const int WmDisplayChange = 0x007E;
     private const int MaNoActivate = 3;
+    private const int ActiveAnimationIntervalMs = 90;
+    private const int IdleAnimationIntervalMs = 500;
+    private const int PassiveMaintenanceIntervalMs = 2000;
+    private const int ActiveOcclusionProbeIntervalTicks = 3;
+    private const int IdleOcclusionProbeIntervalTicks = 4;
+    private const int IdleAnimationFrameStep = 5;
 
     private readonly System.Windows.Forms.Timer _animationTimer;
     private readonly System.Windows.Forms.Timer _errorTimer;
@@ -32,6 +38,8 @@ internal sealed class RecordingOverlayForm : Form
     private bool _interactionEnabled = true;
     private bool _positionInitialized;
     private int _animationFrame;
+    private int _refreshTick;
+    private OverlayRefreshMode _refreshMode = OverlayRefreshMode.IdleAnimation;
     private DateTime? _recordingStartedAtUtc;
     private IntPtr? _lastForegroundWindow;
     private InteractionTarget _pressedTarget;
@@ -60,13 +68,11 @@ internal sealed class RecordingOverlayForm : Form
         AccessibleName = "ORhom Diktierleiste";
         AccessibleRole = AccessibleRole.ToolBar;
 
-        _animationTimer = new System.Windows.Forms.Timer { Interval = 90 };
-        _animationTimer.Tick += (_, _) =>
+        _animationTimer = new System.Windows.Forms.Timer
         {
-            _animationFrame = (_animationFrame + 1) % 120;
-            MaintainTopMost(checkForOcclusion: _animationFrame % 3 == 0);
-            Invalidate();
+            Interval = ActiveAnimationIntervalMs
         };
+        _animationTimer.Tick += (_, _) => OnRefreshTimerTick();
 
         _errorTimer = new System.Windows.Forms.Timer { Interval = 4500 };
         _errorTimer.Tick += (_, _) =>
@@ -75,6 +81,7 @@ internal sealed class RecordingOverlayForm : Form
             _transientError = string.Empty;
             RefreshInteractionPresentation();
             UpdateAccessibilityText();
+            UpdateRefreshTimer();
             Invalidate();
         };
 
@@ -207,7 +214,7 @@ internal sealed class RecordingOverlayForm : Form
         }
 
         MaintainTopMost(force: true);
-        _animationTimer.Start();
+        UpdateRefreshTimer();
         Invalidate();
     }
 
@@ -225,6 +232,7 @@ internal sealed class RecordingOverlayForm : Form
         else
         {
             MaintainTopMost(force: true);
+            UpdateRefreshTimer();
             Invalidate();
         }
     }
@@ -243,7 +251,7 @@ internal sealed class RecordingOverlayForm : Form
         }
 
         MaintainTopMost(force: true);
-        _animationTimer.Start();
+        UpdateRefreshTimer();
         Invalidate();
     }
 
@@ -253,6 +261,7 @@ internal sealed class RecordingOverlayForm : Form
         _operationHint = string.Empty;
         RefreshInteractionPresentation();
         UpdateAccessibilityText();
+        UpdateRefreshTimer();
         Invalidate();
     }
 
@@ -265,6 +274,7 @@ internal sealed class RecordingOverlayForm : Form
         _operationHint = string.Empty;
         _recordingStartedAtUtc = null;
         _pressedTarget = InteractionTarget.None;
+        _refreshTick = 0;
         if (Visible)
         {
             Hide();
@@ -284,6 +294,7 @@ internal sealed class RecordingOverlayForm : Form
     {
         base.OnShown(e);
         MaintainTopMost(force: true);
+        UpdateRefreshTimer();
     }
 
     protected override void OnDpiChanged(DpiChangedEventArgs e)
@@ -1132,6 +1143,81 @@ internal sealed class RecordingOverlayForm : Form
             new RecordingOverlayPlacementEventArgs(_placement));
     }
 
+    private void UpdateRefreshTimer()
+    {
+        if (!Visible || IsDisposed || Disposing)
+        {
+            _animationTimer.Stop();
+            return;
+        }
+
+        var nextMode = ResolveRefreshMode();
+        var nextInterval = nextMode switch
+        {
+            OverlayRefreshMode.ActiveAnimation => ActiveAnimationIntervalMs,
+            OverlayRefreshMode.IdleAnimation => IdleAnimationIntervalMs,
+            _ => PassiveMaintenanceIntervalMs
+        };
+        if (_refreshMode != nextMode)
+        {
+            _refreshMode = nextMode;
+            _refreshTick = 0;
+        }
+
+        if (_animationTimer.Interval != nextInterval)
+        {
+            _animationTimer.Interval = nextInterval;
+        }
+
+        if (!_animationTimer.Enabled)
+        {
+            _animationTimer.Start();
+        }
+    }
+
+    private OverlayRefreshMode ResolveRefreshMode()
+    {
+        if (_transientError.Length > 0 || _status == AppStatus.Pasting)
+        {
+            return OverlayRefreshMode.PassiveMaintenance;
+        }
+
+        if (_status == AppStatus.Idle && _operationTitle.Length == 0)
+        {
+            return OverlayRefreshMode.IdleAnimation;
+        }
+
+        return OverlayRefreshMode.ActiveAnimation;
+    }
+
+    private void OnRefreshTimerTick()
+    {
+        _refreshTick++;
+        switch (_refreshMode)
+        {
+            case OverlayRefreshMode.ActiveAnimation:
+                _animationFrame = (_animationFrame + 1) % 120;
+                MaintainTopMost(
+                    checkForOcclusion:
+                        _refreshTick % ActiveOcclusionProbeIntervalTicks == 0);
+                Invalidate();
+                break;
+
+            case OverlayRefreshMode.IdleAnimation:
+                _animationFrame =
+                    (_animationFrame + IdleAnimationFrameStep) % 120;
+                MaintainTopMost(
+                    checkForOcclusion:
+                        _refreshTick % IdleOcclusionProbeIntervalTicks == 0);
+                Invalidate();
+                break;
+
+            case OverlayRefreshMode.PassiveMaintenance:
+                MaintainTopMost(checkForOcclusion: true);
+                break;
+        }
+    }
+
     private void MaintainTopMost(
         bool force = false,
         bool checkForOcclusion = false)
@@ -1188,7 +1274,7 @@ internal sealed class RecordingOverlayForm : Form
         Region = new Region(path);
     }
 
-    private bool HasExceededDragThreshold(Size delta)
+    private static bool HasExceededDragThreshold(Size delta)
     {
         var threshold = SystemInformation.DragSize;
         return Math.Abs(delta.Width) >= Math.Max(threshold.Width / 2, 2) ||
@@ -1343,6 +1429,13 @@ internal sealed class RecordingOverlayForm : Form
         Body,
         PrimaryAction,
         AbortAction
+    }
+
+    private enum OverlayRefreshMode
+    {
+        ActiveAnimation,
+        IdleAnimation,
+        PassiveMaintenance
     }
 }
 
