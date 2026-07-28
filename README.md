@@ -4,13 +4,71 @@ ORhom ist eine Windows-Tray-App für lokale deutsche Diktierung. Ein Klick auf d
 
 Die Spracherkennung läuft standardmäßig vollständig lokal, fest auf Deutsch (`de`) und ohne OpenAI-API-Key. Als ausdrücklich auswählbarer Fallback bleibt die bisherige ChatGPT-Browser-Diktierung erhalten.
 
+## macOS
+
+Für Apple-Silicon-Macs gibt es zusätzlich eine native Menüleisten-App. Sie verwendet
+`whisper.cpp` mit Metal-Beschleunigung und dem quantisierten Whisper-Large-V3-Turbo-
+Modell. Siri und die macOS-Diktierfunktion werden nicht benötigt. Aufnahme und
+Transkription bleiben vollständig lokal. Die Mac-Ausgabe bietet:
+
+- ein frei aufzeichnungsbares globales Tastenkürzel (Standard: `F8`),
+- eine persistente Mikrofonauswahl, die beim ersten Start das interne Mac-Mikrofon bevorzugt,
+- eine Windows-paritätische Diktierleiste in **Klein**, **Mittel** oder **Groß** mit
+  **Stopp & einfügen** und **Abbrechen**,
+- gezieltes Einfügen am zuvor aktiven Cursor mit stabiler Fenster-/Fokusbestätigung,
+  WebView-/Electron-Unterstützung, vollständiger `⌘V`-Sequenz für Chrome-
+  Editoren und sicherem Zwischenablage-Fallback,
+- einen auswählbaren lokalen Verlauf der letzten zehn Diktate mit `⌘C`,
+- standardmäßig aktiviertes Audio-Ducking während der Aufnahme und
+- optionalen Start beim Anmelden.
+
+Zum Bauen werden nur die Apple Command Line Tools benötigt:
+
+```zsh
+./scripts/Build-ORhom-macOS.sh
+```
+
+Die lokale Installation nach `/Applications/ORhom.app` erfolgt mit:
+
+```zsh
+./scripts/Install-ORhom-macOS.sh
+```
+
+Lokale Builds erhalten standardmäßig eine stabile, explizite App-Anforderung, damit
+macOS die einmal gewährten Datenschutzfreigaben bei weiteren persönlichen Builds
+wiedererkennt. Für eine verteilte Version sollte stattdessen eine reguläre
+Apple-Code-Signing-Identität über `ORHOM_CODESIGN_IDENTITY` verwendet werden.
+
+Beim ersten Start lädt ORhom das rund 574 MB große, per SHA-256 geprüfte Modell und
+fragt macOS nach Mikrofonzugriff. Mikrofon und Tastenkürzel lassen sich danach direkt
+im ORhom-Fenster auswählen; Änderungen werden sofort gespeichert. Für das
+automatische Einfügen muss ORhom außerdem unter **Datenschutz & Sicherheit >
+Bedienungshilfen** freigegeben werden. ORhom fordert diese Freigabe an und aktualisiert
+den Status nach der Rückkehr aus den Systemeinstellungen automatisch. Ohne Freigabe
+bleibt der erkannte Text sicher in der Zwischenablage und kann mit `Cmd+V` eingefügt
+werden.
+
+Unter **Anzeige & Audio** lässt sich festlegen, ob ORhom den aktuellen
+Systemausgang während einer bestätigten Aufnahme leiser stellt und welcher Pegel
+verbleibt (Standard: 10 %). Nach Stopp, Abbruch, Fehler oder Beenden wird der
+vorherige Pegel wiederhergestellt. Ändert der Benutzer die Lautstärke während des
+Diktats selbst, überschreibt ORhom diese Änderung nicht. Anders als Windows stellt
+macOS öffentlich keine gleichwertige Lautstärkesteuerung pro fremder App bereit;
+deshalb wird auf dem Mac der aktuelle Ausgabekanal als Ganzes abgesenkt.
+
 ## Bedienung auf einen Blick
 
 - Das Hauptfenster führt in drei Schritten durch **Modus wählen**, **Mikrofon auswählen** und **Shortcut festlegen**.
 - Im Bereitschaftszustand startet ein Klick auf die Diktierleiste das Diktat; der konfigurierte Hotkey funktioniert app-übergreifend.
+- Unter **Anzeige & Audio** lässt sich die Diktierleiste sofort zwischen **Klein** (210 × 42),
+  **Mittel** (255 × 50) und **Groß** (300 × 56) umstellen; neue Installationen
+  verwenden standardmäßig **Klein**. Position und Bildschirm der Leiste bleiben
+  auch nach Neustarts sowie Monitorwechseln erhalten.
 - Während der Aufnahme beendet **Stopp & einfügen** das Diktat regulär. Das separate **X** beziehungsweise Escape bricht ohne Einfügen ab.
 - Das Tray-Menü zeigt Status und Hinweise auf Deutsch. Seine Primäraktion passt sich dem Zustand an, etwa **Diktieren**, **Aufnahme stoppen** oder **Verarbeitung abbrechen**.
 - Im Tray lassen sich das Mikrofon schnell auswählen, das letzte Diktat erneut einfügen und die Diktierleiste ein- oder ausblenden.
+- Im **Diktierverlauf** ist das neueste Diktat bereits markiert; jede beliebige
+  Auswahl lässt sich direkt mit `⌘C` kopieren.
 - Technische Funktionen und die ChatGPT-Diagnose liegen gesammelt unter **Erweitert**.
 
 ## Voraussetzungen und Build
@@ -210,6 +268,20 @@ Der reale Regressionstest für zwei Chrome-Profile im selben User-Data-Verzeichn
 ```powershell
 $env:ORHOM_RUN_CHROME_INTEGRATION = '1'
 dotnet test .\ORhom.sln -c Release --filter 'Category=ChromeIntegration'
+```
+
+Die macOS-Suite prüft Browser-/Native-Paste-Routing, die vollständige
+`Cmd↓ V↓ V↑ Cmd↑`-Sequenz, `⌘C` im Verlauf sowie Audio-Ducking einschließlich
+Restore, Nutzeränderung und Ausgabegerätewechsel. Der optionale Hardwarelauf
+senkt den realen Ausgang kurz auf 90 % und stellt den exakten Ausgangspegel
+sofort wieder her. Der Chrome-Integrationstest öffnet ein temporäres lokales
+Testfenster im bereits laufenden Chrome, bestätigt die tatsächliche
+`contenteditable`-Änderung und schließt genau dieses Fenster wieder:
+
+```zsh
+./scripts/Test-ORhom-macOS.sh
+ORHOM_RUN_AUDIO_HARDWARE_TEST=1 ./scripts/Test-ORhom-macOS.sh
+./scripts/Test-ORhom-Chrome-macOS.sh
 ```
 
 ## Recherchequellen und Lizenzen
