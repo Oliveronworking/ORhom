@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>ORHOM_TEST:READY</title>
+  <style>
+    body {
+      margin: 40px;
+      font: 18px -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #111827;
+      color: #f9fafb;
+    }
+    #editor {
+      min-height: 160px;
+      padding: 18px;
+      border: 2px solid #3b82f6;
+      border-radius: 12px;
+      background: #1f2937;
+      outline: none;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <p>ORhom Chrome-Integrationstest</p>
+  <div
+    id="editor"
+    role="textbox"
+    aria-label="Testeditor"
+    aria-multiline="true"
+    contenteditable="true"
+    autofocus
+  ></div>
+  <script>
+    const editor = document.querySelector("#editor");
+    const updateTitle = () => {
+      document.title = `ORHOM_TEST:${editor.innerText}`;
+    };
+    editor.addEventListener("input", updateTitle);
+    editor.addEventListener("paste", () => {
+      document.title = "ORHOM_TEST:PASTE_EVENT";
+      setTimeout(updateTitle);
+    });
+    window.addEventListener("load", () => {
+      editor.focus();
+    });
+  </script>
+</body>
+</html>

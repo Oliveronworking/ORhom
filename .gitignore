@@ -1,3 +1,4 @@
+build/
 bin/
 obj/
 artifacts/
@@ -7,3 +8,4 @@ logs/
 *.user
 *.suo
 .vs/
+.DS_Store

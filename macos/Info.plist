@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>de</string>
+    <key>CFBundleDisplayName</key>
+    <string>ORhom</string>
+    <key>CFBundleExecutable</key>
+    <string>ORhom</string>
+    <key>CFBundleIconFile</key>
+    <string>ORhom</string>
+    <key>CFBundleIdentifier</key>
+    <string>at.orhom.mac</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>ORhom</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.6.3</string>
+    <key>CFBundleVersion</key>
+    <string>15</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.3</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>ORhom benötigt das Mikrofon, um dein Diktat lokal auf dem Mac aufzunehmen.</string>
+</dict>
+</plist>
