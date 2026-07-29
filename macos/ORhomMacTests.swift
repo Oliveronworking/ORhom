@@ -87,6 +87,110 @@ private func testPastePolicy() throws {
         "A native text area must remain eligible for direct AX insertion."
     )
     try expect(
+        !MacPastePolicy.shouldUseKeyboardPaste(
+            isKnownWebViewBundle: false,
+            focusedRole: nil,
+            hasWebAreaAncestor: false,
+            focusedElementMissing: true
+        ),
+        "An unknown app with no exposed focused element must fail closed."
+    )
+    try expect(
+        MacPastePolicy.shouldUseKeyboardPaste(
+            isKnownWebViewBundle: true,
+            focusedRole: nil,
+            hasWebAreaAncestor: false,
+            focusedElementMissing: true
+        ),
+        "A known editor app may use its exact stable window when no focused element is exposed."
+    )
+    try expect(
+        MacPastePolicy.keyboardPasteDelivery(
+            usesNonactivatingWindow: false
+        ) == .activeSession,
+        "A regular foreground app must receive the same session-level paste as a physical Command-V."
+    )
+    try expect(
+        MacPastePolicy.keyboardPasteDelivery(
+            usesNonactivatingWindow: true
+        ) == .targetProcess,
+        "A nonactivating panel must never send a global paste into the underlying app."
+    )
+    try expect(
+        MacPastePolicy.shouldRetainMappedAXWindow(
+            focusedWindowPresent: true,
+            mappedWindowPresent: true,
+            focusedElementEditable: true,
+            elementReportsFocused: true,
+            windowReportsFocused: true
+        ),
+        "A visible AX-focused window must win over an auxiliary topmost CG window."
+    )
+    try expect(
+        !MacPastePolicy.shouldRetainMappedAXWindow(
+            focusedWindowPresent: true,
+            mappedWindowPresent: true,
+            focusedElementEditable: false,
+            elementReportsFocused: true,
+            windowReportsFocused: true
+        ),
+        "A mapped AX window without a proven editor must not override the topmost window."
+    )
+    try expect(
+        MacPastePolicy.shouldPreferCurrentFocusedWindow(
+            capturedWindowMatchesCurrentFocusedWindow: true,
+            currentElementEditable: true,
+            elementReportsFocused: true,
+            windowReportsFocused: true
+        ),
+        "An unchanged captured AX-focused window must remain authoritative during paste."
+    )
+    try expect(
+        !MacPastePolicy.shouldPreferCurrentFocusedWindow(
+            capturedWindowMatchesCurrentFocusedWindow: true,
+            currentElementEditable: true,
+            elementReportsFocused: true,
+            windowReportsFocused: false
+        ),
+        "A non-key AX window must not redirect a session-level paste behind the topmost window."
+    )
+    try expect(
+        MacPastePolicy.mayUseWindowOnlyTarget(
+            inputHistoryStable: true,
+            capturedWindowMatchesCurrentWindow: true,
+            knownEditorSurface: true,
+            secureInputActive: false
+        ),
+        "A stable exact window-only target may paste only on a known editor surface."
+    )
+    try expect(
+        !MacPastePolicy.mayUseWindowOnlyTarget(
+            inputHistoryStable: false,
+            capturedWindowMatchesCurrentWindow: true,
+            knownEditorSurface: true,
+            secureInputActive: false
+        ),
+        "Intervening input must invalidate an ambiguous window-only target."
+    )
+    try expect(
+        !MacPastePolicy.mayUseWindowOnlyTarget(
+            inputHistoryStable: true,
+            capturedWindowMatchesCurrentWindow: true,
+            knownEditorSurface: false,
+            secureInputActive: false
+        ),
+        "An unknown window-only surface must fail closed."
+    )
+    try expect(
+        !MacPastePolicy.mayUseWindowOnlyTarget(
+            inputHistoryStable: true,
+            capturedWindowMatchesCurrentWindow: true,
+            knownEditorSurface: true,
+            secureInputActive: true
+        ),
+        "Secure input must block a window-only paste."
+    )
+    try expect(
         MacPastePolicy.mayReuseWebTarget(
             inputHistoryStable: true,
             exactEditableElementMatch: false
@@ -142,6 +246,83 @@ private func testPastePolicy() throws {
             isSecure: true
         ),
         "A secure floating text field must never become the paste target."
+    )
+    try expect(
+        MacPastePolicy.windowTitlesAreCompatible(
+            axTitle: "Draft - Google Chrome",
+            cgTitle: "Draft",
+            applicationName: "Google Chrome"
+        ),
+        "A browser AX title may contain the app suffix omitted by Core Graphics."
+    )
+    try expect(
+        MacPastePolicy.windowTitlesAreCompatible(
+            axTitle: "Draft",
+            cgTitle: "Draft",
+            applicationName: "Google Chrome"
+        ),
+        "Identical AX and Core Graphics window titles must match."
+    )
+    try expect(
+        !MacPastePolicy.windowTitlesAreCompatible(
+            axTitle: "GitHub - Pull Request - Google Chrome",
+            cgTitle: "GitHub",
+            applicationName: "Google Chrome"
+        ),
+        "A partial document-title prefix must not match another browser window."
+    )
+    try expect(
+        !MacPastePolicy.windowTitlesAreCompatible(
+            axTitle: "Draft",
+            cgTitle: "Draft - Unrelated",
+            applicationName: "Google Chrome"
+        ),
+        "A Core Graphics title with an unrelated suffix must not match."
+    )
+    try expect(
+        MacPastePolicy.mayPreferTopmostFrameMatch(
+            usesNonactivatingWindow: false,
+            authoritativeFocusedElement: true,
+            focusedElementEditable: true,
+            elementReportsFocused: true
+        ),
+        "A system-wide focused editor may resolve an otherwise ambiguous topmost frame."
+    )
+    try expect(
+        !MacPastePolicy.mayPreferTopmostFrameMatch(
+            usesNonactivatingWindow: true,
+            authoritativeFocusedElement: true,
+            focusedElementEditable: true,
+            elementReportsFocused: true
+        ),
+        "A nonactivating panel must not use the topmost-frame fallback."
+    )
+    try expect(
+        !MacPastePolicy.mayPreferTopmostFrameMatch(
+            usesNonactivatingWindow: false,
+            authoritativeFocusedElement: false,
+            focusedElementEditable: true,
+            elementReportsFocused: true
+        ),
+        "App-local stale focus must not use the topmost-frame fallback."
+    )
+    try expect(
+        !MacPastePolicy.mayPreferTopmostFrameMatch(
+            usesNonactivatingWindow: false,
+            authoritativeFocusedElement: true,
+            focusedElementEditable: false,
+            elementReportsFocused: true
+        ),
+        "A non-editor element must not use the topmost-frame fallback."
+    )
+    try expect(
+        !MacPastePolicy.mayPreferTopmostFrameMatch(
+            usesNonactivatingWindow: false,
+            authoritativeFocusedElement: true,
+            focusedElementEditable: true,
+            elementReportsFocused: false
+        ),
+        "An element without focused state must not use the topmost-frame fallback."
     )
 }
 
@@ -356,6 +537,6 @@ private enum ORhomMacTests {
         ] == "1" {
             try testAudioDuckingHardwareRoundTrip()
         }
-        print("ORhom macOS tests passed (17 test groups).")
+        print("ORhom macOS tests passed (38 test groups).")
     }
 }

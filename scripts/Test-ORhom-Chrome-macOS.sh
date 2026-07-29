@@ -3,10 +3,32 @@ set -euo pipefail
 
 script_dir="${0:A:h}"
 repo_dir="${script_dir:h}"
-app_binary="/Applications/ORhom.app/Contents/MacOS/ORhom"
+app_path="/Applications/ORhom.app"
+app_binary="${app_path}/Contents/MacOS/ORhom"
 fixture_path="${repo_dir}/macos/tests/fixtures/contenteditable.html"
 test_token="ORhomChromeTest$(/usr/bin/uuidgen | /usr/bin/tr -d '-')"
 test_window_id=""
+original_frontmost_pid="$(
+  /usr/bin/osascript \
+    -e 'tell application "System Events" to return unix id of first application process whose frontmost is true' \
+    2>/dev/null || true
+)"
+
+restore_original_frontmost() {
+  if [[ "${original_frontmost_pid}" != <-> ]]; then
+    return
+  fi
+  ORHOM_ORIGINAL_FRONTMOST_PID="${original_frontmost_pid}" \
+    /usr/bin/osascript >/dev/null 2>&1 <<'APPLESCRIPT' || true
+set originalPID to (system attribute "ORHOM_ORIGINAL_FRONTMOST_PID") as integer
+tell application "System Events"
+  set matches to every application process whose unix id is originalPID
+  if (count matches) is 1 then
+    set frontmost of item 1 of matches to true
+  end if
+end tell
+APPLESCRIPT
+}
 
 cleanup() {
   if [[ "${test_window_id}" == <-> ]]; then
@@ -15,6 +37,8 @@ cleanup() {
       -e "if exists (first window whose id is ${test_window_id}) then close (first window whose id is ${test_window_id})" \
       -e 'end tell' >/dev/null 2>&1 || true
   fi
+  /usr/bin/open "${app_path}" >/dev/null 2>&1 || true
+  restore_original_frontmost
 }
 trap cleanup EXIT
 
@@ -68,11 +92,18 @@ for _ in {1..120}; do
   fi
   /bin/sleep 0.05
 done
-/bin/sleep 0.25
+if [[ "${tab_title:-}" != "ORHOM_TEST:READY" ]]; then
+  echo "Chrome did not finish loading the contenteditable fixture." >&2
+  exit 1
+fi
+/bin/sleep 1
 
-ORHOM_DIAGNOSTIC_TEXT="${test_token}" \
-ORHOM_DIAGNOSTIC_SIMULATE_INTERVENING_INPUT=1 \
-  "${app_binary}" --diagnose-paste
+/usr/bin/open -g -W -a "${app_path}" \
+  --env "ORHOM_DIAGNOSTIC_TEXT=${test_token}" \
+  --env "ORHOM_DIAGNOSTIC_EXPECTED_BUNDLE=com.google.Chrome" \
+  --env "ORHOM_DIAGNOSTIC_SIMULATE_INTERVENING_INPUT=1" \
+  --env "ORHOM_DIAGNOSTIC_TRACE_FOCUS=1" \
+  --args --diagnose-paste
 
 tab_title="$(
   /usr/bin/osascript \
@@ -86,4 +117,14 @@ if [[ "${tab_title}" != "ORHOM_TEST:${test_token}" ]]; then
   exit 1
 fi
 
-echo "ORhom Chrome contenteditable integration test passed."
+/usr/bin/open "${app_path}" >/dev/null 2>&1 || true
+for _ in {1..80}; do
+  if /usr/bin/pgrep -x ORhom >/dev/null 2>&1; then
+    echo "ORhom Chrome contenteditable integration test passed."
+    exit 0
+  fi
+  /bin/sleep 0.05
+done
+
+echo "The Chrome integration test passed, but ORhom did not restart." >&2
+exit 1

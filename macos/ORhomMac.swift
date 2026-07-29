@@ -52,6 +52,11 @@ private struct CGWindowDescriptor {
     let layer: Int
 }
 
+private struct CGWindowOwnerDescriptor {
+    let processIdentifier: pid_t
+    let window: CGWindowDescriptor
+}
+
 private struct AXLayoutFingerprint {
     let relativeX: CGFloat
     let relativeY: CGFloat
@@ -78,26 +83,33 @@ private struct PasteEffectObservation {
     let selectedRangeLength: Int?
     let selectedMarkerHash: CFHashCode?
 
-    func differs(from other: PasteEffectObservation) -> Bool {
-        let valueChanged =
-            valueLength != nil &&
-            other.valueLength != nil &&
-            (
-                valueLength != other.valueLength ||
-                valueHash != other.valueHash
-            )
-        let rangeChanged =
-            selectedRangeLocation != nil &&
-            other.selectedRangeLocation != nil &&
-            (
-                selectedRangeLocation != other.selectedRangeLocation ||
-                selectedRangeLength != other.selectedRangeLength
-            )
-        let markerChanged =
-            selectedMarkerHash != nil &&
-            other.selectedMarkerHash != nil &&
-            selectedMarkerHash != other.selectedMarkerHash
-        return valueChanged || rangeChanged || markerChanged
+    func confirmsInsertion(
+        from other: PasteEffectObservation,
+        insertedUTF16Length: Int
+    ) -> Bool {
+        let replacedLength = max(
+            0,
+            other.selectedRangeLength ?? 0
+        )
+        if let valueLength,
+           let previousValueLength = other.valueLength,
+           valueHash != other.valueHash,
+           valueLength ==
+                previousValueLength -
+                    replacedLength +
+                    insertedUTF16Length {
+            return true
+        }
+        if let selectedRangeLocation,
+           let selectedRangeLength,
+           let previousRangeLocation =
+                other.selectedRangeLocation,
+           selectedRangeLocation ==
+                previousRangeLocation + insertedUTF16Length,
+           selectedRangeLength == 0 {
+            return true
+        }
+        return false
     }
 }
 
@@ -108,6 +120,7 @@ private enum PasteFocusProbe {
 }
 
 private let hotKeySignature: OSType = 0x4F52484D // ORHM
+private let syntheticPasteEventTag: Int64 = 0x4F52484D50415354 // ORHMPAST
 
 private func globalHotKeyHandler(
     _ nextHandler: EventHandlerCallRef?,
@@ -330,7 +343,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         ) { [weak self] event in
             guard
                 let self,
-                !self.isConfiguredHotKeyEvent(event)
+                !self.isConfiguredHotKeyEvent(event),
+                !self.isSyntheticPasteEvent(event)
             else {
                 return
             }
@@ -344,6 +358,17 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             }
             self.inputActivityLock.unlock()
         }
+    }
+
+    private func isSyntheticPasteEvent(_ event: NSEvent) -> Bool {
+        guard let cgEvent = event.cgEvent else { return false }
+        if cgEvent.getIntegerValueField(.eventSourceUserData) ==
+            syntheticPasteEventTag {
+            return true
+        }
+        return cgEvent.getIntegerValueField(
+            .eventSourceUnixProcessID
+        ) == Int64(ProcessInfo.processInfo.processIdentifier)
     }
 
     private func isConfiguredHotKeyEvent(_ event: NSEvent) -> Bool {
@@ -759,6 +784,19 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             NSApp.terminate(nil)
             return
         }
+        let expectedBundleIdentifier =
+            ProcessInfo.processInfo.environment[
+                "ORHOM_DIAGNOSTIC_EXPECTED_BUNDLE"
+            ]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let expectedBundleIdentifier,
+           !expectedBundleIdentifier.isEmpty,
+           target.bundleIdentifier != expectedBundleIdentifier {
+            store.log(
+                "Paste diagnostic failed. Reason='unexpected-target' ExpectedBundle='\(expectedBundleIdentifier)' ActualBundle='\(target.bundleIdentifier ?? "unknown")'."
+            )
+            NSApp.terminate(nil)
+            return
+        }
         diagnosticPasteboardSnapshot = captureStablePasteboardSnapshot(
             NSPasteboard.general
         )
@@ -969,12 +1007,53 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 if pasteTarget(
                     rawCandidate,
                     matches: foregroundWindowBefore
+                ) || MacPastePolicy.shouldRetainMappedAXWindow(
+                    focusedWindowPresent:
+                        rawCandidate.focusedWindow != nil,
+                    mappedWindowPresent:
+                        rawCandidate.windowNumber != nil,
+                    focusedElementEditable:
+                        rawCandidate.focusedElement.map {
+                            isProvenEditableKeyboardFocus(
+                                $0,
+                                bundleIdentifier:
+                                    rawCandidate.bundleIdentifier
+                            )
+                        } ?? false,
+                    elementReportsFocused:
+                        rawCandidate.focusedElement.flatMap {
+                            copyAXBoolean(
+                                from: $0,
+                                attribute: kAXFocusedAttribute
+                            )
+                        } == true,
+                    windowReportsFocused:
+                        rawCandidate.focusedWindow.flatMap {
+                            copyAXBoolean(
+                                from: $0,
+                                attribute: kAXFocusedAttribute
+                            )
+                        } == true
                 ) {
                     candidate = rawCandidate
+                    if !pasteTarget(
+                        rawCandidate,
+                        matches: foregroundWindowBefore
+                    ) {
+                        store.log(
+                            "Focus capture retained the mapped AX-focused window behind an auxiliary CG window. Attempt=\(attempt) AXWindowNumber=\(rawCandidate.windowNumber?.description ?? "none") ForegroundWindowNumber=\(foregroundWindowBefore?.number.description ?? "none")."
+                        )
+                    }
                 } else {
                     candidate = makeWindowOnlyPasteTarget(
                         application: applicationBefore,
-                        window: foregroundWindowBefore
+                        window: foregroundWindowBefore,
+                        usesNonactivatingWindow:
+                            sourceBefore.usesNonactivatingWindow,
+                        underlyingProcessIdentifier:
+                            sourceBefore.underlyingProcessIdentifier,
+                        underlyingApplicationLaunchDate:
+                            sourceBefore.underlyingApplicationLaunchDate
                     )
                     store.log(
                         "Focus capture ignored an AX element outside the stable foreground window. Attempt=\(attempt) AXWindowNumber=\(rawCandidate.windowNumber?.description ?? "none") ForegroundWindowNumber=\(foregroundWindowBefore?.number.description ?? "none")."
@@ -1042,6 +1121,24 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         else {
             return nil
         }
+        if AXIsProcessTrusted(),
+           let globalFocusedElement = systemWideFocusedAXElement(
+               for: frontmostApplication.processIdentifier
+           ) {
+            return PasteCaptureSource(
+                application: frontmostApplication,
+                focusedElement: globalFocusedElement,
+                usesNonactivatingWindow: false,
+                underlyingProcessIdentifier: nil,
+                underlyingApplicationLaunchDate: nil
+            )
+        }
+        if let focusedNonactivatingSource =
+            focusedNonactivatingPasteCaptureSource(
+                frontmostApplication: frontmostApplication
+            ) {
+            return focusedNonactivatingSource
+        }
         if let nonactivatingSource =
             nonactivatingPasteCaptureSource(
                 frontmostApplication: frontmostApplication
@@ -1055,6 +1152,115 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             underlyingProcessIdentifier: nil,
             underlyingApplicationLaunchDate: nil
         )
+    }
+
+    private func focusedNonactivatingPasteCaptureSource(
+        frontmostApplication: NSRunningApplication
+    ) -> PasteCaptureSource? {
+        guard AXIsProcessTrusted() else { return nil }
+
+        let candidates = visibleNonactivatingWindowCandidates()
+        var inspectedProcesses: Set<pid_t> = []
+        for candidate in candidates {
+            let processIdentifier = candidate.processIdentifier
+            guard
+                candidate.window.layer != 0,
+                processIdentifier !=
+                    frontmostApplication.processIdentifier,
+                processIdentifier !=
+                    ProcessInfo.processInfo.processIdentifier,
+                inspectedProcesses.insert(processIdentifier).inserted,
+                let application = NSRunningApplication(
+                    processIdentifier: processIdentifier
+                ),
+                !application.isTerminated,
+                allowsPointerFreeNonactivatingFocus(
+                    application.bundleIdentifier
+                )
+            else {
+                continue
+            }
+
+            let applicationElement = AXUIElementCreateApplication(
+                processIdentifier
+            )
+            _ = AXUIElementSetMessagingTimeout(applicationElement, 0.18)
+            guard
+                let applicationFocusedElement = copyAXElement(
+                    from: applicationElement,
+                    attribute: kAXFocusedUIElementAttribute
+                ),
+                let editableElement = nearestEditableAXElement(
+                    from: applicationFocusedElement
+                ),
+                MacPastePolicy.mayUseNonactivatingFocusedElement(
+                    exactApplicationFocus: CFEqual(
+                        editableElement,
+                        applicationFocusedElement
+                    ),
+                    elementReportsFocused: copyAXBoolean(
+                        from: editableElement,
+                        attribute: kAXFocusedAttribute
+                    ) == true,
+                    supportsSelectedText: isAXAttributeSettable(
+                        editableElement,
+                        attribute: kAXSelectedTextAttribute
+                    ),
+                    isSecure:
+                        isSecureAXElementOrAncestor(editableElement)
+                )
+            else {
+                continue
+            }
+
+            let focusedWindow =
+                copyAXElement(
+                    from: editableElement,
+                    attribute: kAXWindowAttribute
+                ) ??
+                copyAncestorWindow(from: editableElement)
+            guard
+                let focusedWindow,
+                let focusedWindowDescriptor = matchingWindowDescriptor(
+                    for: processIdentifier,
+                    focusedWindow: focusedWindow,
+                    title: copyAXString(
+                        from: focusedWindow,
+                        attribute: kAXTitleAttribute
+                    ),
+                    frame: copyAXFrame(focusedWindow),
+                    includeNonstandardLayers: true
+                ),
+                focusedWindowDescriptor.layer != 0,
+                candidates.contains(where: {
+                    $0.processIdentifier == processIdentifier &&
+                        $0.window.number ==
+                            focusedWindowDescriptor.number
+                })
+            else {
+                continue
+            }
+
+            store.log(
+                "Nonactivating focus discovered without pointer. TargetPID=\(processIdentifier) Bundle='\(application.bundleIdentifier ?? "unknown")' WindowNumber=\(focusedWindowDescriptor.number) Layer=\(focusedWindowDescriptor.layer)."
+            )
+            return PasteCaptureSource(
+                application: application,
+                focusedElement: editableElement,
+                usesNonactivatingWindow: true,
+                underlyingProcessIdentifier:
+                    frontmostApplication.processIdentifier,
+                underlyingApplicationLaunchDate:
+                    frontmostApplication.launchDate
+            )
+        }
+        return nil
+    }
+
+    private func allowsPointerFreeNonactivatingFocus(
+        _ bundleIdentifier: String?
+    ) -> Bool {
+        bundleIdentifier == "com.openai.chat"
     }
 
     private func nonactivatingPasteCaptureSource(
@@ -1137,7 +1343,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 editableElement,
                 attribute: kAXSelectedTextAttribute
             ),
-            isSecure: isSecureAXElement(editableElement)
+            isSecure: isSecureAXElementOrAncestor(editableElement)
         ) else {
             if traceDiagnostic {
                 store.log(
@@ -1218,15 +1424,20 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
 
     private func makeWindowOnlyPasteTarget(
         application: NSRunningApplication,
-        window: CGWindowDescriptor?
+        window: CGWindowDescriptor?,
+        usesNonactivatingWindow: Bool,
+        underlyingProcessIdentifier: pid_t?,
+        underlyingApplicationLaunchDate: Date?
     ) -> PasteTarget {
         PasteTarget(
             processIdentifier: application.processIdentifier,
             bundleIdentifier: application.bundleIdentifier,
             applicationLaunchDate: application.launchDate,
-            usesNonactivatingWindow: false,
-            underlyingProcessIdentifier: nil,
-            underlyingApplicationLaunchDate: nil,
+            usesNonactivatingWindow: usesNonactivatingWindow,
+            underlyingProcessIdentifier:
+                underlyingProcessIdentifier,
+            underlyingApplicationLaunchDate:
+                underlyingApplicationLaunchDate,
             focusedWindow: nil,
             windowNumber: window?.number,
             windowTitle: window?.title,
@@ -1239,8 +1450,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             layoutFingerprint: nil,
             webAreaRoot: nil,
             webAreaFingerprint: nil,
-            preserveWebViewCaret: isKnownWebViewBundle(
-                application.bundleIdentifier
+            preserveWebViewCaret: shouldPreserveWebViewCaret(
+                bundleIdentifier: application.bundleIdentifier,
+                role: nil,
+                hasWebAreaAncestor: false,
+                elementMissing: true
             )
         )
     }
@@ -1296,8 +1510,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 layoutFingerprint: nil,
                 webAreaRoot: nil,
                 webAreaFingerprint: nil,
-                preserveWebViewCaret: isKnownWebViewBundle(
-                    application.bundleIdentifier
+                preserveWebViewCaret: shouldPreserveWebViewCaret(
+                    bundleIdentifier: application.bundleIdentifier,
+                    role: nil,
+                    hasWebAreaAncestor: false,
+                    elementMissing: true
                 )
             )
         }
@@ -1328,13 +1545,67 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             copyAXString(from: $0, attribute: kAXTitleAttribute)
         }
         let axWindowFrame = focusedWindow.flatMap(copyAXFrame)
+        let preferTopmostFrameMatch =
+            MacPastePolicy.mayPreferTopmostFrameMatch(
+                usesNonactivatingWindow: usesNonactivatingWindow,
+                authoritativeFocusedElement:
+                    focusedElementOverride != nil,
+                focusedElementEditable:
+                    focusedElement.map {
+                        isProvenEditableKeyboardFocus(
+                            $0,
+                            bundleIdentifier:
+                                application.bundleIdentifier
+                        )
+                    } ?? false,
+                elementReportsFocused:
+                    focusedElement.flatMap {
+                        copyAXBoolean(
+                            from: $0,
+                            attribute: kAXFocusedAttribute
+                        )
+                    } == true
+            )
         let window = matchingWindowDescriptor(
             for: processIdentifier,
             focusedWindow: focusedWindow,
             title: axWindowTitle,
             frame: axWindowFrame,
-            includeNonstandardLayers: usesNonactivatingWindow
+            includeNonstandardLayers: usesNonactivatingWindow,
+            preferTopmostFrameMatch: preferTopmostFrameMatch
         )
+        if window == nil,
+           focusedWindow != nil,
+           ProcessInfo.processInfo.environment[
+               "ORHOM_DIAGNOSTIC_TRACE_FOCUS"
+           ] == "1" {
+            let visibleWindows = visibleWindowDescriptors(
+                for: processIdentifier,
+                includeNonstandardLayers: usesNonactivatingWindow
+            )
+            let frameMatchCount = axWindowFrame.map { frame in
+                visibleWindows.filter {
+                    $0.frame.map {
+                        windowFramesMatch(frame, $0)
+                    } ?? false
+                }.count
+            } ?? 0
+            let titleMatchCount = axWindowTitle.map { title in
+                visibleWindows.filter {
+                    $0.title.map {
+                        MacPastePolicy.windowTitlesAreCompatible(
+                            axTitle: title,
+                            cgTitle: $0,
+                            applicationName:
+                                application.localizedName
+                        )
+                    } ?? false
+                }.count
+            } ?? 0
+            store.log(
+                "Focus diagnostic AX window mapping failed. Role='\(role ?? "unknown")' ElementFocused=\(focusedElement.flatMap { copyAXBoolean(from: $0, attribute: kAXFocusedAttribute) } == true) AXFramePresent=\(axWindowFrame != nil) AXTitlePresent=\(!(axWindowTitle ?? "").isEmpty) VisibleWindows=\(visibleWindows.count) FrameMatches=\(frameMatchCount) TitleMatches=\(titleMatchCount)."
+            )
+        }
         let windowFrame = axWindowFrame ?? window?.frame
         let elementFrame = focusedElement.flatMap(copyAXFrame)
         let webAreaRoot = focusedElement.flatMap(copyWebAreaAncestor)
@@ -1398,10 +1669,31 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 let self,
                 self.state == .recording,
                 let original = self.pasteTarget,
-                let candidate = self.captureCurrentPasteTarget(),
-                self.sameApplicationInstance(original, candidate),
-                self.windowsAreCompatible(original, candidate)
+                let candidate = self.captureCurrentPasteTarget()
             else {
+                return
+            }
+
+            let lateNonactivatingCorrection =
+                candidate.usesNonactivatingWindow &&
+                !original.usesNonactivatingWindow &&
+                candidate.underlyingProcessIdentifier ==
+                    original.processIdentifier &&
+                self.ambiguousTargetInputStayedStable() &&
+                self.systemWideFocusedAXElement(
+                    for: original.processIdentifier
+                ) == nil
+            let sameCapturedTarget =
+                self.sameApplicationInstance(original, candidate) &&
+                self.windowsAreCompatible(original, candidate)
+            guard lateNonactivatingCorrection || sameCapturedTarget else {
+                return
+            }
+            if lateNonactivatingCorrection {
+                self.pasteTarget = candidate
+                self.store.log(
+                    "Focus re-probe corrected the underlying app to a newly available nonactivating editor. OriginalPID=\(original.processIdentifier) TargetPID=\(candidate.processIdentifier) Role='\(candidate.role ?? "unknown")'."
+                )
                 return
             }
 
@@ -1549,7 +1841,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             )
             return
         }
-        guard target.subrole != (kAXSecureTextFieldSubrole as String) else {
+        guard
+            target.subrole !=
+                (kAXSecureTextFieldSubrole as String),
+            !isSecureAXElementOrAncestor(target.focusedElement)
+        else {
             leaveDictationOnClipboard(
                 text,
                 reason: "secure-text-field",
@@ -1575,7 +1871,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             target.usesNonactivatingWindow ||
             targetWasFrontmost ||
             application.activate(options: [.activateIgnoringOtherApps])
-        if !targetWindowWasFrontmost,
+        if !targetWasFrontmost,
+           !targetWindowWasFrontmost,
            !target.usesNonactivatingWindow,
            let focusedWindow = target.focusedWindow {
             _ = AXUIElementPerformAction(
@@ -1829,8 +2126,38 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         else {
             return .transient(reason: "foreground-window-changed-during-probe")
         }
+        let capturedWindowMatchesCurrentFocusedWindow =
+            target.windowNumber != nil &&
+            target.windowNumber == currentWindowDescriptor?.number
         let authoritativeWindow =
-            foregroundWindowAfter ?? currentWindowDescriptor
+            MacPastePolicy.shouldPreferCurrentFocusedWindow(
+                capturedWindowMatchesCurrentFocusedWindow:
+                    capturedWindowMatchesCurrentFocusedWindow,
+                currentElementEditable:
+                    currentElement.map {
+                        isProvenEditableKeyboardFocus(
+                            $0,
+                            bundleIdentifier:
+                                target.bundleIdentifier
+                        )
+                    } ?? false,
+                elementReportsFocused:
+                    currentElement.flatMap {
+                        copyAXBoolean(
+                            from: $0,
+                            attribute: kAXFocusedAttribute
+                        )
+                    } == true,
+                windowReportsFocused:
+                    currentWindow.flatMap {
+                        copyAXBoolean(
+                            from: $0,
+                            attribute: kAXFocusedAttribute
+                        )
+                    } == true
+            )
+            ? currentWindowDescriptor
+            : foregroundWindowAfter ?? currentWindowDescriptor
         if let currentWindow,
            let authoritativeWindow {
             let exactCapturedAXWindowIsForeground =
@@ -1868,8 +2195,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         }
 
         if IsSecureEventInputEnabled() ||
-            isSecureAXElement(target.focusedElement) ||
-            isSecureAXElement(currentElement) {
+            isSecureAXElementOrAncestor(target.focusedElement) ||
+            isSecureAXElementOrAncestor(currentElement) {
             return .unsafe(reason: "secure-text-field")
         }
 
@@ -1960,13 +2287,39 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             if target.focusedElement != nil {
                 return .transient(reason: "current-web-element-missing")
             }
-            guard allowsNilElementWindowPaste(target.bundleIdentifier) else {
-                return .transient(reason: "captured-web-element-missing")
+            let exactAXWindowMatch =
+                target.focusedWindow.map { expectedWindow in
+                    currentWindow.map {
+                        CFEqual(expectedWindow, $0)
+                    } ?? false
+                } ?? false
+            let capturedWindowMatchesCurrentWindow =
+                (
+                    target.windowNumber != nil &&
+                    target.windowNumber ==
+                        currentWindowDescriptor?.number
+                ) || exactAXWindowMatch
+            guard MacPastePolicy.mayUseWindowOnlyTarget(
+                inputHistoryStable: inputHistoryStable,
+                capturedWindowMatchesCurrentWindow:
+                    capturedWindowMatchesCurrentWindow,
+                knownEditorSurface:
+                    allowsWindowOnlyKeyboardPaste(
+                        target.bundleIdentifier
+                    ),
+                secureInputActive: IsSecureEventInputEnabled()
+            ) else {
+                return .transient(
+                    reason: "window-only-target-no-longer-exact"
+                )
             }
             if let currentElement,
-               !isWebKeyboardPasteElement(currentElement) {
+               !isProvenEditableKeyboardFocus(
+                   currentElement,
+                   bundleIdentifier: target.bundleIdentifier
+               ) {
                 return .transient(
-                    reason: "window-only-current-element-not-editable"
+                    reason: "window-only-current-element-unsafe"
                 )
             }
             return .match(
@@ -2019,8 +2372,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             return false
         }
         return target.preserveWebViewCaret &&
-                allowsNilElementWindowPaste(target.bundleIdentifier) &&
                 allowProcessScopedMatch &&
+                ambiguousTargetInputStayedStable() &&
                 visibleWindowDescriptors(
                     for: target.processIdentifier,
                     includeNonstandardLayers:
@@ -2098,6 +2451,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     ) {
         if !target.preserveWebViewCaret,
            let currentFocusedElement,
+           !isSecureAXElementOrAncestor(currentFocusedElement),
            let verifiedFocusedElement = verifiedDirectAXInsertionElement(
                target: target,
                expectedElement: currentFocusedElement,
@@ -2120,9 +2474,16 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             return
         }
 
+        let hasProvenKeyboardPasteFocus =
+            currentFocusedElement.map {
+                isProvenEditableKeyboardFocus(
+                    $0,
+                    bundleIdentifier: target.bundleIdentifier
+                )
+            } ?? false
         guard
             target.preserveWebViewCaret ||
-            currentFocusedElement.map(isEditableKeyboardPasteElement) == true
+            hasProvenKeyboardPasteFocus
         else {
             leaveDictationOnClipboard(
                 text,
@@ -2388,6 +2749,33 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             )
             return
         }
+        let hasProvenDeliveryFocus =
+            confirmedElement.map {
+                isProvenEditableKeyboardFocus(
+                    $0,
+                    bundleIdentifier: target.bundleIdentifier
+                )
+            } ??
+            (
+                target.preserveWebViewCaret &&
+                allowsWindowOnlyKeyboardPaste(
+                    target.bundleIdentifier
+                ) &&
+                target.windowNumber != nil &&
+                topmostWindowDescriptor(
+                    for: target.processIdentifier,
+                    includeNonstandardLayers:
+                        target.usesNonactivatingWindow
+                )?.number == target.windowNumber
+            )
+        guard hasProvenDeliveryFocus else {
+            finishWithOwnedClipboardFallback(
+                reason: "keyboard-delivery-focus-not-proven",
+                text: text,
+                ownedChangeCount: ownedChangeCount
+            )
+            return
+        }
         let relevantModifierFlags: CGEventFlags = [
             .maskCommand,
             .maskAlternate,
@@ -2435,6 +2823,23 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             )
             return
         }
+        let delivery = MacPastePolicy.keyboardPasteDelivery(
+            usesNonactivatingWindow: target.usesNonactivatingWindow
+        )
+        if delivery == .activeSession {
+            guard
+                application.isActive,
+                NSWorkspace.shared.frontmostApplication?
+                    .processIdentifier == target.processIdentifier
+            else {
+                finishWithOwnedClipboardFallback(
+                    reason: "session-target-not-frontmost-before-event",
+                    text: text,
+                    ownedChangeCount: ownedChangeCount
+                )
+                return
+            }
+        }
         let events = MacPastePolicy.shortcutSequence.compactMap {
             step -> CGEvent? in
             let virtualKey: CGKeyCode
@@ -2461,6 +2866,10 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 return nil
             }
             event.flags = step == .commandUp ? [] : .maskCommand
+            event.setIntegerValueField(
+                .eventSourceUserData,
+                value: syntheticPasteEventTag
+            )
             return event
         }
         guard events.count == MacPastePolicy.shortcutSequence.count else {
@@ -2475,10 +2884,18 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             pasteEffectObservation
         )
         for event in events {
-            event.postToPid(target.processIdentifier)
+            switch delivery {
+            case .activeSession:
+                event.post(tap: .cghidEventTap)
+            case .targetProcess:
+                event.postToPid(target.processIdentifier)
+            }
         }
+        let deliveryName = delivery == .activeSession
+            ? "CGEventHID"
+            : "CGEventPostToPid"
         store.log(
-            "Paste dispatched. Method=CGEventPostToPid Sequence=CmdDown-VDown-VUp-CmdUp TargetPID=\(target.processIdentifier) FocusMatch='\(focusMatchKind)' ClipboardOwned=true."
+            "Paste dispatched. Method=\(deliveryName) Sequence=CmdDown-VDown-VUp-CmdUp TargetPID=\(target.processIdentifier) FocusMatch='\(focusMatchKind)' ClipboardOwned=true."
         )
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) { [weak self] in
@@ -2490,6 +2907,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 snapshot: snapshot,
                 ownedChangeCount: ownedChangeCount,
                 observationBefore: observationBefore,
+                delivery: delivery,
                 remainingAttempts: 10
             )
         }
@@ -2503,6 +2921,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         snapshot: PasteboardSnapshot,
         ownedChangeCount: Int,
         observationBefore: PasteEffectObservation?,
+        delivery: KeyboardPasteDelivery,
         remainingAttempts: Int
     ) {
         guard state == .pasting else { return }
@@ -2526,12 +2945,39 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             application: application,
             allowProcessScopedMatch: targetWasFrontmost
         )
+        let deliveryName = delivery == .activeSession
+            ? "CGEventHID"
+            : "CGEventPostToPid"
+        if observationBefore == nil {
+            guard case .match = probe else {
+                finishWithOwnedClipboardFallback(
+                    reason: "unobservable-paste-focus-changed",
+                    text: text,
+                    ownedChangeCount: ownedChangeCount
+                )
+                store.log(
+                    "Paste dispatch completed. Method=\(deliveryName) TargetPID=\(target.processIdentifier) Verified=false ClipboardRestored=false."
+                )
+                return
+            }
+            setIdle(
+                message: "Einfügen ausgelöst",
+                detail: "Vor manuellem ⌘V kurz im Ziel prüfen"
+            )
+            store.log(
+                "Paste dispatch completed. Method=\(deliveryName) TargetPID=\(target.processIdentifier) Verified=dispatch-only ClipboardRestored=false ClipboardStillOwned=true."
+            )
+            return
+        }
         if case .match(let currentElement, _) = probe,
            let observationBefore,
            let observationAfter = currentElement.flatMap(
                pasteEffectObservation
            ),
-           observationAfter.differs(from: observationBefore) {
+           observationAfter.confirmsInsertion(
+               from: observationBefore,
+               insertedUTF16Length: (text as NSString).length
+           ) {
             let restored = restorePasteboardSnapshot(
                 snapshot,
                 pasteboard: pasteboard,
@@ -2548,7 +2994,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                         : "Web-Editor bestätigt"
             )
             store.log(
-                "Paste dispatch completed. Method=CGEventPostToPid TargetPID=\(target.processIdentifier) Verified=true ClipboardRestored=\(restored)."
+                "Paste dispatch completed. Method=\(deliveryName) TargetPID=\(target.processIdentifier) Verified=true ClipboardRestored=\(restored)."
             )
             return
         }
@@ -2560,7 +3006,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 ownedChangeCount: ownedChangeCount
             )
             store.log(
-                "Paste dispatch completed. Method=CGEventPostToPid TargetPID=\(target.processIdentifier) Verified=false ClipboardRestored=false."
+                "Paste dispatch completed. Method=\(deliveryName) TargetPID=\(target.processIdentifier) Verified=false ClipboardRestored=false."
             )
             return
         }
@@ -2573,6 +3019,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 snapshot: snapshot,
                 ownedChangeCount: ownedChangeCount,
                 observationBefore: observationBefore,
+                delivery: delivery,
                 remainingAttempts: remainingAttempts - 1
             )
         }
@@ -2760,6 +3207,20 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         for processIdentifier: pid_t,
         applicationElement: AXUIElement
     ) -> AXUIElement? {
+        if let globalElement = systemWideFocusedAXElement(
+            for: processIdentifier
+        ) {
+            return globalElement
+        }
+        return copyAXElement(
+            from: applicationElement,
+            attribute: kAXFocusedUIElementAttribute
+        )
+    }
+
+    private func systemWideFocusedAXElement(
+        for processIdentifier: pid_t
+    ) -> AXUIElement? {
         let systemWideElement = AXUIElementCreateSystemWide()
         _ = AXUIElementSetMessagingTimeout(systemWideElement, 0.08)
         if let globalElement = copyAXElement(
@@ -2775,10 +3236,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 return globalElement
             }
         }
-        return copyAXElement(
-            from: applicationElement,
-            attribute: kAXFocusedUIElementAttribute
-        )
+        return nil
     }
 
     private func matchingWindowDescriptor(
@@ -2786,7 +3244,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         focusedWindow: AXUIElement?,
         title: String?,
         frame: CGRect?,
-        includeNonstandardLayers: Bool = false
+        includeNonstandardLayers: Bool = false,
+        preferTopmostFrameMatch: Bool = false
     ) -> CGWindowDescriptor? {
         let windows = visibleWindowDescriptors(
             for: processIdentifier,
@@ -2796,6 +3255,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         guard focusedWindow != nil else {
             return windows.first
         }
+        let applicationName = NSRunningApplication(
+            processIdentifier: processIdentifier
+        )?.localizedName
 
         if let frame {
             let frameMatches = windows.filter {
@@ -2807,16 +3269,41 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             }
             if frameMatches.count > 1,
                let title,
-               !title.isEmpty,
-               let titledMatch = frameMatches.first(where: {
-                   $0.title == title
+               !title.isEmpty {
+                let titledMatches = frameMatches.filter {
+                   guard let candidateTitle = $0.title else {
+                       return false
+                   }
+                   return MacPastePolicy.windowTitlesAreCompatible(
+                       axTitle: title,
+                       cgTitle: candidateTitle,
+                       applicationName: applicationName
+                   )
+                }
+                if titledMatches.count == 1 {
+                    return titledMatches[0]
+                }
+            }
+            if preferTopmostFrameMatch,
+               let topmostWindow = windows.first,
+               frameMatches.contains(where: {
+                   $0.number == topmostWindow.number
                }) {
-                return titledMatch
+                return topmostWindow
             }
         }
 
         if let title, !title.isEmpty {
-            let titleMatches = windows.filter { $0.title == title }
+            let titleMatches = windows.filter {
+                guard let candidateTitle = $0.title else {
+                    return false
+                }
+                return MacPastePolicy.windowTitlesAreCompatible(
+                    axTitle: title,
+                    cgTitle: candidateTitle,
+                    applicationName: applicationName
+                )
+            }
             if titleMatches.count == 1 {
                 return titleMatches[0]
             }
@@ -2832,6 +3319,66 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             for: processIdentifier,
             includeNonstandardLayers: includeNonstandardLayers
         ).first
+    }
+
+    private func visibleNonactivatingWindowCandidates()
+        -> [CGWindowOwnerDescriptor] {
+        guard
+            let windowInfo = CGWindowListCopyWindowInfo(
+                [.optionOnScreenOnly, .excludeDesktopElements],
+                kCGNullWindowID
+            ) as? [[String: Any]]
+        else {
+            return []
+        }
+
+        var candidates: [CGWindowOwnerDescriptor] = []
+        for entry in windowInfo {
+            guard
+                let processIdentifier = (
+                    entry[kCGWindowOwnerPID as String] as? NSNumber
+                )?.int32Value,
+                let layer = (
+                    entry[kCGWindowLayer as String] as? NSNumber
+                )?.intValue,
+                layer != 0,
+                let number = entry[
+                    kCGWindowNumber as String
+                ] as? NSNumber
+            else {
+                continue
+            }
+            var frame: CGRect?
+            if let bounds =
+                entry[kCGWindowBounds as String] as? [String: Any],
+               let x = (bounds["X"] as? NSNumber)?.doubleValue,
+               let y = (bounds["Y"] as? NSNumber)?.doubleValue,
+               let width = (bounds["Width"] as? NSNumber)?.doubleValue,
+               let height = (bounds["Height"] as? NSNumber)?.doubleValue,
+               width > 1,
+               height > 1 {
+                frame = CGRect(
+                    x: x,
+                    y: y,
+                    width: width,
+                    height: height
+                )
+            }
+            candidates.append(
+                CGWindowOwnerDescriptor(
+                    processIdentifier: processIdentifier,
+                    window: CGWindowDescriptor(
+                        number: CGWindowID(number.uint32Value),
+                        title: entry[
+                            kCGWindowName as String
+                        ] as? String,
+                        frame: frame,
+                        layer: layer
+                    )
+                )
+            )
+        }
+        return candidates
     }
 
     private func visibleWindowDescriptors(
@@ -3038,18 +3585,6 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         return nil
     }
 
-    private func allowsNilElementWindowPaste(
-        _ bundleIdentifier: String?
-    ) -> Bool {
-        guard let bundleIdentifier else { return false }
-        return [
-            "com.microsoft.VSCode",
-            "com.microsoft.VSCodeInsiders",
-            "com.cursor.Cursor",
-            "com.todesktop.230313mzl4w4u92"
-        ].contains(bundleIdentifier)
-    }
-
     private func shouldPreserveWebViewCaret(
         bundleIdentifier: String?,
         role: String?,
@@ -3080,7 +3615,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             "company.thebrowser.Browser",
             "org.mozilla.firefox",
             "com.apple.Safari",
-            "com.openai.chat"
+            "com.openai.chat",
+            "com.openai.codex"
         ]
         return exactMatches.contains(bundleIdentifier) ||
             bundleIdentifier.hasPrefix("com.operasoftware.")
@@ -3102,7 +3638,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 attribute: kAXRoleAttribute
             ),
             isEditableAXRole(role),
-            !isSecureAXElement(element)
+            !isSecureAXElementOrAncestor(element)
         else {
             return false
         }
@@ -3110,6 +3646,52 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             from: element,
             attribute: kAXEnabledAttribute
         ) != false
+    }
+
+    private func allowsWindowOnlyKeyboardPaste(
+        _ bundleIdentifier: String?
+    ) -> Bool {
+        guard let bundleIdentifier else { return false }
+        return [
+            "com.microsoft.VSCode",
+            "com.microsoft.VSCodeInsiders",
+            "com.cursor.Cursor",
+            "com.todesktop.230313mzl4w4u92",
+            "com.openai.codex"
+        ].contains(bundleIdentifier)
+    }
+
+    private func isProvenEditableKeyboardFocus(
+        _ element: AXUIElement,
+        bundleIdentifier: String?
+    ) -> Bool {
+        guard
+            !isSecureAXElementOrAncestor(element),
+            copyAXBoolean(
+                from: element,
+                attribute: kAXEnabledAttribute
+            ) != false,
+            let role = copyAXString(
+                from: element,
+                attribute: kAXRoleAttribute
+            )
+        else {
+            return false
+        }
+        if isEditableAXRole(role) ||
+            isAXAttributeSettable(
+                element,
+                attribute: kAXSelectedTextAttribute
+            ) {
+            return true
+        }
+        if bundleIdentifier == "com.microsoft.Word" {
+            return role == "AXScrollArea" ||
+                role == "AXGroup" ||
+                role == "AXDocument"
+        }
+        return isKnownWebViewBundle(bundleIdentifier) &&
+            isWebKeyboardPasteElement(element)
     }
 
     private func isWebKeyboardPasteElement(
@@ -3120,7 +3702,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 from: element,
                 attribute: kAXRoleAttribute
             ),
-            !isSecureAXElement(element)
+            !isSecureAXElementOrAncestor(element)
         else {
             return false
         }
@@ -3133,7 +3715,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         let supportedWebRootRole =
             role == "AXWebArea" ||
             role == "AXGroup" ||
-            role == "AXScrollArea"
+            role == "AXScrollArea" ||
+            role == "AXUnknown"
         guard supportedWebRootRole else {
             return false
         }
@@ -3163,6 +3746,29 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             from: element,
             attribute: kAXSubroleAttribute
         ) == (kAXSecureTextFieldSubrole as String)
+    }
+
+    private func isSecureAXElementOrAncestor(
+        _ element: AXUIElement?
+    ) -> Bool {
+        var current = element
+        let deadline = CFAbsoluteTimeGetCurrent() + 0.08
+        for _ in 0..<16 {
+            guard
+                CFAbsoluteTimeGetCurrent() < deadline,
+                let candidate = current
+            else {
+                return false
+            }
+            if isSecureAXElement(candidate) {
+                return true
+            }
+            current = copyAXElement(
+                from: candidate,
+                attribute: kAXParentAttribute
+            )
+        }
+        return false
     }
 
     private func leaveDictationOnClipboard(
@@ -3265,7 +3871,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             return nil
         }
         return PasteEffectObservation(
-            valueLength: value?.count,
+            valueLength: value.map {
+                ($0 as NSString).length
+            },
             valueHash: value?.hashValue,
             selectedRangeLocation: range?.location,
             selectedRangeLength: range?.length,

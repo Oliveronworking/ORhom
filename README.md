@@ -16,8 +16,9 @@ Transkription bleiben vollständig lokal. Die Mac-Ausgabe bietet:
 - eine Windows-paritätische Diktierleiste in **Klein**, **Mittel** oder **Groß** mit
   **Stopp & einfügen** und **Abbrechen**,
 - gezieltes Einfügen am zuvor aktiven Cursor mit stabiler Fenster-/Fokusbestätigung,
-  WebView-/Electron-Unterstützung, vollständiger `⌘V`-Sequenz für Chrome-
-  Editoren und sicherem Zwischenablage-Fallback,
+  pointerloser Erkennung des per `⌥ Leertaste` geöffneten ChatGPT Quick Chat,
+  WebView-/Electron-Unterstützung, vollständiger systemweiter `⌘V`-Sequenz wie
+  bei manueller Eingabe und sicherem Zwischenablage-Fallback,
 - einen auswählbaren lokalen Verlauf der letzten zehn Diktate mit `⌘C`,
 - standardmäßig aktiviertes Audio-Ducking während der Aufnahme und
 - optionalen Start beim Anmelden.
@@ -274,14 +275,18 @@ Die macOS-Suite prüft Browser-/Native-Paste-Routing, die vollständige
 `Cmd↓ V↓ V↑ Cmd↑`-Sequenz, `⌘C` im Verlauf sowie Audio-Ducking einschließlich
 Restore, Nutzeränderung und Ausgabegerätewechsel. Der optionale Hardwarelauf
 senkt den realen Ausgang kurz auf 90 % und stellt den exakten Ausgangspegel
-sofort wieder her. Der Chrome-Integrationstest öffnet ein temporäres lokales
-Testfenster im bereits laufenden Chrome, bestätigt die tatsächliche
-`contenteditable`-Änderung und schließt genau dieses Fenster wieder:
+sofort wieder her. Die Integrationstests prüfen ein natives TextEdit-Feld,
+ein temporäres Chrome-`contenteditable` sowie ChatGPT Quick Chat, der tatsächlich
+per `⌥ Leertaste` ohne künstliche Mausposition geöffnet wird. Testdokumente,
+Composer-Inhalt, Fensterzustand und Zwischenablage werden anschließend
+wiederhergestellt:
 
 ```zsh
 ./scripts/Test-ORhom-macOS.sh
 ORHOM_RUN_AUDIO_HARDWARE_TEST=1 ./scripts/Test-ORhom-macOS.sh
+./scripts/Test-ORhom-TextEdit-macOS.sh
 ./scripts/Test-ORhom-Chrome-macOS.sh
+./scripts/Test-ORhom-ChatGPT-macOS.sh
 ```
 
 ## Recherchequellen und Lizenzen

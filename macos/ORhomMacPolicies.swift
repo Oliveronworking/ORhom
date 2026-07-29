@@ -7,8 +7,57 @@ enum PasteShortcutEvent: CaseIterable, Equatable {
     case commandUp
 }
 
+enum KeyboardPasteDelivery: Equatable {
+    case activeSession
+    case targetProcess
+}
+
 enum MacPastePolicy {
     static let shortcutSequence = PasteShortcutEvent.allCases
+
+    static func keyboardPasteDelivery(
+        usesNonactivatingWindow: Bool
+    ) -> KeyboardPasteDelivery {
+        usesNonactivatingWindow ? .targetProcess : .activeSession
+    }
+
+    static func shouldRetainMappedAXWindow(
+        focusedWindowPresent: Bool,
+        mappedWindowPresent: Bool,
+        focusedElementEditable: Bool,
+        elementReportsFocused: Bool,
+        windowReportsFocused: Bool
+    ) -> Bool {
+        focusedWindowPresent &&
+            mappedWindowPresent &&
+            focusedElementEditable &&
+            elementReportsFocused &&
+            windowReportsFocused
+    }
+
+    static func shouldPreferCurrentFocusedWindow(
+        capturedWindowMatchesCurrentFocusedWindow: Bool,
+        currentElementEditable: Bool,
+        elementReportsFocused: Bool,
+        windowReportsFocused: Bool
+    ) -> Bool {
+        capturedWindowMatchesCurrentFocusedWindow &&
+            currentElementEditable &&
+            elementReportsFocused &&
+            windowReportsFocused
+    }
+
+    static func mayUseWindowOnlyTarget(
+        inputHistoryStable: Bool,
+        capturedWindowMatchesCurrentWindow: Bool,
+        knownEditorSurface: Bool,
+        secureInputActive: Bool
+    ) -> Bool {
+        inputHistoryStable &&
+            capturedWindowMatchesCurrentWindow &&
+            knownEditorSurface &&
+            !secureInputActive
+    }
 
     static func mayReuseWebTarget(
         inputHistoryStable: Bool,
@@ -27,6 +76,35 @@ enum MacPastePolicy {
             elementReportsFocused &&
             supportsSelectedText &&
             !isSecure
+    }
+
+    static func windowTitlesAreCompatible(
+        axTitle: String,
+        cgTitle: String,
+        applicationName: String?
+    ) -> Bool {
+        guard !axTitle.isEmpty, !cgTitle.isEmpty else {
+            return false
+        }
+        if axTitle == cgTitle {
+            return true
+        }
+        guard let applicationName, !applicationName.isEmpty else {
+            return false
+        }
+        return axTitle == cgTitle + " - " + applicationName
+    }
+
+    static func mayPreferTopmostFrameMatch(
+        usesNonactivatingWindow: Bool,
+        authoritativeFocusedElement: Bool,
+        focusedElementEditable: Bool,
+        elementReportsFocused: Bool
+    ) -> Bool {
+        !usesNonactivatingWindow &&
+            authoritativeFocusedElement &&
+            focusedElementEditable &&
+            elementReportsFocused
     }
 
     static func shouldUseKeyboardPaste(
