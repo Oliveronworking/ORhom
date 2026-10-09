@@ -12,9 +12,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
 {
     public const string Language = "de";
 
-    internal const string InitialPrompt =
-        "ORhom, ChatGPT, Codex, GitHub, Repository, PowerShell, .NET, JSON, " +
-        "Vulkan, Flash Attention, Whisper Large V3 Turbo, Zwischenablage.";
+    internal const string InitialPrompt = DictationVocabulary.InitialPrompt;
 
     private const int SignalFrameSamples = 320;
     private const int MinimumConsecutiveActiveSignalFrames = 3;
@@ -33,6 +31,9 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
 
     private readonly LocalWhisperModelManager _modelManager;
     private readonly AppLogger _logger;
+    private readonly Func<DictationPreferences> _preferences;
+    private string? _activeLanguage;
+    private string? _activePrompt;
     private readonly SemaphoreSlim _initializationGate = new(1, 1);
     private readonly SemaphoreSlim _processingGate = new(1, 1);
     private readonly ConcurrentQueue<string> _nativeInitializationMessages = new();
@@ -46,16 +47,20 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
 
     public LocalWhisperRecognitionService(
         LocalWhisperModelManager modelManager,
-        AppLogger logger)
+        AppLogger logger,
+        Func<DictationPreferences>? preferences = null)
     {
         _modelManager = modelManager;
         _logger = logger;
+        _preferences = preferences ?? (() => new DictationPreferences());
     }
 
     public bool IsReady =>
         _warmupCompleted &&
         _processor is not null &&
-        _vulkanBackendConfirmed;
+        _vulkanBackendConfirmed &&
+        _activeLanguage == DictationLanguages.Normalize(_preferences().Language) &&
+        _activePrompt == DictationTextProcessor.BuildWhisperPrompt(_preferences());
 
     public async Task EnsureReadyAsync(
         IProgress<LocalWhisperModelProgress>? progress,
@@ -78,10 +83,18 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
             var modelPath = await _modelManager
                 .EnsureModelAsync(progress, cancellationToken)
                 .ConfigureAwait(false);
-            await Task.Run(
-                () => InitializeWhisper(modelPath),
-                cancellationToken).ConfigureAwait(false);
-            await WarmUpWhisperAsync(cancellationToken).ConfigureAwait(false);
+            await _processingGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await Task.Run(
+                    () => InitializeWhisper(modelPath),
+                    cancellationToken).ConfigureAwait(false);
+                await WarmUpWhisperAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _processingGate.Release();
+            }
             cancellationToken.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -102,7 +115,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
         {
             DisposeWhisperObjects();
             throw new LocalWhisperRecognitionException(
-                "whisper.cpp konnte das deutsche Modell nicht über Vulkan laden. Bitte den aktuellen AMD-Adrenalin-Treiber sowie Microsoft Visual C++ 2015–2022 Redistributable (x64) installieren und ORhom neu starten.",
+                "whisper.cpp konnte das Sprachmodell nicht über Vulkan laden. Bitte den aktuellen AMD-Adrenalin-Treiber sowie Microsoft Visual C++ 2015–2022 Redistributable (x64) installieren und ORhom neu starten.",
                 ex);
         }
         finally
@@ -111,7 +124,11 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
         }
     }
 
-    public async Task<string> TranscribeGermanAsync(
+    public Task<string> TranscribeGermanAsync(
+        float[] mono16KhzSamples,
+        CancellationToken cancellationToken) => TranscribeAsync(mono16KhzSamples, cancellationToken);
+
+    public async Task<string> TranscribeAsync(
         float[] mono16KhzSamples,
         CancellationToken cancellationToken)
     {
@@ -119,7 +136,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
         if (!IsReady)
         {
             throw new LocalWhisperRecognitionException(
-                "Das lokale deutsche Sprachmodell ist noch nicht bereit.");
+                "Das lokale Sprachmodell ist noch nicht bereit.");
         }
 
         if (mono16KhzSamples.Length < 1600)
@@ -148,7 +165,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
             if (processor is null || !_vulkanBackendConfirmed)
             {
                 throw new LocalWhisperRecognitionException(
-                    "Das lokale deutsche Sprachmodell wurde zwischenzeitlich entladen. Bitte erneut versuchen.");
+                    "Das lokale Sprachmodell wurde zwischenzeitlich entladen. Bitte erneut versuchen.");
             }
 
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -160,8 +177,9 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
                 text.Append(segment.Text);
             }
 
-            var normalized = WhitespaceRegex.Replace(text.ToString(), " ").Trim();
-            _logger.Info($"Local German transcription completed. DurationMs={stopwatch.Elapsed.TotalMilliseconds:F0} Samples={preparedSamples.Length} OriginalSamples={originalSampleCount} TextLength={normalized.Length} Language='{Language}'.");
+            var normalized = DictationTextProcessor.Process(
+                WhitespaceRegex.Replace(text.ToString(), " ").Trim(), _preferences());
+            _logger.Info($"Local transcription completed. DurationMs={stopwatch.Elapsed.TotalMilliseconds:F0} Samples={preparedSamples.Length} OriginalSamples={originalSampleCount} TextLength={normalized.Length} Language='{_activeLanguage}'.");
             return normalized;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -171,7 +189,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
         catch (Exception ex)
         {
             throw new LocalWhisperRecognitionException(
-                "Die lokale deutsche Transkription ist fehlgeschlagen. Bitte erneut versuchen oder den ChatGPT-Browser-Fallback auswählen.",
+                "Die lokale Transkription ist fehlgeschlagen. Bitte erneut versuchen oder den ChatGPT-Browser-Fallback auswählen.",
                 ex);
         }
         finally
@@ -240,6 +258,9 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
     private void InitializeWhisper(string modelPath)
     {
         DisposeWhisperObjects();
+        var preferences = _preferences().NormalizedCopy();
+        _activeLanguage = preferences.Language;
+        _activePrompt = DictationTextProcessor.BuildWhisperPrompt(preferences);
         _warmupCompleted = false;
         _vulkanBackendConfirmed = false;
         _rx7700XtDeviceIndex = -1;
@@ -297,7 +318,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
             _processor = processor;
             factory = null;
             processor = null;
-            _logger.Info($"Local whisper.cpp initialized; native warm-up pending. Runtime={RuntimeOptions.LoadedLibrary} GpuDevice={selectedGpuDevice} Language='{Language}' Model='{Path.GetFileName(modelPath)}' RuntimeInfo='{CollapseForLog(WhisperFactory.GetRuntimeInfo())}'.");
+            _logger.Info($"Local whisper.cpp initialized; native warm-up pending. Runtime={RuntimeOptions.LoadedLibrary} GpuDevice={selectedGpuDevice} Language='{_activeLanguage}' Model='{Path.GetFileName(modelPath)}' RuntimeInfo='{CollapseForLog(WhisperFactory.GetRuntimeInfo())}'.");
             if (rx7700XtDevice < 0)
             {
                 _logger.Info($"Vulkan backend is active, but the native device log did not explicitly contain 'RX 7700 XT'. GPU device {selectedGpuDevice} is being used.");
@@ -316,7 +337,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
         if (processor is null || !_vulkanBackendConfirmed)
         {
             throw new LocalWhisperRecognitionException(
-                "Das lokale deutsche Sprachmodell konnte nicht für die erste Transkription vorbereitet werden.");
+                "Das lokale Sprachmodell konnte nicht für die erste Transkription vorbereitet werden.");
         }
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -340,7 +361,7 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
         catch (Exception ex)
         {
             throw new LocalWhisperRecognitionException(
-                "Das lokale deutsche Sprachmodell konnte nicht vollständig aufgewärmt werden. Bitte erneut versuchen.",
+                "Das lokale Sprachmodell konnte nicht vollständig aufgewärmt werden. Bitte erneut versuchen.",
                 ex);
         }
     }
@@ -386,9 +407,11 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
         _nativeLogSubscription = null;
         _vulkanBackendConfirmed = false;
         _rx7700XtDeviceIndex = -1;
+        _activeLanguage = null;
+        _activePrompt = null;
     }
 
-    private static (WhisperFactory Factory, WhisperProcessor Processor) CreateWhisperProcessor(
+    private (WhisperFactory Factory, WhisperProcessor Processor) CreateWhisperProcessor(
         string modelPath,
         int gpuDevice)
     {
@@ -403,10 +426,10 @@ internal sealed class LocalWhisperRecognitionService : IDisposable
         try
         {
             var processor = factory.CreateBuilder()
-                .WithLanguage(Language)
+                .WithLanguage(_activeLanguage ?? Language)
                 .WithThreads(Math.Clamp(Environment.ProcessorCount / 2, 2, 8))
                 .WithNoContext()
-                .WithPrompt(InitialPrompt)
+                .WithPrompt(_activePrompt ?? InitialPrompt)
                 .WithTemperature(0f)
                 .WithGreedySamplingStrategy()
                 .Build();

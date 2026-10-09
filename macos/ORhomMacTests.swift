@@ -51,6 +51,148 @@ private func makeDefaults() -> UserDefaults {
 
 private func testPastePolicy() throws {
     try expect(
+        MacPastePolicy.dictationStartDisposition(
+            targetCaptured: false,
+            targetPotentiallyDeliverable: false,
+            targetProtected: false
+        ) == .clipboard,
+        "Dictation without a detected target must record for the clipboard."
+    )
+    try expect(
+        MacPastePolicy.dictationStartDisposition(
+            targetCaptured: true,
+            targetPotentiallyDeliverable: false,
+            targetProtected: false
+        ) == .clipboard,
+        "Dictation without a writable target must record for the clipboard."
+    )
+    try expect(
+        MacPastePolicy.dictationStartDisposition(
+            targetCaptured: true,
+            targetPotentiallyDeliverable: true,
+            targetProtected: false
+        ) == .automaticPaste,
+        "A verified writable target must retain automatic paste."
+    )
+    try expect(
+        MacPastePolicy.dictationStartDisposition(
+            targetCaptured: true,
+            targetPotentiallyDeliverable: true,
+            targetProtected: true
+        ) == .rejectProtectedTarget,
+        "A protected target must be rejected before recording."
+    )
+    try expect(
+        MacPastePolicy
+            .chromiumEnhancedAccessibilityRequestWasDelivered(
+                resultRawValue: -25208
+            ),
+        "Chromium handles AXEnhancedUserInterface before AppKit reports notImplemented, so the request must be balanced."
+    )
+    try expect(
+        !MacPastePolicy
+            .chromiumEnhancedAccessibilityRequestWasDelivered(
+                resultRawValue: -25204
+            ),
+        "A genuinely incomplete accessibility request must not be treated as delivered."
+    )
+    try expect(
+        MacPastePolicy.electronAccessibilityDelayRemaining(
+            elapsed: 0.2,
+            enhancedExposureChanged: true,
+            focusedElementPresent: false
+        ) > 2.9,
+        "A newly enabled Electron accessibility tree must receive its macOS activation delay."
+    )
+    try expect(
+        MacPastePolicy.electronAccessibilityDelayRemaining(
+            elapsed: 4,
+            enhancedExposureChanged: true,
+            focusedElementPresent: false
+        ) == 0,
+        "An already activated Electron accessibility tree must not delay insertion."
+    )
+    try expect(
+        MacPastePolicy.electronAccessibilityDelayRemaining(
+            elapsed: 0,
+            enhancedExposureChanged: true,
+            focusedElementPresent: true
+        ) == 0,
+        "An exact focused element must not be delayed."
+    )
+    try expect(
+        MacPastePolicy.electronAccessibilityDelayRemaining(
+            elapsed: 0,
+            enhancedExposureChanged: false,
+            focusedElementPresent: false
+        ) == 0,
+        "ORhom must not delay when it did not change enhanced accessibility."
+    )
+    try expect(
+        MacPastePolicy.unobservableEditorPasteSettlementDelay >= 0.75,
+        "An unobservable editor must retain the temporary clipboard long enough for a delayed Electron event loop to consume the paste."
+    )
+    try expect(
+        MacPastePolicy.shouldEnableTemporaryAccessibility(
+            bundleIdentifier: "com.microsoft.VSCode",
+            focusedEditableElementPresent: false,
+            manualAttributeSettable: true,
+            manualAttributeValue: false,
+            enhancedAttributeSettable: true,
+            enhancedAttributeValue: false,
+            leaseAlreadyActive: false
+        ),
+        "VS Code must expose its editor accessibility tree temporarily when no focused element is available."
+    )
+    try expect(
+        MacPastePolicy.shouldEnableTemporaryAccessibility(
+            bundleIdentifier: "com.google.Chrome",
+            focusedEditableElementPresent: false,
+            manualAttributeSettable: false,
+            manualAttributeValue: nil,
+            enhancedAttributeSettable: true,
+            enhancedAttributeValue: false,
+            leaseAlreadyActive: false
+        ),
+        "Chrome must use its enhanced accessibility attribute even when manual accessibility is unavailable."
+    )
+    try expect(
+        !MacPastePolicy.shouldEnableTemporaryAccessibility(
+            bundleIdentifier: "com.microsoft.VSCode",
+            focusedEditableElementPresent: true,
+            manualAttributeSettable: true,
+            manualAttributeValue: false,
+            enhancedAttributeSettable: true,
+            enhancedAttributeValue: false,
+            leaseAlreadyActive: false
+        ),
+        "An already visible VS Code editor must not have its accessibility mode changed."
+    )
+    try expect(
+        !MacPastePolicy.shouldEnableTemporaryAccessibility(
+            bundleIdentifier: "com.microsoft.VSCode",
+            focusedEditableElementPresent: false,
+            manualAttributeSettable: true,
+            manualAttributeValue: true,
+            enhancedAttributeSettable: true,
+            enhancedAttributeValue: false,
+            leaseAlreadyActive: false
+        ),
+        "A user-enabled accessibility mode must never be leased or later disabled by ORhom."
+    )
+    try expect(
+        !MacPastePolicy.shouldEnableTemporaryAccessibility(
+            bundleIdentifier: "com.apple.TextEdit",
+            focusedEditableElementPresent: false,
+            manualAttributeSettable: true,
+            manualAttributeValue: false,
+            enhancedAttributeSettable: true,
+            enhancedAttributeValue: false,
+            leaseAlreadyActive: false
+        ),
+        "ORhom must not change AXManualAccessibility in arbitrary native applications."
+    )
+    try expect(
         MacPastePolicy.shortcutSequence == [
             .commandDown,
             .pasteKeyDown,
@@ -186,9 +328,20 @@ private func testPastePolicy() throws {
             inputHistoryStable: true,
             capturedWindowMatchesCurrentWindow: true,
             knownEditorSurface: true,
-            secureInputActive: true
+            secureInputActive: true,
+            inputMonitorAvailable: true
         ),
         "Secure input must block a window-only paste."
+    )
+    try expect(
+        !MacPastePolicy.mayUseWindowOnlyTarget(
+            inputHistoryStable: true,
+            capturedWindowMatchesCurrentWindow: true,
+            knownEditorSurface: true,
+            secureInputActive: false,
+            inputMonitorAvailable: false
+        ),
+        "A missing global input monitor must invalidate a window-only paste target."
     )
     try expect(
         MacPastePolicy.mayReuseWebTarget(
@@ -210,6 +363,151 @@ private func testPastePolicy() throws {
             exactEditableElementMatch: false
         ),
         "Intervening input must still reject a changed web target."
+    )
+    try expect(
+        MacPastePolicy.mayReuseNonactivatingTarget(
+            inputHistoryStable: true,
+            exactFocusedEditableElementMatch: true,
+            capturedWindowMatchesCurrentWindow: true
+        ),
+        "Stable input history must retain an exact nonactivating target."
+    )
+    try expect(
+        MacPastePolicy.mayReuseNonactivatingTarget(
+            inputHistoryStable: true,
+            exactFocusedEditableElementMatch: true,
+            capturedWindowMatchesCurrentWindow: false
+        ),
+        "Stable input history must retain a nonactivating target before exact revalidation."
+    )
+    try expect(
+        MacPastePolicy.mayReuseNonactivatingTarget(
+            inputHistoryStable: true,
+            exactFocusedEditableElementMatch: false,
+            capturedWindowMatchesCurrentWindow: true
+        ),
+        "Stable input history must retain a nonactivating target when only its window matches."
+    )
+    try expect(
+        MacPastePolicy.mayReuseNonactivatingTarget(
+            inputHistoryStable: true,
+            exactFocusedEditableElementMatch: false,
+            capturedWindowMatchesCurrentWindow: false
+        ),
+        "Stable input history must retain a nonactivating target for subsequent focus validation."
+    )
+    try expect(
+        MacPastePolicy.mayReuseNonactivatingTarget(
+            inputHistoryStable: false,
+            exactFocusedEditableElementMatch: true,
+            capturedWindowMatchesCurrentWindow: true
+        ),
+        "Intervening input must retain an exact editable element in the exact captured window."
+    )
+    try expect(
+        !MacPastePolicy.mayReuseNonactivatingTarget(
+            inputHistoryStable: false,
+            exactFocusedEditableElementMatch: false,
+            capturedWindowMatchesCurrentWindow: true
+        ),
+        "Intervening input must reject a changed element even when the window still matches."
+    )
+    try expect(
+        !MacPastePolicy.mayReuseNonactivatingTarget(
+            inputHistoryStable: false,
+            exactFocusedEditableElementMatch: true,
+            capturedWindowMatchesCurrentWindow: false
+        ),
+        "Intervening input must reject an exact element outside the captured window."
+    )
+    try expect(
+        !MacPastePolicy.mayReuseNonactivatingTarget(
+            inputHistoryStable: false,
+            exactFocusedEditableElementMatch: false,
+            capturedWindowMatchesCurrentWindow: false
+        ),
+        "Intervening input must reject a changed nonactivating target."
+    )
+    try expect(
+        MacPastePolicy.isPointerFreeChatGPTQuickChatWindow(
+            bundleIdentifier: "com.openai.chat",
+            windowRole: "AXWindow",
+            windowSubrole: "AXSystemDialog",
+            windowLayer: 8
+        ),
+        "The elevated ChatGPT Quick Chat system dialog must support pointer-free discovery."
+    )
+    try expect(
+        !MacPastePolicy.isPointerFreeChatGPTQuickChatWindow(
+            bundleIdentifier: "com.openai.chat",
+            windowRole: "AXWindow",
+            windowSubrole: "AXSystemDialog",
+            windowLayer: -1
+        ),
+        "A ChatGPT dialog behind normal windows must not win pointer-free discovery."
+    )
+    try expect(
+        !MacPastePolicy.isPointerFreeChatGPTQuickChatWindow(
+            bundleIdentifier: "com.openai.codex",
+            windowRole: "AXWindow",
+            windowSubrole: "AXSystemDialog",
+            windowLayer: 8
+        ),
+        "Another OpenAI app must not be mistaken for ChatGPT Quick Chat."
+    )
+    try expect(
+        !MacPastePolicy.isPointerFreeChatGPTQuickChatWindow(
+            bundleIdentifier: nil,
+            windowRole: "AXWindow",
+            windowSubrole: "AXSystemDialog",
+            windowLayer: 8
+        ),
+        "A window without a bundle identifier must fail pointer-free Quick Chat recognition."
+    )
+    try expect(
+        !MacPastePolicy.isPointerFreeChatGPTQuickChatWindow(
+            bundleIdentifier: "com.openai.chat",
+            windowRole: "AXDialog",
+            windowSubrole: "AXSystemDialog",
+            windowLayer: 8
+        ),
+        "A ChatGPT window with the wrong accessibility role must fail recognition."
+    )
+    try expect(
+        !MacPastePolicy.isPointerFreeChatGPTQuickChatWindow(
+            bundleIdentifier: "com.openai.chat",
+            windowRole: nil,
+            windowSubrole: "AXSystemDialog",
+            windowLayer: 8
+        ),
+        "A ChatGPT window without an accessibility role must fail recognition."
+    )
+    try expect(
+        !MacPastePolicy.isPointerFreeChatGPTQuickChatWindow(
+            bundleIdentifier: "com.openai.chat",
+            windowRole: "AXWindow",
+            windowSubrole: "AXDialog",
+            windowLayer: 8
+        ),
+        "A regular ChatGPT dialog must not be mistaken for Quick Chat."
+    )
+    try expect(
+        !MacPastePolicy.isPointerFreeChatGPTQuickChatWindow(
+            bundleIdentifier: "com.openai.chat",
+            windowRole: "AXWindow",
+            windowSubrole: nil,
+            windowLayer: 8
+        ),
+        "A ChatGPT window without an accessibility subrole must fail recognition."
+    )
+    try expect(
+        !MacPastePolicy.isPointerFreeChatGPTQuickChatWindow(
+            bundleIdentifier: "com.openai.chat",
+            windowRole: "AXWindow",
+            windowSubrole: "AXSystemDialog",
+            windowLayer: 0
+        ),
+        "A normal-layer ChatGPT system dialog must not be treated as nonactivating Quick Chat."
     )
     try expect(
         MacPastePolicy.mayUseNonactivatingFocusedElement(
@@ -323,6 +621,65 @@ private func testPastePolicy() throws {
             elementReportsFocused: false
         ),
         "An element without focused state must not use the topmost-frame fallback."
+    )
+}
+
+private func testPasteboardWriter() throws {
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+
+    pasteboard.clearContents()
+    try expect(
+        pasteboard.setString(
+            "vorheriger Inhalt",
+            forType: .string
+        ),
+        "The private pasteboard sentinel must be writable."
+    )
+    let expectedInitialChangeCount = pasteboard.changeCount
+    var lastOwnedChangeCount: Int?
+    let writtenChangeCount = MacPasteboardWriter.writeText(
+        "Erkanntes Diktat",
+        to: pasteboard,
+        expectedInitialChangeCount: expectedInitialChangeCount,
+        lastOwnedChangeCount: &lastOwnedChangeCount,
+        delay: { _ in }
+    )
+    try expect(
+        writtenChangeCount != nil &&
+            writtenChangeCount == lastOwnedChangeCount,
+        "The fallback writer must report ownership of a successful write."
+    )
+    try expect(
+        pasteboard.string(forType: .string) == "Erkanntes Diktat",
+        "The recognized dictation must replace the previous clipboard text."
+    )
+
+    let staleChangeCount = pasteboard.changeCount
+    pasteboard.clearContents()
+    try expect(
+        pasteboard.setString(
+            "neuer externer Inhalt",
+            forType: .string
+        ),
+        "The simulated external clipboard update must succeed."
+    )
+    var staleOwnedChangeCount: Int?
+    let rejectedWrite = MacPasteboardWriter.writeText(
+        "Darf externen Inhalt nicht überschreiben",
+        to: pasteboard,
+        expectedInitialChangeCount: staleChangeCount,
+        lastOwnedChangeCount: &staleOwnedChangeCount,
+        delay: { _ in }
+    )
+    try expect(
+        rejectedWrite == nil && staleOwnedChangeCount == nil,
+        "A stale clipboard owner must not be allowed to write."
+    )
+    try expect(
+        pasteboard.string(forType: .string) ==
+            "neuer externer Inhalt",
+        "A newer external clipboard value must remain untouched."
     )
 }
 
@@ -525,7 +882,24 @@ private func testAudioDuckingHardwareRoundTrip() throws {
 @main
 private enum ORhomMacTests {
     static func main() throws {
+        try runORhomAudioProcessingTests()
+        try runORhomDictationTextTests()
+        var gesture = HybridHotKeyGesture()
+        try expect(gesture.press(at: 1, startsDictation: true), "Initial press must toggle")
+        try expect(!gesture.press(at: 1.1, startsDictation: true), "Key repeat must not toggle")
+        try expect(!gesture.release(at: 1.2, enabled: true), "Quick release keeps hands-free recording")
+        try expect(gesture.press(at: 2, startsDictation: true), "Next press starts a fresh gesture")
+        try expect(gesture.release(at: 2.5, enabled: true), "Held release must request stop")
+        try expect(!gesture.release(at: 2.6, enabled: true), "Duplicate release must not stop again")
+        _ = gesture.press(at: 3, startsDictation: false)
+        try expect(!gesture.release(at: 4, enabled: true), "A stop press must not stop twice")
+        _ = gesture.press(at: 5, startsDictation: true)
+        try expect(!gesture.release(at: 6, enabled: false), "Disabled push-to-talk stays toggle only")
+        _ = gesture.press(at: 7, startsDictation: true)
+        gesture.reset()
+        try expect(!gesture.release(at: 8, enabled: true), "Cancelled gesture cannot stop a later recording")
         try testPastePolicy()
+        try testPasteboardWriter()
         try testHistoryCommandCopy()
         try testAudioDuckingRestores()
         try testAudioDuckingPreservesUserChange()
@@ -537,6 +911,6 @@ private enum ORhomMacTests {
         ] == "1" {
             try testAudioDuckingHardwareRoundTrip()
         }
-        print("ORhom macOS tests passed (38 test groups).")
+        print("ORhom macOS tests passed.")
     }
 }

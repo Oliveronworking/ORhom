@@ -45,6 +45,16 @@ private struct PasteCaptureSource {
     let underlyingApplicationLaunchDate: Date?
 }
 
+private struct TemporaryAccessibilityLease {
+    let id: UUID
+    let processIdentifier: pid_t
+    let bundleIdentifier: String?
+    let applicationLaunchDate: Date?
+    let enhancedRequestUptime: TimeInterval?
+    let restoreManualAccessibility: Bool
+    let restoreEnhancedUserInterface: Bool
+}
+
 private struct CGWindowDescriptor {
     let number: CGWindowID
     let title: String?
@@ -85,7 +95,9 @@ private struct PasteEffectObservation {
 
     func confirmsInsertion(
         from other: PasteEffectObservation,
-        insertedUTF16Length: Int
+        insertedUTF16Length: Int,
+        markerChangeAllowed: Bool,
+        stableChangedMarkerHash: CFHashCode?
     ) -> Bool {
         let replacedLength = max(
             0,
@@ -109,7 +121,55 @@ private struct PasteEffectObservation {
            selectedRangeLength == 0 {
             return true
         }
+        if markerChangeAllowed,
+           let selectedMarkerHash,
+           let previousMarkerHash = other.selectedMarkerHash,
+           selectedMarkerHash != previousMarkerHash,
+           selectedMarkerHash == stableChangedMarkerHash {
+            return true
+        }
         return false
+    }
+
+    func isDemonstrablyUnchanged(
+        from other: PasteEffectObservation
+    ) -> Bool {
+        guard
+            let valueLength,
+            let valueHash,
+            let previousValueLength = other.valueLength,
+            let previousValueHash = other.valueHash
+        else {
+            return false
+        }
+        guard
+            valueLength == previousValueLength,
+            valueHash == previousValueHash
+        else {
+            return false
+        }
+
+        var comparedSelectionEvidence = false
+        if let selectedRangeLocation,
+           let selectedRangeLength,
+           let previousRangeLocation = other.selectedRangeLocation,
+           let previousRangeLength = other.selectedRangeLength {
+            comparedSelectionEvidence = true
+            guard
+                selectedRangeLocation == previousRangeLocation,
+                selectedRangeLength == previousRangeLength
+            else {
+                return false
+            }
+        }
+        if let selectedMarkerHash,
+           let previousMarkerHash = other.selectedMarkerHash {
+            comparedSelectionEvidence = true
+            guard selectedMarkerHash == previousMarkerHash else {
+                return false
+            }
+        }
+        return comparedSelectionEvidence
     }
 }
 
@@ -121,6 +181,8 @@ private enum PasteFocusProbe {
 
 private let hotKeySignature: OSType = 0x4F52484D // ORHM
 private let syntheticPasteEventTag: Int64 = 0x4F52484D50415354 // ORHMPAST
+private let pasteFocusProbeAttempts = 64
+private let pasteModifierReleaseAttempts = 40
 
 private func globalHotKeyHandler(
     _ nextHandler: EventHandlerCallRef?,
@@ -129,8 +191,9 @@ private func globalHotKeyHandler(
 ) -> OSStatus {
     guard let userData else { return OSStatus(eventNotHandledErr) }
     let delegate = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
+    let released = event.map { GetEventKind($0) == UInt32(kEventHotKeyReleased) } ?? false
     DispatchQueue.main.async {
-        delegate.toggleDictation()
+        delegate.handleHotKeyEvent(released: released)
     }
     return noErr
 }
@@ -171,6 +234,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     private var activeHotKeyIsTemporaryFallback = false
     private var nextHotKeyID: UInt32 = 1
     private var hotKeyTemporarilySuspended = false
+    private var hotKeyGesture = HybridHotKeyGesture()
+    private var stopWhenRecordingStarts = false
+    private var activeDictationPreferences = DictationPreferences.load()
     private var permissionRefreshTimer: Timer?
     private var didPromptForAutomaticPasteThisRun = false
     private var didPromptForEventPostingThisRun = false
@@ -181,6 +247,10 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     private var globalInputMonitor: Any?
     private var diagnosticPasteboardSnapshot: PasteboardSnapshot?
     private var diagnosticText: String?
+    private var diagnosticOwnedPasteboardChangeCount: Int?
+    private var temporaryAccessibilityLease:
+        TemporaryAccessibilityLease?
+    private var pendingAccessibilityPasteContinuation: UUID?
 
     private var showOverlay: Bool {
         get {
@@ -267,8 +337,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             prepareLocalEngine()
         }
 
-        if !UserDefaults.standard.bool(forKey: "welcomeShownV2") {
-            UserDefaults.standard.set(true, forKey: "welcomeShownV2")
+        if !UserDefaults.standard.bool(forKey: "welcomeShownV3") {
+            UserDefaults.standard.set(true, forKey: "welcomeShownV3")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak self] in
                 self?.openSettings()
             }
@@ -279,8 +349,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     func applicationWillTerminate(_ notification: Notification) {
         recordingTimer?.invalidate()
         permissionRefreshTimer?.invalidate()
+        pendingAccessibilityPasteContinuation = nil
+        restoreDiagnosticPasteboardIfNeeded()
         NotificationCenter.default.removeObserver(self)
         audioDucking.restore()
+        restoreTemporaryAccessibilityExposure()
         audioStopQueue.sync {
             recorder.stopAndDiscard()
         }
@@ -304,6 +377,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
 
     func applicationDidBecomeActive(_ notification: Notification) {
         refreshPermissionState()
+    }
+
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication, hasVisibleWindows flag: Bool
+    ) -> Bool {
+        openSettings()
+        return true
     }
 
     func menuWillOpen(_ menu: NSMenu) {
@@ -332,6 +412,28 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         }
     }
 
+    func handleHotKeyEvent(released: Bool) {
+        guard !hotKeyTemporarilySuspended else {
+            hotKeyGesture.reset()
+            return
+        }
+        let now = ProcessInfo.processInfo.systemUptime
+        if released {
+            guard hotKeyGesture.release(
+                at: now, enabled: settingsModel.hybridPushToTalkEnabled
+            ) else { return }
+            if state == .recording {
+                finishDictation()
+            } else if state == .starting {
+                stopWhenRecordingStarts = true
+            }
+        } else if hotKeyGesture.press(
+            at: now, startsDictation: state == .idle || (state == .error && engineReady)
+        ) {
+            toggleDictation()
+        }
+    }
+
     private func installInputActivityMonitor() {
         globalInputMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [
@@ -357,6 +459,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                     event.cgEvent?.location
             }
             self.inputActivityLock.unlock()
+        }
+        if globalInputMonitor == nil {
+            store.log(
+                "Global input monitor unavailable. Ambiguous window-only paste targets will be rejected."
+            )
         }
     }
 
@@ -457,6 +564,21 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             audioDucking.volumePercent
         settingsModel.launchAtLogin = SMAppService.mainApp.status == .enabled
         settingsModel.hotKey = activeHotKey
+        settingsModel.hybridPushToTalkEnabled =
+            UserDefaults.standard.object(forKey: "hybridPushToTalkEnabled") as? Bool ?? true
+        settingsModel.onDictationPreferencesChanged = { [weak self] preferences in
+            guard let self, self.settingsModel.configurationEnabled else { return }
+            let normalized = preferences.validated()
+            guard normalized.save() else {
+                self.settingsModel.errorMessage = "Die Diktierregeln konnten nicht gespeichert werden."
+                return
+            }
+            self.settingsModel.dictationPreferences = normalized
+            self.settingsModel.errorMessage = nil
+        }
+        settingsModel.onHybridPushToTalkChanged = { enabled in
+            UserDefaults.standard.set(enabled, forKey: "hybridPushToTalkEnabled")
+        }
         refreshMicrophoneSettings()
         settingsModel.onRequestPermissions = { [weak self] in
             self?.requestPermissions()
@@ -569,23 +691,50 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             return
         }
 
-        guard let capturedTarget = captureCurrentPasteTarget() else {
+        let capturedTarget = captureCurrentPasteTarget()
+        let targetProtected =
+            capturedTarget?.subrole ==
+                (kAXSecureTextFieldSubrole as String)
+        let targetPotentiallyDeliverable =
+            capturedTarget.map(isPotentiallyDeliverablePasteTarget) ==
+                true
+        let startDisposition =
+            MacPastePolicy.dictationStartDisposition(
+                targetCaptured: capturedTarget != nil,
+                targetPotentiallyDeliverable:
+                    targetPotentiallyDeliverable,
+                targetProtected: targetProtected
+            )
+        switch startDisposition {
+        case .automaticPaste:
+            pasteTarget = capturedTarget
+        case .clipboard:
+            pasteTarget = nil
+            settingsModel.errorMessage = nil
+            restoreTemporaryAccessibilityExposure()
+            store.log(
+                "Dictation will start without an automatic paste target. Delivery=clipboard."
+            )
+        case .rejectProtectedTarget:
             settingsModel.errorMessage =
-                "Bitte zuerst den Cursor in das gewünschte Textfeld setzen."
+                "In Passwortfelder fügt ORhom aus Sicherheitsgründen nicht ein."
             setIdle(
-                message: "Kein Ziel ausgewählt",
-                detail: "Zuerst in ein Textfeld klicken"
+                message: "Passwortfeld geschützt",
+                detail: "Anderes Ziel auswählen"
             )
             NSSound.beep()
             return
         }
-        pasteTarget = capturedTarget
         pasteTargetInputGeneration = currentInputActivityGeneration()
+        activeDictationPreferences = settingsModel.dictationPreferences
+        stopWhenRecordingStarts = false
         state = .starting
         setOverlay(
             mode: .preparing,
             title: "Mikrofon wird aktiviert",
-            detail: recorder.microphoneName
+            detail: startDisposition == .clipboard
+                ? "Ausgabe in Zwischenablage"
+                : recorder.microphoneName
         )
         refreshMenu()
 
@@ -605,13 +754,19 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 self.recordingStart = Date()
                 self.overlayModel.mode = .recording
                 self.overlayModel.title = "Aufnahme"
-                self.overlayModel.detail = self.recorder.microphoneName
+                self.overlayModel.detail = self.pasteTarget == nil
+                    ? "Ausgabe: Zwischenablage"
+                    : self.recorder.microphoneName
                 self.overlayModel.elapsed = "00:00"
                 self.overlayModel.progress = nil
                 self.startRecordingTimer()
                 self.refreshMenu()
                 self.store.log("Dictation started. Engine=whisper.cpp Metal=true Microphone='\(self.recorder.microphoneName)' \(self.recorder.diagnostics)")
                 self.reprobePasteTargetAfterCaptureStarted()
+                if self.stopWhenRecordingStarts {
+                    self.stopWhenRecordingStarts = false
+                    self.finishDictation()
+                }
             } catch {
                 self.presentError(error)
             }
@@ -622,8 +777,6 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         guard state == .recording else { return }
         recordingTimer?.invalidate()
         recordingTimer = nil
-        audioDucking.restore()
-        lastAudioDuckingRefresh = nil
         state = .transcribing
         setOverlay(
             mode: .transcribing,
@@ -632,7 +785,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         )
         refreshMenu()
 
-        audioStopQueue.async { [weak self] in
+        // Keep a short real capture tail so releasing the key doesn't cut the
+        // final syllable. Output stays ducked until the microphone has stopped.
+        audioStopQueue.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             guard let self else { return }
             let stopResult: Result<([Float], String), Error>
             do {
@@ -644,6 +799,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
 
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.state == .transcribing else { return }
+                self.audioDucking.restore()
+                self.lastAudioDuckingRefresh = nil
                 switch stopResult {
                 case .success(let (samples, diagnostics)):
                     self.store.log(
@@ -661,10 +818,20 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     }
 
     private func transcribeStoppedRecording(_ samples: [Float]) {
-        whisper.transcribe(samples: samples) { [weak self] result in
+        let preferences = activeDictationPreferences
+        whisper.transcribe(
+            samples: samples,
+            language: preferences.recognitionLanguage,
+            prompt: preferences.recognitionPrompt()
+        ) { [weak self] result in
             guard let self, self.state == .transcribing else { return }
             switch result {
-            case .success(let text):
+            case .success(let rawText):
+                let text = DictationTextProcessor.process(rawText, preferences: preferences)
+                guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    self.setIdle(message: "Kein Text einzufügen", detail: "Diktat durch Sprachbefehl geleert")
+                    return
+                }
                 self.store.add(text: text, outcome: "Erfolgreich")
                 self.store.log("Dictation completed. TextLength=\(text.count)")
                 let target = self.pasteTarget
@@ -672,7 +839,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 self.setOverlay(
                     mode: .transcribing,
                     title: "Diktat erkannt",
-                    detail: "Text wird eingefügt"
+                    detail: target == nil
+                        ? "Text wird kopiert"
+                        : "Text wird eingefügt"
                 )
                 self.refreshMenu()
                 self.paste(text, into: target)
@@ -686,6 +855,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         guard state == .recording || state == .starting else { return }
         recordingTimer?.invalidate()
         recordingTimer = nil
+        hotKeyGesture.reset()
+        stopWhenRecordingStarts = false
         audioDucking.restore()
         lastAudioDuckingRefresh = nil
         recorder.stopAndDiscard()
@@ -797,10 +968,48 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             NSApp.terminate(nil)
             return
         }
+        let expectedProcessIdentifierText =
+            ProcessInfo.processInfo.environment[
+                "ORHOM_DIAGNOSTIC_EXPECTED_PID"
+            ]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let expectedProcessIdentifierText,
+           !expectedProcessIdentifierText.isEmpty {
+            guard
+                let expectedProcessIdentifier =
+                    pid_t(expectedProcessIdentifierText),
+                expectedProcessIdentifier ==
+                    target.processIdentifier
+            else {
+                store.log(
+                    "Paste diagnostic failed. Reason='unexpected-target-process' ExpectedPID='\(expectedProcessIdentifierText)' ActualPID=\(target.processIdentifier)."
+                )
+                NSApp.terminate(nil)
+                return
+            }
+        }
+        let expectedWindowNumberText =
+            ProcessInfo.processInfo.environment[
+                "ORHOM_DIAGNOSTIC_EXPECTED_WINDOW_NUMBER"
+            ]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let expectedWindowNumberText,
+           !expectedWindowNumberText.isEmpty {
+            guard
+                let expectedWindowNumber =
+                    CGWindowID(expectedWindowNumberText),
+                target.windowNumber == expectedWindowNumber
+            else {
+                store.log(
+                    "Paste diagnostic failed. Reason='unexpected-target-window' ExpectedWindow='\(expectedWindowNumberText)' ActualWindow=\(target.windowNumber.map(String.init) ?? "none")."
+                )
+                NSApp.terminate(nil)
+                return
+            }
+        }
         diagnosticPasteboardSnapshot = captureStablePasteboardSnapshot(
             NSPasteboard.general
         )
         diagnosticText = text
+        diagnosticOwnedPasteboardChangeCount = nil
         pasteTarget = target
         pasteTargetInputGeneration = currentInputActivityGeneration()
         if ProcessInfo.processInfo.environment[
@@ -821,7 +1030,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             detail: "Chrome-Textfeld wird geprüft"
         )
         paste(text, into: target)
-        finishPasteDiagnosticWhenSettled(remainingAttempts: 50)
+        finishPasteDiagnosticWhenSettled(remainingAttempts: 120)
     }
 
     private func finishPasteDiagnosticWhenSettled(
@@ -847,32 +1056,43 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         defer {
             diagnosticPasteboardSnapshot = nil
             diagnosticText = nil
+            diagnosticOwnedPasteboardChangeCount = nil
         }
         guard
             let snapshot = diagnosticPasteboardSnapshot,
-            let text = diagnosticText
+            let text = diagnosticText,
+            let ownedChangeCount =
+                diagnosticOwnedPasteboardChangeCount
         else {
             return
         }
         let pasteboard = NSPasteboard.general
-        guard pasteboard.string(forType: .string) == text else {
+        guard
+            pasteboard.string(forType: .string) == text,
+            pasteboard.changeCount == ownedChangeCount
+        else {
             return
         }
         _ = restorePasteboardSnapshot(
             snapshot,
             pasteboard: pasteboard,
-            fallbackText: text
+            expectedOwnedChangeCount: ownedChangeCount,
+            expectedOwnedText: text
         )
     }
 
     private func presentError(_ error: Error, openSettings: Bool = false) {
         let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         state = .error
+        hotKeyGesture.reset()
+        stopWhenRecordingStarts = false
+        pendingAccessibilityPasteContinuation = nil
         recordingTimer?.invalidate()
         recordingTimer = nil
         audioDucking.restore()
         lastAudioDuckingRefresh = nil
         recorder.stopAndDiscard()
+        restoreTemporaryAccessibilityExposure()
         settingsModel.errorMessage = message
         setOverlay(
             mode: .error,
@@ -890,8 +1110,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         audioDucking.restore()
         lastAudioDuckingRefresh = nil
         state = .idle
+        stopWhenRecordingStarts = false
+        pendingAccessibilityPasteContinuation = nil
         recordingStart = nil
         pasteTarget = nil
+        restoreTemporaryAccessibilityExposure()
         setOverlay(
             mode: .idle,
             title: message ?? "Bereit",
@@ -940,6 +1163,24 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         var coherentSamples = 0
         var consecutiveCompatibleSamples = 0
 
+        if let initialSource = currentPasteCaptureSource(),
+           !initialSource.usesNonactivatingWindow,
+           initialSource.focusedElement.map({
+               isProvenEditableKeyboardFocus(
+                   $0,
+                   bundleIdentifier:
+                       initialSource.application.bundleIdentifier
+               )
+           }) != true,
+           enableTemporaryAccessibilityExposureIfNeeded(
+               for: initialSource.application
+           ) {
+            // Electron publishes its editor subtree asynchronously after
+            // AXManualAccessibility changes. Give it one short turn before
+            // taking the identity samples below.
+            Thread.sleep(forTimeInterval: 0.06)
+        }
+
         for attempt in 1...3 {
             guard
                 let sourceBefore = currentPasteCaptureSource(),
@@ -964,7 +1205,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             )
             let rawCandidate = makePasteTarget(
                 application: applicationBefore,
-                focusedElementOverride: sourceBefore.focusedElement,
+                focusedElement: sourceBefore.focusedElement,
                 usesNonactivatingWindow:
                     sourceBefore.usesNonactivatingWindow,
                 underlyingProcessIdentifier:
@@ -1004,7 +1245,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
 
             if coherent {
                 let candidate: PasteTarget
-                if pasteTarget(
+                if rawCandidate.subrole ==
+                    (kAXSecureTextFieldSubrole as String) {
+                    candidate = rawCandidate
+                    store.log(
+                        "Focus capture retained an explicitly protected AX element without requiring ambiguous Core Graphics window mapping. Attempt=\(attempt)."
+                    )
+                } else if pasteTarget(
                     rawCandidate,
                     matches: foregroundWindowBefore
                 ) || MacPastePolicy.shouldRetainMappedAXWindow(
@@ -1032,6 +1279,14 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                             copyAXBoolean(
                                 from: $0,
                                 attribute: kAXFocusedAttribute
+                            )
+                        } == true ||
+                        rawCandidate.focusedElement.map {
+                            isSystemWideFocusedElement(
+                                $0,
+                                processIdentifier:
+                                    applicationBefore
+                                        .processIdentifier
                             )
                         } == true
                 ) {
@@ -1121,23 +1376,38 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         else {
             return nil
         }
-        if AXIsProcessTrusted(),
-           let globalFocusedElement = systemWideFocusedAXElement(
-               for: frontmostApplication.processIdentifier
-           ) {
-            return PasteCaptureSource(
-                application: frontmostApplication,
-                focusedElement: globalFocusedElement,
-                usesNonactivatingWindow: false,
-                underlyingProcessIdentifier: nil,
-                underlyingApplicationLaunchDate: nil
-            )
-        }
         if let focusedNonactivatingSource =
             focusedNonactivatingPasteCaptureSource(
                 frontmostApplication: frontmostApplication
             ) {
             return focusedNonactivatingSource
+        }
+        if AXIsProcessTrusted() {
+            let applicationElement = AXUIElementCreateApplication(
+                frontmostApplication.processIdentifier
+            )
+            _ = AXUIElementSetMessagingTimeout(
+                applicationElement,
+                0.12
+            )
+            if let focusedElement = focusedAXElement(
+                for: frontmostApplication.processIdentifier,
+                applicationElement: applicationElement
+            ) {
+                let normalizedFocusedElement =
+                    focusedElementForPasteCapture(
+                        focusedElement,
+                        bundleIdentifier:
+                            frontmostApplication.bundleIdentifier
+                    )
+                return PasteCaptureSource(
+                    application: frontmostApplication,
+                    focusedElement: normalizedFocusedElement,
+                    usesNonactivatingWindow: false,
+                    underlyingProcessIdentifier: nil,
+                    underlyingApplicationLaunchDate: nil
+                )
+            }
         }
         if let nonactivatingSource =
             nonactivatingPasteCaptureSource(
@@ -1185,40 +1455,24 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 processIdentifier
             )
             _ = AXUIElementSetMessagingTimeout(applicationElement, 0.18)
-            guard
-                let applicationFocusedElement = copyAXElement(
-                    from: applicationElement,
-                    attribute: kAXFocusedUIElementAttribute
-                ),
-                let editableElement = nearestEditableAXElement(
-                    from: applicationFocusedElement
-                ),
-                MacPastePolicy.mayUseNonactivatingFocusedElement(
-                    exactApplicationFocus: CFEqual(
-                        editableElement,
-                        applicationFocusedElement
-                    ),
-                    elementReportsFocused: copyAXBoolean(
-                        from: editableElement,
-                        attribute: kAXFocusedAttribute
-                    ) == true,
-                    supportsSelectedText: isAXAttributeSettable(
-                        editableElement,
-                        attribute: kAXSelectedTextAttribute
-                    ),
-                    isSecure:
-                        isSecureAXElementOrAncestor(editableElement)
-                )
-            else {
-                continue
-            }
-
+            let applicationFocusedElement = copyAXElement(
+                from: applicationElement,
+                attribute: kAXFocusedUIElementAttribute
+            )
             let focusedWindow =
+                applicationFocusedElement.flatMap {
+                    copyAXElement(
+                        from: $0,
+                        attribute: kAXWindowAttribute
+                    )
+                } ??
                 copyAXElement(
-                    from: editableElement,
-                    attribute: kAXWindowAttribute
+                    from: applicationElement,
+                    attribute: kAXFocusedWindowAttribute
                 ) ??
-                copyAncestorWindow(from: editableElement)
+                applicationFocusedElement.flatMap {
+                    copyAncestorWindow(from: $0)
+                }
             guard
                 let focusedWindow,
                 let focusedWindowDescriptor = matchingWindowDescriptor(
@@ -1231,7 +1485,18 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                     frame: copyAXFrame(focusedWindow),
                     includeNonstandardLayers: true
                 ),
-                focusedWindowDescriptor.layer != 0,
+                MacPastePolicy.isPointerFreeChatGPTQuickChatWindow(
+                    bundleIdentifier: application.bundleIdentifier,
+                    windowRole: copyAXString(
+                        from: focusedWindow,
+                        attribute: kAXRoleAttribute
+                    ),
+                    windowSubrole: copyAXString(
+                        from: focusedWindow,
+                        attribute: kAXSubroleAttribute
+                    ),
+                    windowLayer: focusedWindowDescriptor.layer
+                ),
                 candidates.contains(where: {
                     $0.processIdentifier == processIdentifier &&
                         $0.window.number ==
@@ -1241,12 +1506,63 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 continue
             }
 
-            store.log(
-                "Nonactivating focus discovered without pointer. TargetPID=\(processIdentifier) Bundle='\(application.bundleIdentifier ?? "unknown")' WindowNumber=\(focusedWindowDescriptor.number) Layer=\(focusedWindowDescriptor.layer)."
-            )
+            let editableElement =
+                applicationFocusedElement.flatMap {
+                    nearestEditableAXElement(
+                        from: $0,
+                        bundleIdentifier:
+                            application.bundleIdentifier
+                    )
+                }
+            let exactOrDescendantApplicationFocus =
+                editableElement.flatMap { editable in
+                    applicationFocusedElement.map {
+                        CFEqual(editable, $0) ||
+                            isElement($0, within: editable)
+                    }
+                } ?? false
+            let editorReady =
+                editableElement.map { editable in
+                    MacPastePolicy.mayUseNonactivatingFocusedElement(
+                        exactApplicationFocus:
+                            exactOrDescendantApplicationFocus,
+                        elementReportsFocused:
+                            copyAXBoolean(
+                                from: editable,
+                                attribute: kAXFocusedAttribute
+                            ) == true ||
+                            (
+                                applicationFocusedElement.map { raw in
+                                    copyAXBoolean(
+                                        from: raw,
+                                        attribute:
+                                            kAXFocusedAttribute
+                                    ) == true &&
+                                        isElement(
+                                            raw,
+                                            within: editable
+                                        )
+                                } ?? false
+                            ),
+                        supportsSelectedText: isAXAttributeSettable(
+                            editable,
+                            attribute: kAXSelectedTextAttribute
+                        ),
+                        isSecure: false
+                    )
+                } == true
+            if editorReady {
+                store.log(
+                    "Nonactivating focus discovered without pointer. TargetPID=\(processIdentifier) Bundle='\(application.bundleIdentifier ?? "unknown")' WindowNumber=\(focusedWindowDescriptor.number) Layer=\(focusedWindowDescriptor.layer) EditorReady=true."
+                )
+            } else {
+                store.log(
+                    "Nonactivating Quick Chat is visible while its editor is still pending. TargetPID=\(processIdentifier) WindowNumber=\(focusedWindowDescriptor.number). Underlying target capture blocked."
+                )
+            }
             return PasteCaptureSource(
                 application: application,
-                focusedElement: editableElement,
+                focusedElement: editorReady ? editableElement : nil,
                 usesNonactivatingWindow: true,
                 underlyingProcessIdentifier:
                     frontmostApplication.processIdentifier,
@@ -1333,17 +1649,31 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         guard MacPastePolicy.mayUseNonactivatingFocusedElement(
             exactApplicationFocus:
                 applicationFocusedElement.map {
-                    CFEqual(editableElement, $0)
+                    CFEqual(editableElement, $0) ||
+                        isElement($0, within: editableElement)
                 } ?? false,
-            elementReportsFocused: copyAXBoolean(
-                from: editableElement,
-                attribute: kAXFocusedAttribute
-            ) == true,
+            elementReportsFocused:
+                copyAXBoolean(
+                    from: editableElement,
+                    attribute: kAXFocusedAttribute
+                ) == true ||
+                (
+                    applicationFocusedElement.map {
+                        copyAXBoolean(
+                            from: $0,
+                            attribute: kAXFocusedAttribute
+                        ) == true &&
+                            isElement(
+                                $0,
+                                within: editableElement
+                            )
+                    } ?? false
+                ),
             supportsSelectedText: isAXAttributeSettable(
                 editableElement,
                 attribute: kAXSelectedTextAttribute
             ),
-            isSecure: isSecureAXElementOrAncestor(editableElement)
+            isSecure: false
         ) else {
             if traceDiagnostic {
                 store.log(
@@ -1402,24 +1732,201 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     }
 
     private func nearestEditableAXElement(
-        from initialElement: AXUIElement
+        from initialElement: AXUIElement,
+        bundleIdentifier: String? = nil
     ) -> AXUIElement? {
-        var element = initialElement
-        for _ in 0..<8 {
-            if isEditableKeyboardPasteElement(element) {
-                return element
+        let deadline = CFAbsoluteTimeGetCurrent() + 0.10
+        var startingElements: [AXUIElement] = [initialElement]
+        for attribute in [
+            "AXHighestEditableAncestor",
+            "AXEditableAncestor",
+            kAXFocusedUIElementAttribute as String
+        ] {
+            if let candidate = copyAXElement(
+                from: initialElement,
+                attribute: attribute
+            ),
+               !startingElements.contains(where: {
+                   CFEqual($0, candidate)
+               }) {
+                startingElements.append(candidate)
             }
-            guard
-                let parent = copyAXElement(
-                    from: element,
-                    attribute: kAXParentAttribute
-                )
-            else {
-                return nil
-            }
-            element = parent
         }
-        return nil
+
+        let initialWindow =
+            copyAXElement(
+                from: initialElement,
+                attribute: kAXWindowAttribute
+            ) ??
+            copyAncestorWindow(from: initialElement)
+        for startingElement in startingElements {
+            var element = startingElement
+            for _ in 0..<16 {
+                guard CFAbsoluteTimeGetCurrent() < deadline else {
+                    return nil
+                }
+                let editable =
+                    bundleIdentifier.map {
+                        isProvenEditableKeyboardFocus(
+                            element,
+                            bundleIdentifier: $0
+                        )
+                    } ??
+                    isEditableKeyboardPasteElement(element)
+                if editable,
+                   axElementsBelongToSameProcess(
+                       initialElement,
+                       element
+                   ),
+                   axElementsShareWindow(
+                       initialWindow,
+                       element
+                   ) {
+                    return element
+                }
+                guard
+                    let parent = copyAXElement(
+                        from: element,
+                        attribute: kAXParentAttribute
+                    ),
+                    !CFEqual(parent, element)
+                else {
+                    break
+                }
+                element = parent
+            }
+        }
+
+        return uniqueFocusedEditableDescendant(
+            from: initialElement,
+            bundleIdentifier: bundleIdentifier,
+            initialWindow: initialWindow,
+            deadline: deadline
+        )
+    }
+
+    private func focusedElementForPasteCapture(
+        _ focusedElement: AXUIElement,
+        bundleIdentifier: String?
+    ) -> AXUIElement? {
+        if copyAXString(
+            from: focusedElement,
+            attribute: kAXSubroleAttribute
+        ) == (kAXSecureTextFieldSubrole as String) {
+            return focusedElement
+        }
+        if let editableElement = nearestEditableAXElement(
+            from: focusedElement,
+            bundleIdentifier: bundleIdentifier
+        ) {
+            return editableElement
+        }
+        let role = copyAXString(
+            from: focusedElement,
+            attribute: kAXRoleAttribute
+        )
+        if role == (kAXWindowRole as String) ||
+            role == (kAXApplicationRole as String) {
+            return nil
+        }
+        return focusedElement
+    }
+
+    private func uniqueFocusedEditableDescendant(
+        from initialElement: AXUIElement,
+        bundleIdentifier: String?,
+        initialWindow: AXUIElement?,
+        deadline: CFAbsoluteTime
+    ) -> AXUIElement? {
+        let initialRole = copyAXString(
+            from: initialElement,
+            attribute: kAXRoleAttribute
+        )
+        guard
+            initialRole == (kAXWindowRole as String) ||
+            initialRole == (kAXApplicationRole as String) ||
+            initialRole == "AXGroup"
+        else {
+            return nil
+        }
+
+        var queue = copyAXElements(
+            from: initialElement,
+            attribute: kAXChildrenAttribute
+        )
+        var index = 0
+        var match: AXUIElement?
+        while
+            index < queue.count,
+            index < 64,
+            CFAbsoluteTimeGetCurrent() < deadline {
+            let candidate = queue[index]
+            index += 1
+            let editable =
+                bundleIdentifier.map {
+                    isProvenEditableKeyboardFocus(
+                        candidate,
+                        bundleIdentifier: $0
+                    )
+                } ??
+                isEditableKeyboardPasteElement(candidate)
+            if editable,
+               copyAXBoolean(
+                   from: candidate,
+                   attribute: kAXFocusedAttribute
+               ) == true,
+               axElementsBelongToSameProcess(
+                   initialElement,
+                   candidate
+               ),
+               axElementsShareWindow(
+                   initialWindow,
+                   candidate
+               ) {
+                if let match, !CFEqual(match, candidate) {
+                    return nil
+                }
+                match = candidate
+            }
+            if queue.count < 64 {
+                queue.append(
+                    contentsOf: copyAXElements(
+                        from: candidate,
+                        attribute: kAXChildrenAttribute
+                    ).prefix(64 - queue.count)
+                )
+            }
+        }
+        return match
+    }
+
+    private func axElementsBelongToSameProcess(
+        _ lhs: AXUIElement,
+        _ rhs: AXUIElement
+    ) -> Bool {
+        var leftProcess = pid_t()
+        var rightProcess = pid_t()
+        return AXUIElementGetPid(lhs, &leftProcess) == .success &&
+            AXUIElementGetPid(rhs, &rightProcess) == .success &&
+            leftProcess == rightProcess
+    }
+
+    private func axElementsShareWindow(
+        _ expectedWindow: AXUIElement?,
+        _ element: AXUIElement
+    ) -> Bool {
+        guard let expectedWindow else { return true }
+        guard
+            let elementWindow =
+                copyAXElement(
+                    from: element,
+                    attribute: kAXWindowAttribute
+                ) ??
+                copyAncestorWindow(from: element)
+        else {
+            return false
+        }
+        return CFEqual(expectedWindow, elementWindow)
     }
 
     private func makeWindowOnlyPasteTarget(
@@ -1481,7 +1988,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
 
     private func makePasteTarget(
         application: NSRunningApplication,
-        focusedElementOverride: AXUIElement? = nil,
+        focusedElement: AXUIElement?,
         usesNonactivatingWindow: Bool = false,
         underlyingProcessIdentifier: pid_t? = nil,
         underlyingApplicationLaunchDate: Date? = nil
@@ -1521,12 +2028,6 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
 
         let applicationElement = AXUIElementCreateApplication(processIdentifier)
         _ = AXUIElementSetMessagingTimeout(applicationElement, 0.12)
-        let focusedElement =
-            focusedElementOverride ??
-            focusedAXElement(
-                for: processIdentifier,
-                applicationElement: applicationElement
-            )
         let focusedWindow =
             focusedElement.flatMap {
                 copyAXElement(from: $0, attribute: kAXWindowAttribute)
@@ -1549,7 +2050,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             MacPastePolicy.mayPreferTopmostFrameMatch(
                 usesNonactivatingWindow: usesNonactivatingWindow,
                 authoritativeFocusedElement:
-                    focusedElementOverride != nil,
+                    focusedElement != nil,
                 focusedElementEditable:
                     focusedElement.map {
                         isProvenEditableKeyboardFocus(
@@ -1566,14 +2067,42 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                         )
                     } == true
             )
-        let window = matchingWindowDescriptor(
-            for: processIdentifier,
-            focusedWindow: focusedWindow,
-            title: axWindowTitle,
-            frame: axWindowFrame,
-            includeNonstandardLayers: usesNonactivatingWindow,
-            preferTopmostFrameMatch: preferTopmostFrameMatch
-        )
+        let directlyMappedWindow =
+            focusedWindow.flatMap(copyAXWindowNumber).flatMap {
+                windowNumber in
+                visibleWindowDescriptors(
+                    for: processIdentifier,
+                    includeNonstandardLayers:
+                        usesNonactivatingWindow
+                ).first {
+                    $0.number == windowNumber
+                }
+            }
+        let mappedWindow =
+            directlyMappedWindow ??
+            matchingWindowDescriptor(
+                for: processIdentifier,
+                focusedWindow: focusedWindow,
+                title: axWindowTitle,
+                frame: axWindowFrame,
+                includeNonstandardLayers:
+                    usesNonactivatingWindow,
+                preferTopmostFrameMatch:
+                    preferTopmostFrameMatch
+            )
+        let window =
+            mappedWindow ??
+            (
+                focusedElement.map(
+                    isExplicitlyNonsecureChromeOmnibox
+                ) == true
+                ? topmostWindowDescriptor(
+                    for: processIdentifier,
+                    includeNonstandardLayers:
+                        usesNonactivatingWindow
+                )
+                : nil
+            )
         if window == nil,
            focusedWindow != nil,
            ProcessInfo.processInfo.environment[
@@ -1679,10 +2208,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 !original.usesNonactivatingWindow &&
                 candidate.underlyingProcessIdentifier ==
                     original.processIdentifier &&
-                self.ambiguousTargetInputStayedStable() &&
-                self.systemWideFocusedAXElement(
-                    for: original.processIdentifier
-                ) == nil
+                (
+                    candidate.underlyingApplicationLaunchDate == nil ||
+                    original.applicationLaunchDate == nil ||
+                    candidate.underlyingApplicationLaunchDate ==
+                        original.applicationLaunchDate
+                ) &&
+                self.ambiguousTargetInputStayedStable()
             let sameCapturedTarget =
                 self.sameApplicationInstance(original, candidate) &&
                 self.windowsAreCompatible(original, candidate)
@@ -1790,13 +2322,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         _ lhs: PasteTarget,
         _ rhs: PasteTarget
     ) -> Bool {
-        if lhs.windowNumber != nil || rhs.windowNumber != nil {
-            return lhs.windowNumber == rhs.windowNumber
-        }
         if let left = lhs.focusedWindow,
            let right = rhs.focusedWindow,
            CFEqual(left, right) {
             return true
+        }
+        if lhs.windowNumber != nil || rhs.windowNumber != nil {
+            return lhs.windowNumber == rhs.windowNumber
         }
         if let leftFrame = lhs.windowFrame,
            let rightFrame = rhs.windowFrame,
@@ -1810,15 +2342,134 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         return false
     }
 
-    private func paste(_ text: String, into target: PasteTarget?) {
-        guard let target else {
-            leaveDictationOnClipboard(
+    private func refreshedPasteTargetForInsertion(
+        _ original: PasteTarget
+    ) -> PasteTarget {
+        guard let candidate = captureCurrentPasteTarget() else {
+            return original
+        }
+        let lateNonactivatingCorrection =
+            candidate.usesNonactivatingWindow &&
+            !original.usesNonactivatingWindow &&
+            candidate.underlyingProcessIdentifier ==
+                original.processIdentifier &&
+            (
+                candidate.underlyingApplicationLaunchDate == nil ||
+                original.applicationLaunchDate == nil ||
+                candidate.underlyingApplicationLaunchDate ==
+                    original.applicationLaunchDate
+            ) &&
+            ambiguousTargetInputStayedStable()
+        let sameTarget =
+            sameApplicationInstance(original, candidate) &&
+            windowsAreCompatible(original, candidate)
+        let exactFocusedElementMatch =
+            original.focusedElement.flatMap { expected in
+                candidate.focusedElement.map {
+                    CFEqual(expected, $0)
+                }
+            } == true
+        let genericPromotionIsSafe =
+            sameTarget &&
+            (
+                ambiguousTargetInputStayedStable() ||
+                exactFocusedElementMatch
+            )
+        guard
+            lateNonactivatingCorrection ||
+            genericPromotionIsSafe
+        else {
+            store.log(
+                "Final focus refresh retained captured target. Reason='application-window-or-input-changed'."
+            )
+            return original
+        }
+
+        let stronger =
+            pasteTargetStrength(candidate) >
+                pasteTargetStrength(original) ||
+            isSemanticFocusPromotion(
+                from: original,
+                to: candidate
+            )
+        guard lateNonactivatingCorrection || stronger else {
+            return original
+        }
+        store.log(
+            "Final focus refresh promoted target. OriginalPID=\(original.processIdentifier) TargetPID=\(candidate.processIdentifier) OriginalScore=\(pasteTargetStrength(original)) CandidateScore=\(pasteTargetStrength(candidate)) Role='\(candidate.role ?? "unknown")'."
+        )
+        return candidate
+    }
+
+    private func paste(
+        _ text: String,
+        into capturedTarget: PasteTarget?
+    ) {
+        guard let capturedTarget else {
+            copyDictationToClipboard(
                 text,
-                reason: "target-missing",
-                promptForPermission: false
+                reason: "target-missing"
             )
             return
         }
+        if let accessibilityWait =
+            electronAccessibilityDelayIfNeeded(
+            for: capturedTarget
+        ), accessibilityWait.delay > 0 {
+            guard
+                let application = NSRunningApplication(
+                    processIdentifier:
+                        capturedTarget.processIdentifier
+                ),
+                sameApplicationInstance(
+                    capturedTarget,
+                    application
+                )
+            else {
+                leaveDictationOnClipboard(
+                    text,
+                    reason:
+                        "target-closed-during-accessibility-activation",
+                    promptForPermission: false
+                )
+                return
+            }
+            pasteTarget = capturedTarget
+            let delayMilliseconds = Int(
+                (accessibilityWait.delay * 1_000).rounded()
+            )
+            let continuation = UUID()
+            pendingAccessibilityPasteContinuation = continuation
+            store.log(
+                "Paste waiting for Electron accessibility activation. TargetPID=\(capturedTarget.processIdentifier) DelayMilliseconds=\(delayMilliseconds)."
+            )
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + accessibilityWait.delay
+            ) { [weak self] in
+                guard
+                    let self,
+                    self.state == .pasting,
+                    self.temporaryAccessibilityLease?.id ==
+                        accessibilityWait.leaseID,
+                    self.pendingAccessibilityPasteContinuation ==
+                        continuation,
+                    self.pasteTarget.map({
+                        self.sameApplicationInstance(
+                            $0,
+                            capturedTarget
+                        )
+                    }) == true
+                else {
+                    return
+                }
+                self.pendingAccessibilityPasteContinuation = nil
+                self.paste(text, into: capturedTarget)
+            }
+            return
+        }
+        pendingAccessibilityPasteContinuation = nil
+        let target = refreshedPasteTargetForInsertion(capturedTarget)
+        pasteTarget = target
         guard
             let application = NSRunningApplication(
                 processIdentifier: target.processIdentifier
@@ -1841,24 +2492,20 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             )
             return
         }
-        guard
-            target.subrole !=
-                (kAXSecureTextFieldSubrole as String),
-            !isSecureAXElementOrAncestor(target.focusedElement)
-        else {
-            leaveDictationOnClipboard(
-                text,
-                reason: "secure-text-field",
-                promptForPermission: false
-            )
-            settingsModel.errorMessage =
-                "In Passwortfelder fügt ORhom aus Sicherheitsgründen nicht automatisch ein."
-            return
-        }
-
         let targetWasFrontmost =
             NSWorkspace.shared.frontmostApplication?.processIdentifier ==
                 target.processIdentifier
+        if !target.usesNonactivatingWindow,
+           !targetWasFrontmost,
+           !ambiguousTargetInputStayedStable() {
+            leaveDictationOnClipboard(
+                text,
+                reason:
+                    "target-no-longer-frontmost-after-user-input",
+                promptForPermission: false
+            )
+            return
+        }
         let targetWindowWasFrontmost = pasteTarget(
             target,
             matches: topmostWindowDescriptor(
@@ -1871,8 +2518,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             target.usesNonactivatingWindow ||
             targetWasFrontmost ||
             application.activate(options: [.activateIgnoringOtherApps])
-        if !targetWasFrontmost,
-           !targetWindowWasFrontmost,
+        if !targetWindowWasFrontmost,
            !target.usesNonactivatingWindow,
            let focusedWindow = target.focusedWindow {
             _ = AXUIElementPerformAction(
@@ -1896,10 +2542,54 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             target: target,
             application: application,
             targetWasFrontmost: targetWasFrontmost,
-            remainingAttempts: 16,
+            remainingAttempts: pasteFocusProbeAttempts,
             consecutiveMatches: 0,
             didAttemptElementFocus: false
         )
+    }
+
+    private func electronAccessibilityDelayIfNeeded(
+        for target: PasteTarget
+    ) -> (delay: TimeInterval, leaseID: UUID)? {
+        guard
+            let lease = temporaryAccessibilityLease,
+            let enhancedRequestUptime =
+                lease.enhancedRequestUptime,
+            target.processIdentifier == lease.processIdentifier,
+            target.bundleIdentifier == lease.bundleIdentifier,
+            (
+                target.applicationLaunchDate == nil ||
+                lease.applicationLaunchDate == nil ||
+                target.applicationLaunchDate ==
+                    lease.applicationLaunchDate
+            )
+        else {
+            return nil
+        }
+        let focusedEditableElementPresent =
+            target.focusedElement.map {
+                isEditableAXRole(
+                    copyAXString(
+                        from: $0,
+                        attribute: kAXRoleAttribute
+                    ) ?? ""
+                ) &&
+                isProvenEditableKeyboardFocus(
+                    $0,
+                    bundleIdentifier: target.bundleIdentifier
+                )
+            } == true
+        let delay =
+            MacPastePolicy.electronAccessibilityDelayRemaining(
+            elapsed:
+                ProcessInfo.processInfo.systemUptime -
+                enhancedRequestUptime,
+            enhancedExposureChanged:
+                lease.restoreEnhancedUserInterface,
+            focusedElementPresent:
+                focusedEditableElementPresent
+        )
+        return (delay: delay, leaseID: lease.id)
     }
 
     private func waitForPasteTarget(
@@ -1950,7 +2640,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 return
             }
             store.log(
-                "Target focus confirmed. Match='\(kind)' AttemptsUsed=\(17 - remainingAttempts) PreserveWebViewCaret=\(target.preserveWebViewCaret)."
+                "Target focus confirmed. Match='\(kind)' AttemptsUsed=\(pasteFocusProbeAttempts + 1 - remainingAttempts) PreserveWebViewCaret=\(target.preserveWebViewCaret)."
             )
             insertDictation(
                 text,
@@ -1977,6 +2667,15 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                     "Native target focus requested. Result=\(result.rawValue) Reason='\(reason)'."
                 )
             } else if !target.usesNonactivatingWindow,
+                      (
+                          remainingAttempts ==
+                              pasteFocusProbeAttempts ||
+                          (
+                              didAttemptElementFocus &&
+                              remainingAttempts ==
+                                  pasteFocusProbeAttempts - 1
+                          )
+                      ),
                       let focusedWindow = target.focusedWindow {
                 _ = AXUIElementPerformAction(
                     focusedWindow,
@@ -2042,11 +2741,6 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             return .unsafe(reason: "application-instance-changed")
         }
         if target.usesNonactivatingWindow {
-            guard ambiguousTargetInputStayedStable() else {
-                return .transient(
-                    reason: "nonactivating-target-after-user-input"
-                )
-            }
             guard
                 let underlyingApplication =
                     NSWorkspace.shared.frontmostApplication,
@@ -2063,7 +2757,6 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             }
         } else {
             guard
-                application.isActive,
                 NSWorkspace.shared.frontmostApplication?.processIdentifier ==
                     target.processIdentifier
             else {
@@ -2080,16 +2773,22 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             target.processIdentifier
         )
         _ = AXUIElementSetMessagingTimeout(applicationElement, 0.12)
-        let currentElement: AXUIElement?
+        let rawCurrentElement: AXUIElement?
         if target.usesNonactivatingWindow {
-            currentElement = copyAXElement(
+            rawCurrentElement = copyAXElement(
                 from: applicationElement,
                 attribute: kAXFocusedUIElementAttribute
             )
         } else {
-            currentElement = focusedAXElement(
+            rawCurrentElement = focusedAXElement(
                 for: target.processIdentifier,
                 applicationElement: applicationElement
+            )
+        }
+        let currentElement = rawCurrentElement.flatMap {
+            focusedElementForPasteCapture(
+                $0,
+                bundleIdentifier: target.bundleIdentifier
             )
         }
         let currentWindow =
@@ -2126,6 +2825,28 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         else {
             return .transient(reason: "foreground-window-changed-during-probe")
         }
+        if target.usesNonactivatingWindow {
+            guard
+                let currentWindow,
+                let currentWindowDescriptor,
+                MacPastePolicy.isPointerFreeChatGPTQuickChatWindow(
+                    bundleIdentifier: target.bundleIdentifier,
+                    windowRole: copyAXString(
+                        from: currentWindow,
+                        attribute: kAXRoleAttribute
+                    ),
+                    windowSubrole: copyAXString(
+                        from: currentWindow,
+                        attribute: kAXSubroleAttribute
+                    ),
+                    windowLayer: currentWindowDescriptor.layer
+                )
+            else {
+                return .transient(
+                    reason: "nonactivating-window-no-longer-quick-chat"
+                )
+            }
+        }
         let capturedWindowMatchesCurrentFocusedWindow =
             target.windowNumber != nil &&
             target.windowNumber == currentWindowDescriptor?.number
@@ -2158,6 +2879,22 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             )
             ? currentWindowDescriptor
             : foregroundWindowAfter ?? currentWindowDescriptor
+        let exactCapturedAXWindowStillFocused =
+            target.focusedWindow.flatMap { expectedWindow in
+                currentWindow.map {
+                    CFEqual(expectedWindow, $0)
+                }
+            } == true &&
+            currentElement.map {
+                isProvenEditableKeyboardFocus(
+                    $0,
+                    bundleIdentifier: target.bundleIdentifier
+                ) &&
+                    copyAXBoolean(
+                        from: $0,
+                        attribute: kAXFocusedAttribute
+                    ) == true
+            } == true
         if let currentWindow,
            let authoritativeWindow {
             let exactCapturedAXWindowIsForeground =
@@ -2167,7 +2904,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                         CFEqual($0, currentWindow)
                     } ?? false
                 )
-            guard exactCapturedAXWindowIsForeground ||
+            guard exactCapturedAXWindowStillFocused ||
+                exactCapturedAXWindowIsForeground ||
                 windowIdentity(
                     number: currentWindowDescriptor?.number,
                     matches: authoritativeWindow
@@ -2194,10 +2932,75 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             )
         }
 
-        if IsSecureEventInputEnabled() ||
-            isSecureAXElementOrAncestor(target.focusedElement) ||
-            isSecureAXElementOrAncestor(currentElement) {
-            return .unsafe(reason: "secure-text-field")
+        let nonactivatingInputHistoryStable: Bool? =
+            target.usesNonactivatingWindow
+            ? ambiguousTargetInputStayedStable()
+            : nil
+        if let inputHistoryStable = nonactivatingInputHistoryStable {
+            guard
+                let currentElement,
+                isProvenEditableKeyboardFocus(
+                    currentElement,
+                    bundleIdentifier: target.bundleIdentifier
+                ),
+                MacPastePolicy.mayUseNonactivatingFocusedElement(
+                    exactApplicationFocus: true,
+                    elementReportsFocused:
+                        copyAXBoolean(
+                            from: currentElement,
+                            attribute: kAXFocusedAttribute
+                        ) == true ||
+                        (
+                            rawCurrentElement.map { raw in
+                                copyAXBoolean(
+                                    from: raw,
+                                    attribute: kAXFocusedAttribute
+                                ) == true &&
+                                    isElement(
+                                        raw,
+                                        within: currentElement
+                                    )
+                            } ?? false
+                        ),
+                    supportsSelectedText: isAXAttributeSettable(
+                        currentElement,
+                        attribute: kAXSelectedTextAttribute
+                    ),
+                    isSecure: false
+                )
+            else {
+                return .transient(
+                    reason:
+                        "nonactivating-current-element-not-focused-editable"
+                )
+            }
+            let exactFocusedEditableElementMatch =
+                target.focusedElement.map {
+                    CFEqual($0, currentElement)
+                } ?? false
+            let exactAXWindowMatch =
+                target.focusedWindow.map { expectedWindow in
+                    currentWindow.map {
+                        CFEqual(expectedWindow, $0)
+                    } ?? false
+                } ?? false
+            let capturedWindowMatchesCurrentWindow =
+                target.windowNumber != nil &&
+                target.windowNumber ==
+                    currentWindowDescriptor?.number &&
+                exactAXWindowMatch
+            guard MacPastePolicy.mayReuseNonactivatingTarget(
+                inputHistoryStable: inputHistoryStable,
+                exactFocusedEditableElementMatch:
+                    exactFocusedEditableElementMatch,
+                capturedWindowMatchesCurrentWindow:
+                    capturedWindowMatchesCurrentWindow
+            ) else {
+                return .transient(
+                    reason:
+                        "nonactivating-target-changed-after-user-input"
+                )
+            }
         }
 
         if let expectedWebArea = target.webAreaRoot {
@@ -2231,6 +3034,19 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
 
         if target.preserveWebViewCaret {
             let inputHistoryStable = ambiguousTargetInputStayedStable()
+            let capturedEditorSurfaceRemainsSafe =
+                inputHistoryStable &&
+                globalInputMonitor != nil &&
+                allowsWindowOnlyKeyboardPaste(
+                    target.bundleIdentifier
+                ) &&
+                target.focusedElement.map {
+                    isProvenEditableKeyboardFocus(
+                        $0,
+                        bundleIdentifier:
+                            target.bundleIdentifier
+                    )
+                } == true
             let exactEditableElementMatch: Bool
             if let expected = target.focusedElement,
                let currentElement {
@@ -2251,6 +3067,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             if let expected = target.focusedElement,
                let currentElement {
                 guard isWebKeyboardPasteElement(currentElement) else {
+                    if capturedEditorSurfaceRemainsSafe {
+                        return .match(
+                            element: currentElement,
+                            kind:
+                                "editor-accessibility-focus-stable"
+                        )
+                    }
                     return .transient(
                         reason: "current-web-element-not-editable"
                     )
@@ -2285,7 +3108,21 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 return .transient(reason: "web-element-changed")
             }
             if target.focusedElement != nil {
+                if capturedEditorSurfaceRemainsSafe {
+                    return .match(
+                        element: currentElement,
+                        kind:
+                            "editor-accessibility-focus-temporarily-missing"
+                    )
+                }
                 return .transient(reason: "current-web-element-missing")
+            }
+            if target.usesNonactivatingWindow,
+               let currentElement {
+                return .match(
+                    element: currentElement,
+                    kind: "nonactivating-editor-became-ready"
+                )
             }
             let exactAXWindowMatch =
                 target.focusedWindow.map { expectedWindow in
@@ -2307,7 +3144,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                     allowsWindowOnlyKeyboardPaste(
                         target.bundleIdentifier
                     ),
-                secureInputActive: IsSecureEventInputEnabled()
+                secureInputActive: false,
+                inputMonitorAvailable: globalInputMonitor != nil
             ) else {
                 return .transient(
                     reason: "window-only-target-no-longer-exact"
@@ -2335,9 +3173,14 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             return .transient(reason: "current-element-missing")
         }
         if CFEqual(expected, currentElement) {
-            return .match(element: currentElement, kind: "element-exact")
+            let matchKind =
+                nonactivatingInputHistoryStable == false
+                ? "nonactivating-element-exact-after-intervening-input"
+                : "element-exact"
+            return .match(element: currentElement, kind: matchKind)
         }
-        if elementsSemanticallyMatch(target, current: currentElement) {
+        if ambiguousTargetInputStayedStable(),
+           elementsSemanticallyMatch(target, current: currentElement) {
             return .match(element: currentElement, kind: "element-semantic")
         }
         return .transient(reason: "element-identity-changed")
@@ -2351,13 +3194,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         currentWindowFrame: CGRect?,
         allowProcessScopedMatch: Bool
     ) -> Bool {
-        if target.windowNumber != nil || currentWindowNumber != nil {
-            return target.windowNumber == currentWindowNumber
-        }
         if let expectedWindow = target.focusedWindow,
            let currentWindow,
            CFEqual(expectedWindow, currentWindow) {
             return true
+        }
+        if target.windowNumber != nil || currentWindowNumber != nil {
+            return target.windowNumber == currentWindowNumber
         }
         if let expectedFrame = target.windowFrame,
            let currentWindowFrame,
@@ -2451,7 +3294,6 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     ) {
         if !target.preserveWebViewCaret,
            let currentFocusedElement,
-           !isSecureAXElementOrAncestor(currentFocusedElement),
            let verifiedFocusedElement = verifiedDirectAXInsertionElement(
                target: target,
                expectedElement: currentFocusedElement,
@@ -2461,19 +3303,115 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
            isAXAttributeSettable(
                verifiedFocusedElement,
                attribute: kAXSelectedTextAttribute
-           ),
-           AXUIElementSetAttributeValue(
-               verifiedFocusedElement,
-               kAXSelectedTextAttribute as CFString,
-               text as CFString
-           ) == .success {
-            setIdle(message: "Eingefügt", detail: "Am ursprünglichen Cursor")
-            store.log(
-                "Paste completed. Method=AXSelectedText TargetPID=\(target.processIdentifier) ClipboardChanged=false."
+           ) {
+            let observationBefore = pasteEffectObservation(
+                verifiedFocusedElement
             )
-            return
+            let insertionResult = AXUIElementSetAttributeValue(
+                verifiedFocusedElement,
+                kAXSelectedTextAttribute as CFString,
+                text as CFString
+            )
+            if insertionResult == .success {
+                let observationAfter = pasteEffectObservation(
+                    verifiedFocusedElement
+                )
+                let demonstrablyUnchanged =
+                    observationBefore.flatMap { before in
+                        observationAfter.map {
+                            $0.isDemonstrablyUnchanged(from: before)
+                        }
+                    } == true
+                if !demonstrablyUnchanged {
+                    setIdle(
+                        message: "Eingefügt",
+                        detail: "Am ursprünglichen Cursor"
+                    )
+                    store.log(
+                        "Paste completed. Method=AXSelectedText TargetPID=\(target.processIdentifier) ClipboardChanged=false Verified=\(observationBefore != nil && observationAfter != nil ? "observed-change-or-inconclusive" : "AX-success")."
+                    )
+                    return
+                }
+                store.log(
+                    "Direct AX insertion reported success without an immediate observable change. Waiting for a delayed accessibility update. TargetPID=\(target.processIdentifier)."
+                )
+                DispatchQueue.main.asyncAfter(
+                    deadline: .now() + 0.075
+                ) { [weak self] in
+                    guard let self, self.state == .pasting else {
+                        return
+                    }
+                    let delayedObservation =
+                        self.pasteEffectObservation(
+                            verifiedFocusedElement
+                        )
+                    let stillDemonstrablyUnchanged =
+                        observationBefore.flatMap { before in
+                            delayedObservation.map {
+                                $0.isDemonstrablyUnchanged(
+                                    from: before
+                                )
+                            }
+                        } == true
+                    if !stillDemonstrablyUnchanged {
+                        self.setIdle(
+                            message: "Eingefügt",
+                            detail: "Am ursprünglichen Cursor"
+                        )
+                        self.store.log(
+                            "Paste completed. Method=AXSelectedText TargetPID=\(target.processIdentifier) ClipboardChanged=false Verified=delayed-accessibility-change."
+                        )
+                        return
+                    }
+                    guard case .match(
+                        let delayedFocusedElement,
+                        _
+                    ) = self.probePasteFocus(
+                        target,
+                        application: application,
+                        allowProcessScopedMatch:
+                            targetWasFrontmost
+                    ) else {
+                        self.leaveDictationOnClipboard(
+                            text,
+                            reason:
+                                "direct-ax-effect-unconfirmed-focus-changed",
+                            promptForPermission: false
+                        )
+                        return
+                    }
+                    self.store.log(
+                        "Direct AX insertion remained observably unchanged. Retrying with verified keyboard paste. TargetPID=\(target.processIdentifier)."
+                    )
+                    self.prepareKeyboardInsertion(
+                        text,
+                        target: target,
+                        currentFocusedElement:
+                            delayedFocusedElement,
+                        application: application,
+                        targetWasFrontmost: targetWasFrontmost
+                    )
+                }
+                return
+            }
         }
 
+        prepareKeyboardInsertion(
+            text,
+            target: target,
+            currentFocusedElement: currentFocusedElement,
+            application: application,
+            targetWasFrontmost: targetWasFrontmost
+        )
+    }
+
+    private func prepareKeyboardInsertion(
+        _ text: String,
+        target: PasteTarget,
+        currentFocusedElement: AXUIElement?,
+        application: NSRunningApplication,
+        targetWasFrontmost: Bool
+    ) {
         let hasProvenKeyboardPasteFocus =
             currentFocusedElement.map {
                 isProvenEditableKeyboardFocus(
@@ -2549,9 +3487,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             return
         }
         var lastOwnedChangeCount: Int?
-        guard let ownedChangeCount = writeTextToPasteboard(
+        guard let ownedChangeCount = MacPasteboardWriter.writeText(
             text,
-            pasteboard: pasteboard,
+            to: pasteboard,
             expectedInitialChangeCount: snapshot.changeCount,
             lastOwnedChangeCount: &lastOwnedChangeCount
         ) else {
@@ -2561,24 +3499,25 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 restorePasteboardSnapshot(
                     snapshot,
                     pasteboard: pasteboard,
-                    fallbackText: text
+                    expectedOwnedChangeCount:
+                        lastOwnedChangeCount!,
+                    expectedOwnedText: nil
                 )
-            let dictationRetained =
-                pasteboard.string(forType: .string) == text
             settingsModel.errorMessage =
                 "Der erkannte Text konnte nicht in die Zwischenablage geschrieben werden."
             setIdle(
                 message: "Einfügen fehlgeschlagen",
                 detail: restored
                     ? "Zwischenablage wurde wiederhergestellt"
-                    : dictationRetained
-                        ? "Diktat liegt in der Zwischenablage"
-                        : "Text bleibt im Diktierverlauf"
+                    : "Text bleibt im Diktierverlauf"
             )
             store.log(
                 "Paste failed. Reason=clipboard-write-failed ClipboardRestored=\(restored)."
             )
             return
+        }
+        if diagnosticText == text {
+            diagnosticOwnedPasteboardChangeCount = ownedChangeCount
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.025) { [weak self] in
@@ -2644,7 +3583,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 finishWithOwnedClipboardFallback(
                     reason: "dispatch-focus-timeout consecutive-match",
                     text: text,
-                    ownedChangeCount: ownedChangeCount
+                    ownedChangeCount: ownedChangeCount,
+                    snapshot: snapshot
                 )
                 return
             }
@@ -2664,7 +3604,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 finishWithOwnedClipboardFallback(
                     reason: "dispatch-focus-timeout \(reason)",
                     text: text,
-                    ownedChangeCount: ownedChangeCount
+                    ownedChangeCount: ownedChangeCount,
+                    snapshot: snapshot
                 )
                 return
             }
@@ -2683,7 +3624,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             finishWithOwnedClipboardFallback(
                 reason: "dispatch-unsafe \(reason)",
                 text: text,
-                ownedChangeCount: ownedChangeCount
+                ownedChangeCount: ownedChangeCount,
+                snapshot: snapshot
             )
         }
     }
@@ -2720,7 +3662,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         snapshot: PasteboardSnapshot,
         ownedChangeCount: Int,
         focusMatchKind: String,
-        modifierReleaseAttempts: Int = 12
+        modifierReleaseAttempts: Int = pasteModifierReleaseAttempts
     ) {
         guard state == .pasting else { return }
         let pasteboard = NSPasteboard.general
@@ -2745,7 +3687,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             finishWithOwnedClipboardFallback(
                 reason: "focus-changed-before-event",
                 text: text,
-                ownedChangeCount: ownedChangeCount
+                ownedChangeCount: ownedChangeCount,
+                snapshot: snapshot
             )
             return
         }
@@ -2761,6 +3704,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 allowsWindowOnlyKeyboardPaste(
                     target.bundleIdentifier
                 ) &&
+                globalInputMonitor != nil &&
                 target.windowNumber != nil &&
                 topmostWindowDescriptor(
                     for: target.processIdentifier,
@@ -2772,7 +3716,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             finishWithOwnedClipboardFallback(
                 reason: "keyboard-delivery-focus-not-proven",
                 text: text,
-                ownedChangeCount: ownedChangeCount
+                ownedChangeCount: ownedChangeCount,
+                snapshot: snapshot
             )
             return
         }
@@ -2790,7 +3735,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 finishWithOwnedClipboardFallback(
                     reason: "physical-modifier-still-pressed",
                     text: text,
-                    ownedChangeCount: ownedChangeCount
+                    ownedChangeCount: ownedChangeCount,
+                    snapshot: snapshot
                 )
                 return
             }
@@ -2819,7 +3765,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             finishWithOwnedClipboardFallback(
                 reason: "event-source-creation-failed",
                 text: text,
-                ownedChangeCount: ownedChangeCount
+                ownedChangeCount: ownedChangeCount,
+                snapshot: snapshot
             )
             return
         }
@@ -2828,14 +3775,14 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         )
         if delivery == .activeSession {
             guard
-                application.isActive,
                 NSWorkspace.shared.frontmostApplication?
                     .processIdentifier == target.processIdentifier
             else {
                 finishWithOwnedClipboardFallback(
                     reason: "session-target-not-frontmost-before-event",
                     text: text,
-                    ownedChangeCount: ownedChangeCount
+                    ownedChangeCount: ownedChangeCount,
+                    snapshot: snapshot
                 )
                 return
             }
@@ -2876,13 +3823,23 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             finishWithOwnedClipboardFallback(
                 reason: "event-creation-failed",
                 text: text,
-                ownedChangeCount: ownedChangeCount
+                ownedChangeCount: ownedChangeCount,
+                snapshot: snapshot
             )
             return
         }
-        let observationBefore = confirmedElement.flatMap(
-            pasteEffectObservation
-        )
+        let usesUnobservableEditorSurface =
+            target.preserveWebViewCaret &&
+            allowsWindowOnlyKeyboardPaste(
+                target.bundleIdentifier
+            )
+        let observationBefore = usesUnobservableEditorSurface
+            ? nil
+            : confirmedElement.flatMap(
+                pasteEffectObservation
+            )
+        let verificationInputGeneration =
+            currentInputActivityGeneration()
         for event in events {
             switch delivery {
             case .activeSession:
@@ -2907,8 +3864,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 snapshot: snapshot,
                 ownedChangeCount: ownedChangeCount,
                 observationBefore: observationBefore,
+                verificationInputGeneration:
+                    verificationInputGeneration,
                 delivery: delivery,
-                remainingAttempts: 10
+                remainingAttempts: 10,
+                pendingChangedMarkerHash: nil
             )
         }
     }
@@ -2921,8 +3881,10 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         snapshot: PasteboardSnapshot,
         ownedChangeCount: Int,
         observationBefore: PasteEffectObservation?,
+        verificationInputGeneration: UInt64,
         delivery: KeyboardPasteDelivery,
-        remainingAttempts: Int
+        remainingAttempts: Int,
+        pendingChangedMarkerHash: CFHashCode?
     ) {
         guard state == .pasting else { return }
         let pasteboard = NSPasteboard.general
@@ -2951,62 +3913,104 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         if observationBefore == nil {
             guard case .match = probe else {
                 finishWithOwnedClipboardFallback(
-                    reason: "unobservable-paste-focus-changed",
+                    reason:
+                        "dispatched-effect-unobservable-focus-changed",
                     text: text,
-                    ownedChangeCount: ownedChangeCount
+                    ownedChangeCount: ownedChangeCount,
+                    snapshot: snapshot
                 )
                 store.log(
-                    "Paste dispatch completed. Method=\(deliveryName) TargetPID=\(target.processIdentifier) Verified=false ClipboardRestored=false."
+                    "Paste dispatch could not be confirmed. Method=\(deliveryName) TargetPID=\(target.processIdentifier) Reason='effect-unobservable-focus-changed'."
                 )
                 return
             }
-            setIdle(
-                message: "Einfügen ausgelöst",
-                detail: "Vor manuellem ⌘V kurz im Ziel prüfen"
-            )
-            store.log(
-                "Paste dispatch completed. Method=\(deliveryName) TargetPID=\(target.processIdentifier) Verified=dispatch-only ClipboardRestored=false ClipboardStillOwned=true."
-            )
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() +
+                    MacPastePolicy
+                        .unobservableEditorPasteSettlementDelay
+            ) { [weak self] in
+                guard let self, self.state == .pasting else {
+                    return
+                }
+                guard case .match = self.probePasteFocus(
+                    target,
+                    application: application,
+                    allowProcessScopedMatch: targetWasFrontmost
+                ) else {
+                    self.finishWithOwnedClipboardFallback(
+                        reason:
+                            "dispatched-effect-unobservable-late-focus-changed",
+                        text: text,
+                        ownedChangeCount: ownedChangeCount,
+                        snapshot: snapshot
+                    )
+                    return
+                }
+                self.finishAfterKeyboardPasteDispatch(
+                    reason: "effect-unobservable-target-stable",
+                    text: text,
+                    ownedChangeCount: ownedChangeCount,
+                    snapshot: snapshot,
+                    deliveryName: deliveryName,
+                    targetProcessIdentifier:
+                        target.processIdentifier
+                )
+            }
             return
         }
+        var nextChangedMarkerHash: CFHashCode?
         if case .match(let currentElement, _) = probe,
            let observationBefore,
            let observationAfter = currentElement.flatMap(
                pasteEffectObservation
-           ),
-           observationAfter.confirmsInsertion(
-               from: observationBefore,
-               insertedUTF16Length: (text as NSString).length
            ) {
-            let restored = restorePasteboardSnapshot(
-                snapshot,
-                pasteboard: pasteboard,
-                fallbackText: text
-            )
-            let dictationRetained =
-                pasteboard.string(forType: .string) == text
-            setIdle(
-                message: "Eingefügt",
-                detail: restored
-                    ? "Web-Editor bestätigt · Zwischenablage wiederhergestellt"
-                    : dictationRetained
-                        ? "Web-Editor bestätigt · Diktat in Zwischenablage"
-                        : "Web-Editor bestätigt"
-            )
-            store.log(
-                "Paste dispatch completed. Method=\(deliveryName) TargetPID=\(target.processIdentifier) Verified=true ClipboardRestored=\(restored)."
-            )
-            return
+            let markerChangeAllowed =
+                globalInputMonitor != nil &&
+                currentInputActivityGeneration() ==
+                    verificationInputGeneration
+            if markerChangeAllowed,
+               let selectedMarkerHash =
+                    observationAfter.selectedMarkerHash,
+               let previousMarkerHash =
+                    observationBefore.selectedMarkerHash,
+               selectedMarkerHash != previousMarkerHash {
+                nextChangedMarkerHash = selectedMarkerHash
+            }
+            if observationAfter.confirmsInsertion(
+                from: observationBefore,
+                insertedUTF16Length: (text as NSString).length,
+                markerChangeAllowed: markerChangeAllowed,
+                stableChangedMarkerHash:
+                    pendingChangedMarkerHash
+            ) {
+                let restored = restorePasteboardSnapshot(
+                    snapshot,
+                    pasteboard: pasteboard,
+                    expectedOwnedChangeCount: ownedChangeCount,
+                    expectedOwnedText: text
+                )
+                setIdle(
+                    message: "Eingefügt",
+                    detail: restored
+                        ? "Web-Editor bestätigt · Zwischenablage wiederhergestellt"
+                        : "Web-Editor bestätigt · Text im Verlauf"
+                )
+                store.log(
+                    "Paste dispatch completed. Method=\(deliveryName) TargetPID=\(target.processIdentifier) Verified=true ClipboardRestored=\(restored)."
+                )
+                return
+            }
         }
 
         guard remainingAttempts > 1 else {
             finishWithOwnedClipboardFallback(
-                reason: "paste-effect-unconfirmed",
+                reason: "dispatched-paste-effect-unconfirmed",
                 text: text,
-                ownedChangeCount: ownedChangeCount
+                ownedChangeCount: ownedChangeCount,
+                snapshot: snapshot
             )
             store.log(
-                "Paste dispatch completed. Method=\(deliveryName) TargetPID=\(target.processIdentifier) Verified=false ClipboardRestored=false."
+                "Paste dispatch could not be confirmed. Method=\(deliveryName) TargetPID=\(target.processIdentifier) Reason='paste-effect-unconfirmed'."
             )
             return
         }
@@ -3019,8 +4023,12 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 snapshot: snapshot,
                 ownedChangeCount: ownedChangeCount,
                 observationBefore: observationBefore,
+                verificationInputGeneration:
+                    verificationInputGeneration,
                 delivery: delivery,
-                remainingAttempts: remainingAttempts - 1
+                remainingAttempts: remainingAttempts - 1,
+                pendingChangedMarkerHash:
+                    nextChangedMarkerHash
             )
         }
     }
@@ -3058,43 +4066,26 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         return nil
     }
 
-    private func writeTextToPasteboard(
-        _ text: String,
-        pasteboard: NSPasteboard,
-        expectedInitialChangeCount: Int,
-        lastOwnedChangeCount: inout Int?
-    ) -> Int? {
-        let retryDelays: [TimeInterval] = [0, 0.020, 0.040, 0.060]
-        for delay in retryDelays {
-            if delay > 0 {
-                Thread.sleep(forTimeInterval: delay)
-            }
-            let expectedChangeCount =
-                lastOwnedChangeCount ?? expectedInitialChangeCount
-            guard pasteboard.changeCount == expectedChangeCount else {
-                return nil
-            }
-            pasteboard.clearContents()
-            lastOwnedChangeCount = pasteboard.changeCount
-            guard pasteboard.setString(text, forType: .string) else {
-                continue
-            }
-            let ownedChangeCount = pasteboard.changeCount
-            lastOwnedChangeCount = ownedChangeCount
-            if pasteboard.string(forType: .string) == text &&
-                pasteboard.changeCount == ownedChangeCount {
-                return ownedChangeCount
-            }
-        }
-        return nil
-    }
-
     private func restorePasteboardSnapshot(
         _ snapshot: PasteboardSnapshot,
         pasteboard: NSPasteboard,
-        fallbackText: String
+        expectedOwnedChangeCount initialOwnedChangeCount: Int,
+        expectedOwnedText: String?
     ) -> Bool {
-        var expectedOwnedChangeCount = pasteboard.changeCount
+        let ownedTextStillMatches =
+            expectedOwnedText == nil ||
+            pasteboard.string(forType: .string) == expectedOwnedText
+        guard
+            pasteboard.changeCount == initialOwnedChangeCount,
+            ownedTextStillMatches,
+            pasteboard.changeCount == initialOwnedChangeCount
+        else {
+            store.log(
+                "Clipboard snapshot restore skipped. Reason='ownership-changed-before-restore'."
+            )
+            return false
+        }
+        var expectedOwnedChangeCount = initialOwnedChangeCount
         let retryDelays: [TimeInterval] = [0, 0.020, 0.050]
 
         for delay in retryDelays {
@@ -3140,23 +4131,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             expectedOwnedChangeCount = postWriteChangeCount
         }
 
-        guard pasteboard.changeCount == expectedOwnedChangeCount else {
-            return false
-        }
-        pasteboard.clearContents()
-        let fallbackWritten = pasteboard.setString(
-            fallbackText,
-            forType: .string
+        store.log(
+            "Clipboard snapshot restore failed. DictationFallbackWritten=false."
         )
-        let fallbackChangeCount = pasteboard.changeCount
-        let fallbackVerified = fallbackWritten &&
-            pasteboard.string(forType: .string) == fallbackText &&
-            pasteboard.changeCount == fallbackChangeCount
-        if !fallbackVerified {
-            store.log(
-                "Clipboard recovery failed after snapshot restore failure."
-            )
-        }
         return false
     }
 
@@ -3184,22 +4161,58 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     private func finishWithOwnedClipboardFallback(
         reason: String,
         text: String,
-        ownedChangeCount: Int
+        ownedChangeCount: Int,
+        snapshot: PasteboardSnapshot
     ) {
         let pasteboard = NSPasteboard.general
         let clipboardStillOwned =
             pasteboard.changeCount == ownedChangeCount &&
             pasteboard.string(forType: .string) == text
+        let restored = clipboardStillOwned &&
+            restorePasteboardSnapshot(
+                snapshot,
+                pasteboard: pasteboard,
+                expectedOwnedChangeCount: ownedChangeCount,
+                expectedOwnedText: text
+            )
         setIdle(
-            message: clipboardStillOwned
-                ? "In Zwischenablage"
-                : "Einfügen abgebrochen",
-            detail: clipboardStillOwned
-                ? "Mit ⌘V am Cursor einfügen"
-                : "Text bleibt im Diktierverlauf"
+            message: "Nicht automatisch eingefügt",
+            detail: restored
+                ? "Zwischenablage wiederhergestellt · Text im Verlauf"
+                : "Text bleibt sicher im Diktierverlauf"
         )
         store.log(
-            "Paste fallback. Reason='\(reason)' ClipboardStillOwned=\(clipboardStillOwned)."
+            "Paste fallback. Reason='\(reason)' ClipboardStillOwned=\(clipboardStillOwned) ClipboardRestored=\(restored) HistoryRetained=true."
+        )
+    }
+
+    private func finishAfterKeyboardPasteDispatch(
+        reason: String,
+        text: String,
+        ownedChangeCount: Int,
+        snapshot: PasteboardSnapshot,
+        deliveryName: String,
+        targetProcessIdentifier: pid_t
+    ) {
+        let pasteboard = NSPasteboard.general
+        let clipboardStillOwned =
+            pasteboard.changeCount == ownedChangeCount &&
+            pasteboard.string(forType: .string) == text
+        let restored = clipboardStillOwned &&
+            restorePasteboardSnapshot(
+                snapshot,
+                pasteboard: pasteboard,
+                expectedOwnedChangeCount: ownedChangeCount,
+                expectedOwnedText: text
+            )
+        setIdle(
+            message: "Einfügen ausgelöst",
+            detail: restored
+                ? "Ziel stabil · Zwischenablage wiederhergestellt"
+                : "Ziel stabil · Text zusätzlich im Verlauf"
+        )
+        store.log(
+            "Paste dispatch completed. Method=\(deliveryName) TargetPID=\(targetProcessIdentifier) Verified=dispatch-only Reason='\(reason)' ClipboardRestored=\(restored) ClipboardStillOwned=\(clipboardStillOwned)."
         )
     }
 
@@ -3207,15 +4220,35 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         for processIdentifier: pid_t,
         applicationElement: AXUIElement
     ) -> AXUIElement? {
-        if let globalElement = systemWideFocusedAXElement(
-            for: processIdentifier
-        ) {
-            return globalElement
-        }
-        return copyAXElement(
+        let applicationElement = copyAXElement(
             from: applicationElement,
             attribute: kAXFocusedUIElementAttribute
         )
+        let globalElement = systemWideFocusedAXElement(
+            for: processIdentifier
+        )
+        for candidate in [applicationElement, globalElement].compactMap({
+            $0
+        }) {
+            if copyAXString(
+                from: candidate,
+                attribute: kAXSubroleAttribute
+            ) == (kAXSecureTextFieldSubrole as String) {
+                return candidate
+            }
+        }
+        for candidate in [applicationElement, globalElement].compactMap({
+            $0
+        }) {
+            if let role = copyAXString(
+                from: candidate,
+                attribute: kAXRoleAttribute
+            ),
+               isEditableAXRole(role) {
+                return candidate
+            }
+        }
+        return globalElement ?? applicationElement
     }
 
     private func systemWideFocusedAXElement(
@@ -3237,6 +4270,299 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             }
         }
         return nil
+    }
+
+    private func isSystemWideFocusedElement(
+        _ element: AXUIElement,
+        processIdentifier: pid_t
+    ) -> Bool {
+        guard let globalElement = systemWideFocusedAXElement(
+            for: processIdentifier
+        ) else {
+            return false
+        }
+        return CFEqual(globalElement, element) ||
+            isElement(globalElement, within: element) ||
+            isElement(element, within: globalElement)
+    }
+
+    private func enableTemporaryAccessibilityExposureIfNeeded(
+        for application: NSRunningApplication
+    ) -> Bool {
+        guard
+            AXIsProcessTrusted(),
+            !application.isTerminated,
+            NSWorkspace.shared.frontmostApplication?.processIdentifier ==
+                application.processIdentifier,
+            temporaryAccessibilityLease == nil
+        else {
+            return false
+        }
+
+        let applicationElement = AXUIElementCreateApplication(
+            application.processIdentifier
+        )
+        _ = AXUIElementSetMessagingTimeout(applicationElement, 0.15)
+        let focusedElement =
+            systemWideFocusedAXElement(
+                for: application.processIdentifier
+            ) ??
+            copyAXElement(
+                from: applicationElement,
+                attribute: kAXFocusedUIElementAttribute
+            )
+        let focusedEditableElementPresent =
+            focusedElement.map {
+                isProvenEditableKeyboardFocus(
+                    $0,
+                    bundleIdentifier: application.bundleIdentifier
+                )
+            } == true
+        let manualAttribute = "AXManualAccessibility"
+        let manualAttributeSettable = isAXAttributeSettable(
+            applicationElement,
+            attribute: manualAttribute
+        )
+        let manualAttributeValue = copyAXBoolean(
+            from: applicationElement,
+            attribute: manualAttribute
+        )
+        let enhancedAttribute = "AXEnhancedUserInterface"
+        let enhancedAttributeSettable = isAXAttributeSettable(
+            applicationElement,
+            attribute: enhancedAttribute
+        )
+        let enhancedAttributeValue = copyAXBoolean(
+            from: applicationElement,
+            attribute: enhancedAttribute
+        )
+        guard MacPastePolicy.shouldEnableTemporaryAccessibility(
+            bundleIdentifier: application.bundleIdentifier,
+            focusedEditableElementPresent:
+                focusedEditableElementPresent,
+            manualAttributeSettable: manualAttributeSettable,
+            manualAttributeValue: manualAttributeValue,
+            enhancedAttributeSettable: enhancedAttributeSettable,
+            enhancedAttributeValue: enhancedAttributeValue,
+            leaseAlreadyActive: temporaryAccessibilityLease != nil
+        ) else {
+            return false
+        }
+
+        let shouldEnableEnhanced =
+            enhancedAttributeSettable &&
+            enhancedAttributeValue == false
+        let requestUptime =
+            ProcessInfo.processInfo.systemUptime
+        let enhancedResult: AXError? = shouldEnableEnhanced
+            ? AXUIElementSetAttributeValue(
+                applicationElement,
+                enhancedAttribute as CFString,
+                kCFBooleanTrue
+            )
+            : nil
+        let enhancedRequestDelivered =
+            enhancedResult.map {
+                MacPastePolicy
+                    .chromiumEnhancedAccessibilityRequestWasDelivered(
+                        resultRawValue: $0.rawValue
+                    )
+            } == true
+        let enhancedValueAfter = copyAXBoolean(
+            from: applicationElement,
+            attribute: enhancedAttribute
+        )
+        let manualResult: AXError?
+        if shouldEnableEnhanced {
+            guard enhancedRequestDelivered else {
+                store.log(
+                    "Temporary accessibility exposure failed. TargetPID=\(application.processIdentifier) Bundle='\(application.bundleIdentifier ?? "unknown")' EnhancedResult=\(enhancedResult?.rawValue.description ?? "missing") EnhancedValue=\(enhancedValueAfter.map(String.init) ?? "unknown")."
+                )
+                return false
+            }
+            manualResult = nil
+        } else {
+            let result = AXUIElementSetAttributeValue(
+                applicationElement,
+                manualAttribute as CFString,
+                kCFBooleanTrue
+            )
+            guard result == .success else {
+                store.log(
+                    "Temporary accessibility exposure failed. TargetPID=\(application.processIdentifier) Bundle='\(application.bundleIdentifier ?? "unknown")' ManualResult=\(result.rawValue)."
+                )
+                return false
+            }
+            manualResult = result
+        }
+        temporaryAccessibilityLease = TemporaryAccessibilityLease(
+            id: UUID(),
+            processIdentifier: application.processIdentifier,
+            bundleIdentifier: application.bundleIdentifier,
+            applicationLaunchDate: application.launchDate,
+            enhancedRequestUptime:
+                shouldEnableEnhanced
+                ? requestUptime
+                : nil,
+            restoreManualAccessibility:
+                manualResult == .success,
+            restoreEnhancedUserInterface:
+                shouldEnableEnhanced &&
+                enhancedRequestDelivered
+        )
+        store.log(
+            "Temporary accessibility exposure enabled. TargetPID=\(application.processIdentifier) Bundle='\(application.bundleIdentifier ?? "unknown")' ManualResult=\(manualResult?.rawValue.description ?? "not-needed") ManualValue=\(copyAXBoolean(from: applicationElement, attribute: manualAttribute).map(String.init) ?? "unknown") EnhancedRequested=\(shouldEnableEnhanced) EnhancedResult=\(enhancedResult?.rawValue.description ?? "not-needed") EnhancedValue=\(enhancedValueAfter.map(String.init) ?? "unknown")."
+        )
+        return true
+    }
+
+    private func restoreTemporaryAccessibilityExposure() {
+        guard let lease = temporaryAccessibilityLease else { return }
+        temporaryAccessibilityLease = nil
+        pendingAccessibilityPasteContinuation = nil
+
+        guard
+            let application = NSRunningApplication(
+                processIdentifier: lease.processIdentifier
+            ),
+            !application.isTerminated,
+            application.bundleIdentifier == lease.bundleIdentifier,
+            (
+                lease.applicationLaunchDate == nil ||
+                application.launchDate == nil ||
+                application.launchDate == lease.applicationLaunchDate
+            )
+        else {
+            store.log(
+                "Temporary accessibility exposure restore skipped. Reason='application-instance-ended' TargetPID=\(lease.processIdentifier)."
+            )
+            return
+        }
+
+        let applicationElement = AXUIElementCreateApplication(
+            lease.processIdentifier
+        )
+        _ = AXUIElementSetMessagingTimeout(applicationElement, 0.15)
+        let enhanced = restoreEnhancedAccessibilityAttribute(
+            changedByLease:
+                lease.restoreEnhancedUserInterface,
+            on: applicationElement
+        )
+        let manual = restoreManualAccessibilityAttribute(
+            changedByLease: lease.restoreManualAccessibility,
+            on: applicationElement
+        )
+        let restored = manual.restored && enhanced.restored
+        let attempted = manual.attempted || enhanced.attempted
+        if restored && !attempted {
+            store.log(
+                "Temporary accessibility exposure already inactive. TargetPID=\(lease.processIdentifier) Bundle='\(lease.bundleIdentifier ?? "unknown")'."
+            )
+            return
+        }
+        if restored {
+            store.log(
+                "Temporary accessibility exposure restored. TargetPID=\(lease.processIdentifier) Bundle='\(lease.bundleIdentifier ?? "unknown")' ManualResult=\(manual.result?.rawValue.description ?? "not-needed") ManualValue=\(manual.valueAfter.map(String.init) ?? "unknown") EnhancedResult=\(enhanced.result?.rawValue.description ?? "not-needed") EnhancedValue=\(enhanced.valueAfter.map(String.init) ?? "unknown")."
+            )
+            return
+        }
+        store.log(
+            "Temporary accessibility exposure restore failed. TargetPID=\(lease.processIdentifier) Bundle='\(lease.bundleIdentifier ?? "unknown")' ManualResult=\(manual.result?.rawValue.description ?? "not-needed") ManualValue=\(manual.valueAfter.map(String.init) ?? "unknown") EnhancedResult=\(enhanced.result?.rawValue.description ?? "not-needed") EnhancedValue=\(enhanced.valueAfter.map(String.init) ?? "unknown")."
+        )
+    }
+
+    private func restoreEnhancedAccessibilityAttribute(
+        changedByLease: Bool,
+        on applicationElement: AXUIElement
+    ) -> (
+        restored: Bool,
+        attempted: Bool,
+        result: AXError?,
+        valueAfter: Bool?
+    ) {
+        let attribute = "AXEnhancedUserInterface"
+        guard changedByLease else {
+            return (
+                restored: true,
+                attempted: false,
+                result: nil,
+                valueAfter: copyAXBoolean(
+                    from: applicationElement,
+                    attribute: attribute
+                )
+            )
+        }
+        let result = AXUIElementSetAttributeValue(
+            applicationElement,
+            attribute as CFString,
+            kCFBooleanFalse
+        )
+        let valueAfter = copyAXBoolean(
+            from: applicationElement,
+            attribute: attribute
+        )
+        return (
+            restored:
+                MacPastePolicy
+                    .chromiumEnhancedAccessibilityRequestWasDelivered(
+                        resultRawValue: result.rawValue
+                    ),
+            attempted: true,
+            result: result,
+            valueAfter: valueAfter
+        )
+    }
+
+    private func restoreManualAccessibilityAttribute(
+        changedByLease: Bool,
+        on applicationElement: AXUIElement
+    ) -> (
+        restored: Bool,
+        attempted: Bool,
+        result: AXError?,
+        valueAfter: Bool?
+    ) {
+        let attribute = "AXManualAccessibility"
+        guard changedByLease else {
+            return (
+                restored: true,
+                attempted: false,
+                result: nil,
+                valueAfter: copyAXBoolean(
+                    from: applicationElement,
+                    attribute: attribute
+                )
+            )
+        }
+        let valueBefore = copyAXBoolean(
+            from: applicationElement,
+            attribute: attribute
+        )
+        guard valueBefore == true else {
+            return (
+                restored: valueBefore == false,
+                attempted: false,
+                result: nil,
+                valueAfter: valueBefore
+            )
+        }
+        let result = AXUIElementSetAttributeValue(
+            applicationElement,
+            attribute as CFString,
+            kCFBooleanFalse
+        )
+        let valueAfter = copyAXBoolean(
+            from: applicationElement,
+            attribute: attribute
+        )
+        return (
+            restored:
+                result == .success &&
+                valueAfter != true,
+            attempted: true,
+            result: result,
+            valueAfter: valueAfter
+        )
     }
 
     private func matchingWindowDescriptor(
@@ -3637,8 +4963,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 from: element,
                 attribute: kAXRoleAttribute
             ),
-            isEditableAXRole(role),
-            !isSecureAXElementOrAncestor(element)
+            isEditableAXRole(role)
         else {
             return false
         }
@@ -3646,6 +4971,26 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             from: element,
             attribute: kAXEnabledAttribute
         ) != false
+    }
+
+    private func isPotentiallyDeliverablePasteTarget(
+        _ target: PasteTarget
+    ) -> Bool {
+        if let focusedElement = target.focusedElement {
+            return isProvenEditableKeyboardFocus(
+                focusedElement,
+                bundleIdentifier: target.bundleIdentifier
+            )
+        }
+        if target.usesNonactivatingWindow,
+           target.bundleIdentifier == "com.openai.chat",
+           target.windowNumber != nil {
+            return true
+        }
+        return target.preserveWebViewCaret &&
+            target.windowNumber != nil &&
+            allowsWindowOnlyKeyboardPaste(target.bundleIdentifier) &&
+            globalInputMonitor != nil
     }
 
     private func allowsWindowOnlyKeyboardPaste(
@@ -3666,7 +5011,6 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         bundleIdentifier: String?
     ) -> Bool {
         guard
-            !isSecureAXElementOrAncestor(element),
             copyAXBoolean(
                 from: element,
                 attribute: kAXEnabledAttribute
@@ -3690,8 +5034,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
                 role == "AXGroup" ||
                 role == "AXDocument"
         }
-        return isKnownWebViewBundle(bundleIdentifier) &&
-            isWebKeyboardPasteElement(element)
+        return isWebKeyboardPasteElement(element)
     }
 
     private func isWebKeyboardPasteElement(
@@ -3701,8 +5044,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             let role = copyAXString(
                 from: element,
                 attribute: kAXRoleAttribute
-            ),
-            !isSecureAXElementOrAncestor(element)
+            )
         else {
             return false
         }
@@ -3740,35 +5082,118 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             ) != false
     }
 
-    private func isSecureAXElement(_ element: AXUIElement?) -> Bool {
-        guard let element else { return false }
-        return copyAXString(
+    private func isExplicitlyNonsecureChromeOmnibox(
+        _ element: AXUIElement
+    ) -> Bool {
+        var processIdentifier = pid_t()
+        let processResult = AXUIElementGetPid(
+            element,
+            &processIdentifier
+        )
+        let bundleIdentifier = NSRunningApplication(
+            processIdentifier: processIdentifier
+        )?.bundleIdentifier
+        let role = copyAXString(
             from: element,
-            attribute: kAXSubroleAttribute
-        ) == (kAXSecureTextFieldSubrole as String)
+            attribute: kAXRoleAttribute
+        )
+        let elementFocused = copyAXBoolean(
+            from: element,
+            attribute: kAXFocusedAttribute
+        ) == true
+        let hasWebAreaAncestor =
+            copyWebAreaAncestor(from: element) != nil
+        let selectedTextSettable = isAXAttributeSettable(
+            element,
+            attribute: kAXSelectedTextAttribute
+        )
+        let selectedRangeSettable = isAXAttributeSettable(
+            element,
+            attribute: kAXSelectedTextRangeAttribute
+        )
+        let description = (
+            copyAXString(
+                from: element,
+                attribute: kAXDescriptionAttribute
+            ) ?? ""
+        ).lowercased()
+        let descriptionMatches =
+            description.contains("address") ||
+            description.contains("adress") ||
+            description.contains("suchleiste") ||
+            description.contains("search bar") ||
+            description.contains("omnibox")
+        return processResult == .success &&
+            bundleIdentifier == "com.google.Chrome" &&
+            role.map(isEditableAXRole) == true &&
+            elementFocused &&
+            !hasWebAreaAncestor &&
+            (selectedTextSettable || selectedRangeSettable) &&
+            descriptionMatches
     }
 
-    private func isSecureAXElementOrAncestor(
-        _ element: AXUIElement?
-    ) -> Bool {
-        var current = element
-        let deadline = CFAbsoluteTimeGetCurrent() + 0.08
-        for _ in 0..<16 {
-            guard
-                CFAbsoluteTimeGetCurrent() < deadline,
-                let candidate = current
-            else {
-                return false
-            }
-            if isSecureAXElement(candidate) {
-                return true
-            }
-            current = copyAXElement(
-                from: candidate,
-                attribute: kAXParentAttribute
+    private func copyDictationToClipboard(
+        _ text: String,
+        reason: String
+    ) {
+        let pasteboard = NSPasteboard.general
+        guard let snapshot = captureStablePasteboardSnapshot(pasteboard) else {
+            setIdle(
+                message: "Zwischenablage gerade belegt",
+                detail: "Text bleibt sicher im Diktierverlauf"
             )
+            store.log(
+                "Paste fallback. Reason='\(reason)' ClipboardWritten=false ClipboardSnapshotStable=false HistoryRetained=true."
+            )
+            return
         }
-        return false
+
+        var lastOwnedChangeCount: Int?
+        guard let ownedChangeCount = MacPasteboardWriter.writeText(
+            text,
+            to: pasteboard,
+            expectedInitialChangeCount: snapshot.changeCount,
+            lastOwnedChangeCount: &lastOwnedChangeCount
+        ) else {
+            let clipboardChangedExternally =
+                lastOwnedChangeCount.map {
+                    pasteboard.changeCount != $0
+                } ??
+                (pasteboard.changeCount != snapshot.changeCount)
+            let restored =
+                lastOwnedChangeCount != nil &&
+                pasteboard.changeCount == lastOwnedChangeCount &&
+                restorePasteboardSnapshot(
+                    snapshot,
+                    pasteboard: pasteboard,
+                    expectedOwnedChangeCount:
+                        lastOwnedChangeCount!,
+                    expectedOwnedText: nil
+                )
+            setIdle(
+                message: clipboardChangedExternally
+                    ? "Zwischenablage wurde geändert"
+                    : "Kopieren fehlgeschlagen",
+                detail: restored
+                    ? "Vorherige Zwischenablage wiederhergestellt"
+                    : "Text bleibt sicher im Diktierverlauf"
+            )
+            store.log(
+                "Paste fallback. Reason='\(reason)' ClipboardWritten=false ClipboardRestoredAfterFailure=\(restored) ClipboardChangedExternally=\(clipboardChangedExternally) HistoryRetained=true."
+            )
+            return
+        }
+
+        if diagnosticText == text {
+            diagnosticOwnedPasteboardChangeCount = ownedChangeCount
+        }
+        setIdle(
+            message: "In Zwischenablage",
+            detail: "Mit ⌘V direkt einfügen"
+        )
+        store.log(
+            "Paste fallback. Reason='\(reason)' ClipboardWritten=true HistoryRetained=true."
+        )
     }
 
     private func leaveDictationOnClipboard(
@@ -3776,17 +5201,12 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         reason: String,
         promptForPermission: Bool
     ) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        let copied = pasteboard.setString(text, forType: .string)
         setIdle(
-            message: copied ? "In Zwischenablage" : "Einfügen fehlgeschlagen",
-            detail: copied
-                ? "Mit ⌘V am Cursor einfügen"
-                : "Text bleibt im Diktierverlauf"
+            message: "Nicht automatisch eingefügt",
+            detail: "Text bleibt sicher im Diktierverlauf"
         )
         store.log(
-            "Paste fallback. Reason='\(reason)' ClipboardWritten=\(copied)."
+            "Paste fallback. Reason='\(reason)' ClipboardWritten=false HistoryRetained=true."
         )
         if promptForPermission {
             settingsModel.errorMessage =
@@ -3812,6 +5232,42 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
             return nil
         }
         return (value as! AXUIElement)
+    }
+
+    private func copyAXWindowNumber(
+        from window: AXUIElement
+    ) -> CGWindowID? {
+        var value: CFTypeRef?
+        guard
+            AXUIElementCopyAttributeValue(
+                window,
+                "AXWindowNumber" as CFString,
+                &value
+            ) == .success,
+            let number = value as? NSNumber
+        else {
+            return nil
+        }
+        return CGWindowID(number.uint32Value)
+    }
+
+    private func copyAXElements(
+        from element: AXUIElement,
+        attribute: String
+    ) -> [AXUIElement] {
+        var value: CFTypeRef?
+        guard
+            AXUIElementCopyAttributeValue(
+                element,
+                attribute as CFString,
+                &value
+            ) == .success,
+            let value,
+            let elements = value as? [AXUIElement]
+        else {
+            return []
+        }
+        return elements
     }
 
     private func copyAXString(
@@ -4430,16 +5886,16 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
     }
 
     private func registerGlobalHotKeys() {
-        var eventType = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: UInt32(kEventHotKeyPressed)
-        )
+        var eventTypes = [
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))
+        ]
         let userData = Unmanaged.passUnretained(self).toOpaque()
         let installStatus = InstallEventHandler(
             GetApplicationEventTarget(),
             globalHotKeyHandler,
-            1,
-            &eventType,
+            eventTypes.count,
+            &eventTypes,
             userData,
             &hotKeyHandlerRef
         )

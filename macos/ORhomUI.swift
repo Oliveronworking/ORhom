@@ -214,6 +214,8 @@ final class SettingsViewModel: ObservableObject {
     @Published var audioDuckingEnabled = true
     @Published var audioDuckingVolumePercent = 10
     @Published var launchAtLogin = false
+    @Published var dictationPreferences = DictationPreferences.load()
+    @Published var hybridPushToTalkEnabled = true
     @Published var errorMessage: String?
 
     var onRequestPermissions: (() -> Void)?
@@ -229,6 +231,8 @@ final class SettingsViewModel: ObservableObject {
     var onAudioDuckingEnabledChanged: ((Bool) -> Void)?
     var onAudioDuckingVolumeChanged: ((Int) -> Void)?
     var onLoginChanged: ((Bool) -> Void)?
+    var onDictationPreferencesChanged: ((DictationPreferences) -> Void)?
+    var onHybridPushToTalkChanged: ((Bool) -> Void)?
     var onDone: (() -> Void)?
 }
 
@@ -817,6 +821,127 @@ private struct HotKeyRecorder: NSViewRepresentable {
     }
 }
 
+private struct DictationReplacementEditor: View {
+    let title: String
+    let detail: String
+    @Binding var entries: [DictationReplacement]
+    let multiline: Bool
+    @State private var cue = ""
+    @State private var replacement = ""
+    @State private var editingID: UUID?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).fontWeight(.semibold)
+            Text(detail)
+                .font(.system(size: 11))
+                .foregroundStyle(Color.orhomSecondary)
+            ForEach(entries) { entry in
+                HStack(alignment: .top, spacing: 10) {
+                    Text(entry.cue).frame(width: 145, alignment: .leading)
+                    Text(entry.replacement)
+                        .lineLimit(3)
+                        .foregroundStyle(Color.orhomSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button("Bearbeiten") {
+                        editingID = entry.id
+                        cue = entry.cue
+                        replacement = entry.replacement
+                    }
+                    .buttonStyle(.borderless)
+                    Button {
+                        entries.removeAll { $0.id == entry.id }
+                        if editingID == entry.id { resetDraft() }
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("\(entry.cue) löschen")
+                }
+                .padding(8)
+                .background(Color.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 6))
+            }
+            TextField(multiline ? "Kürzel, z. B. meine Signatur" : "Erkannt, z. B. or hom", text: $cue)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel(multiline ? "Gesprochenes Sprachkürzel" : "Erkannte Schreibweise")
+            if multiline {
+                Text("Einzufügender Text")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.orhomSecondary)
+                TextEditor(text: $replacement)
+                    .font(.system(size: 12))
+                    .frame(height: 75)
+                    .padding(4)
+                    .background(Color.orhomSurfaceRaised, in: RoundedRectangle(cornerRadius: 6))
+                    .accessibilityLabel("Text des Sprachkürzels")
+            } else {
+                TextField("Gewünschte Schreibweise, z. B. ORhom", text: $replacement)
+                    .textFieldStyle(.roundedBorder)
+            }
+            HStack {
+                Button(editingID == nil ? "Hinzufügen" : "Änderung speichern") {
+                    let cleanCue = cue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let entry = DictationReplacement(
+                        id: editingID ?? UUID(), cue: cleanCue, replacement: replacement
+                    )
+                    if let editingID, let index = entries.firstIndex(where: { $0.id == editingID }) {
+                        entries[index] = entry
+                    } else {
+                        entries.append(entry)
+                    }
+                    resetDraft()
+                }
+                .disabled(
+                    cue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                    replacement.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                    cue.count > 120 || replacement.count > (multiline ? 12_000 : 200) ||
+                    cue.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) } ||
+                    (editingID == nil && entries.count >= 500) ||
+                    entries.contains {
+                        $0.id != editingID && $0.cue.caseInsensitiveCompare(
+                            cue.trimmingCharacters(in: .whitespacesAndNewlines)
+                        ) == .orderedSame
+                    }
+                )
+                if editingID != nil {
+                    Button("Abbrechen") { resetDraft() }
+                }
+                Spacer()
+            }
+        }
+    }
+
+    private func resetDraft() {
+        cue = ""
+        replacement = ""
+        editingID = nil
+    }
+}
+
+private struct DictationPreview: View {
+    let preferences: DictationPreferences
+    @State private var input = "Ähm hallo Team Sprachbefehl Komma wir treffen uns Dienstag Sprachbefehl Punkt Sprachbefehl ersetze Dienstag durch Mittwoch Sprachbefehl Korrektur Ende"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Diktierregeln ausprobieren").fontWeight(.semibold)
+            Text("Hier siehst du direkt, wie dein erkannter Text mit den aktuellen Einstellungen formatiert wird.")
+                .font(.system(size: 11))
+                .foregroundStyle(Color.orhomSecondary)
+            TextEditor(text: $input)
+                .font(.system(size: 12))
+                .frame(height: 65)
+                .accessibilityLabel("Erkannten Text für Vorschau eingeben")
+            Text(DictationTextProcessor.process(input, preferences: preferences))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                .padding(10)
+                .background(Color.orhomBlue.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityLabel("Formatiertes Diktat")
+        }
+    }
+}
+
 struct ORhomSettingsView: View {
     @ObservedObject var model: SettingsViewModel
 
@@ -841,6 +966,8 @@ struct ORhomSettingsView: View {
                             .opacity(model.configurationEnabled ? 1 : 0.58)
                     }
                     permissionsCard
+                    dictationCard
+                        .disabled(!model.configurationEnabled)
                     preferences
                     footer
                 }
@@ -1192,6 +1319,88 @@ struct ORhomSettingsView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 15, style: .continuous)
                 .stroke(Color.orhomBorder, lineWidth: 1)
+        )
+    }
+
+    private var dictationCard: some View {
+        InfoCard(icon: "text.bubble", title: "Sprache & persönliche Diktierung") {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("Diktiersprache")
+                    Spacer()
+                    Picker("Diktiersprache", selection: dictationBinding(\.language)) {
+                        Text("Deutsch").tag("de")
+                        Text("Automatisch erkennen").tag("auto")
+                        Text("English").tag("en")
+                        Text("Français").tag("fr")
+                        Text("Español").tag("es")
+                        Text("Italiano").tag("it")
+                        Text("Português").tag("pt")
+                        Text("Nederlands").tag("nl")
+                        Text("Polski").tag("pl")
+                        Text("Українська").tag("uk")
+                        Text("日本語").tag("ja")
+                        Text("中文").tag("zh")
+                    }
+                    .labelsHidden()
+                    .frame(width: 230)
+                }
+                Text("Bei automatischer Erkennung wählt Whisper die Sprache der Aufnahme. Die Formatierungsbefehle verstehen Deutsch und Englisch.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.orhomSecondary)
+                Toggle("Text und Satzzeichen sauber formatieren", isOn: dictationBinding(\.smartFormatting))
+                Toggle("Eindeutige Fülllaute wie „ähm“ entfernen", isOn: dictationBinding(\.removeFillers))
+                Toggle("Gesprochene Formatierung und Korrekturen", isOn: dictationBinding(\.spokenCommands))
+                Text("„Sprachbefehl Komma“, „Sprachbefehl neuer Absatz“, „Sprachbefehl letzten Satz löschen“ oder „Sprachbefehl ersetze Dienstag durch Mittwoch Sprachbefehl Korrektur Ende“. Korrekturen betreffen das aktuelle Diktat.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.orhomSecondary)
+                    .textSelection(.enabled)
+                Text("Listen: „Sprachbefehl Listenpunkt“ oder „Sprachbefehl Nummer eins“. „ORhom“ und „Diktat“ funktionieren ebenfalls als Befehlsanfang.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.orhomSecondary)
+                Toggle("Tastenkürzel halten zum Sprechen", isOn: Binding(
+                    get: { model.hybridPushToTalkEnabled },
+                    set: {
+                        model.hybridPushToTalkEnabled = $0
+                        model.onHybridPushToTalkChanged?($0)
+                    }
+                ))
+                Text("Kurz drücken startet oder stoppt. Ab 0,35 Sekunden Halten beendet Loslassen die Aufnahme.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.orhomSecondary)
+                Divider()
+                DictationReplacementEditor(
+                    title: "Persönliches Wörterbuch",
+                    detail: "Gesprochene Schreibweise → gewünschter Name oder Fachbegriff. Die Begriffe helfen auch Whisper bei der Erkennung.",
+                    entries: dictationBinding(\.dictionary),
+                    multiline: false
+                )
+                Divider()
+                DictationReplacementEditor(
+                    title: "Sprachkürzel",
+                    detail: "Sprich ein eindeutiges Kürzel. ORhom setzt deinen gespeicherten Text mit Zeilenumbrüchen exakt ein.",
+                    entries: dictationBinding(\.snippets),
+                    multiline: true
+                )
+                Divider()
+                DictationPreview(preferences: model.dictationPreferences)
+            }
+            .font(.system(size: 12))
+            .toggleStyle(.switch)
+            .tint(Color.orhomBlue)
+        }
+    }
+
+    private func dictationBinding<Value>(
+        _ keyPath: WritableKeyPath<DictationPreferences, Value>
+    ) -> Binding<Value> {
+        Binding(
+            get: { model.dictationPreferences[keyPath: keyPath] },
+            set: {
+                var changed = model.dictationPreferences
+                changed[keyPath: keyPath] = $0
+                model.onDictationPreferencesChanged?(changed)
+            }
         )
     }
 

@@ -14,12 +14,7 @@ whisper_download_url="https://github.com/ggml-org/whisper.cpp/releases/download/
 whisper_extract_dir="${dependency_dir}/whisper-v1.9.1"
 whisper_framework_source="${whisper_extract_dir}/build-apple/whisper.xcframework/macos-arm64_x86_64/whisper.framework"
 codesign_identity="${ORHOM_CODESIGN_IDENTITY:--}"
-compatible_sdk="/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk"
-if [[ -d "${compatible_sdk}" ]]; then
-  macos_sdk="${compatible_sdk}"
-else
-  macos_sdk="$(/usr/bin/xcrun --sdk macosx --show-sdk-path)"
-fi
+macos_sdk="$(/usr/bin/xcrun --sdk macosx --show-sdk-path)"
 
 /bin/mkdir -p \
   "${contents_path}/MacOS" \
@@ -53,6 +48,10 @@ fi
   -target arm64-apple-macosx13.3 \
   -module-cache-path "${module_cache_path}" \
   "${repo_dir}/macos/ORhomMacPolicies.swift" \
+  "${repo_dir}/macos/ORhomHotKeyGesture.swift" \
+  "${repo_dir}/macos/ORhomAudioProcessing.swift" \
+  "${repo_dir}/macos/ORhomDictationText.swift" \
+  "${repo_dir}/macos/ORhomPasteboard.swift" \
   "${repo_dir}/macos/ORhomAudioDucking.swift" \
   "${repo_dir}/macos/ORhomHistory.swift" \
   "${repo_dir}/macos/ORhomInfrastructure.swift" \

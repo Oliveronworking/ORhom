@@ -41,9 +41,10 @@ public sealed class LocalDictationConfigurationTests : IDisposable
     }
 
     [Fact]
-    public void RecognitionLanguageIsAlwaysGerman()
+    public void DefaultRecognitionLanguageIsGerman()
     {
         Assert.Equal("de", LocalWhisperRecognitionService.Language);
+        Assert.Equal("de", new AppSettings().DictationPreferences.Language);
     }
 
     [Theory]

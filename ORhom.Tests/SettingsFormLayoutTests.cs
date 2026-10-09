@@ -70,6 +70,11 @@ public sealed class SettingsFormLayoutTests
                 Assert.NotNull(FindControl(form, "providerStepCard"));
                 Assert.NotNull(FindControl(form, "microphoneStepCard"));
                 Assert.NotNull(FindControl(form, "hotkeyStepCard"));
+                Assert.NotNull(FindControl(form, "dictationStepCard"));
+                Assert.NotNull(FindControl(form, "dictationLanguageCombo"));
+                Assert.NotNull(FindControl(form, "dictionaryGrid"));
+                Assert.NotNull(FindControl(form, "snippetsGrid"));
+                Assert.NotNull(FindControl(form, "dictationPreviewButton"));
                 Assert.Equal("Speichern & losdiktieren", saveButton.Text);
                 Assert.Equal("Im Hintergrund schließen", hideButton.Text);
                 Assert.False(string.IsNullOrWhiteSpace(

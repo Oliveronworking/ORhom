@@ -74,7 +74,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             "whisper.cpp");
         _localWhisper = new LocalWhisperRecognitionService(
             new LocalWhisperModelManager(modelDirectory),
-            _logger);
+            _logger,
+            () => _settings.DictationPreferences);
         _audioDucking = new AudioDuckingService(_settings, _logger);
         _audioDuckingTimer = new System.Windows.Forms.Timer { Interval = 500 };
         _audioDuckingTimer.Tick += (_, _) => _audioDucking.Refresh();
@@ -923,7 +924,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             {
                 throw new LocalWhisperRecognitionException(
                     _localPreparationFailureMessage ??
-                    "Das lokale deutsche Sprachmodell konnte nicht vorbereitet werden. Bitte erneut versuchen oder den ChatGPT-Browser-Fallback auswählen.");
+                    "Das lokale Sprachmodell konnte nicht vorbereitet werden. Bitte erneut versuchen oder den ChatGPT-Browser-Fallback auswählen.");
             }
 
             var capture = _localAudioCapture.Start(
@@ -1118,7 +1119,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         var audio = await session.Capture.StopAndGetSamplesAsync(cancellationToken);
         StopAudioDucking();
         SetStatus(AppStatus.ReadingText);
-        var text = await _localWhisper.TranscribeGermanAsync(
+        var text = await _localWhisper.TranscribeAsync(
             audio.Samples,
             cancellationToken);
         if (string.IsNullOrWhiteSpace(text) ||
@@ -1130,7 +1131,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                 out _);
             RestoreTargetFocus(session.Target);
             ShowErrorMessage(
-                "Es wurde kein sicherer deutscher Text erkannt. Bitte näher am Mikrofon sprechen und erneut versuchen.");
+                "Es wurde kein sicherer Text erkannt. Bitte näher am Mikrofon sprechen und erneut versuchen.");
             ResetToIdle();
             return;
         }
@@ -1850,7 +1851,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             var audio = await session.Capture.StopAndGetSamplesAsync(cancellationToken);
             StopAudioDucking();
             SetStatus(AppStatus.ReadingText);
-            var text = await _localWhisper.TranscribeGermanAsync(
+            var text = await _localWhisper.TranscribeAsync(
                 audio.Samples,
                 cancellationToken);
             var hasSafeText = !string.IsNullOrWhiteSpace(text) &&
@@ -1924,7 +1925,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             _lifetimeCancellation.Token);
         _localPreparationFailureMessage = null;
         _idleReadinessTitle = "Sprachmodell wird vorbereitet";
-        _idleReadinessHint = "whisper.cpp · Vulkan · Deutsch";
+        _idleReadinessHint = $"whisper.cpp · Vulkan · {DictationLanguages.Normalize(_settings.DictationPreferences.Language)}";
         ApplyTrayStatePresentation();
         var generation = Interlocked.Increment(ref _localPreparationGeneration);
         _localPreparationTask = PrepareLocalWhisperAsync(
@@ -2054,7 +2055,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
                 ? $"{FormatBytes(progress.BytesProcessed)} von {FormatBytes(progress.TotalBytes)}"
                 : progress.FromCache
                     ? "Lokaler Cache wird wiederverwendet"
-                    : "whisper.cpp · Vulkan · Deutsch";
+                    : $"whisper.cpp · Vulkan · {DictationLanguages.Normalize(_settings.DictationPreferences.Language)}";
             _idleReadinessTitle = title;
             _idleReadinessHint = hint;
             ApplyTrayStatePresentation();
@@ -2099,7 +2100,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             LocalWhisperModelException modelException => modelException.Message,
             LocalWhisperRecognitionException recognitionException => recognitionException.Message,
             LocalAudioCaptureException captureException => captureException.Message,
-            _ => "Die lokale deutsche Spracherkennung konnte nicht vorbereitet werden. Bitte Log und AMD-Treiber prüfen oder den ChatGPT-Browser-Fallback auswählen."
+            _ => "Die lokale Spracherkennung konnte nicht vorbereitet werden. Bitte Log und AMD-Treiber prüfen oder den ChatGPT-Browser-Fallback auswählen."
         };
 
     private void QueueChatGptStartupPreparation()
@@ -2228,7 +2229,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             return await ApplyLocalSettingsCoreAsync(
                 microphoneId,
                 microphoneName,
-                hotkey);
+                hotkey,
+                values.DictationPreferences);
         }
 
         if (values.ChromeProfile is not { } chromeProfile)
@@ -2244,6 +2246,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
             previousUserDataDirectory,
             previousProfileDirectory);
         var previousProvider = _settings.DictationProvider;
+        var previousDictationPreferences = _settings.DictationPreferences;
         var previousMicrophoneId = _settings.PreferredMicrophoneId;
         var previousMicrophoneName = _settings.PreferredMicrophoneName;
         var previousHotkey = _settings.ToggleHotkey;
@@ -2352,6 +2355,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
 
         _settings.DictationProvider = DictationProviders.ChatGptBrowser;
+        _settings.DictationPreferences = (values.DictationPreferences ?? previousDictationPreferences).NormalizedCopy();
         _settings.PreferredMicrophoneId = microphoneId;
         _settings.PreferredMicrophoneName = microphoneName;
         _settings.ToggleHotkey = hotkey;
@@ -2359,6 +2363,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         if (!_settings.Save(_logger))
         {
             _settings.DictationProvider = previousProvider;
+            _settings.DictationPreferences = previousDictationPreferences;
             _settings.PreferredMicrophoneId = previousMicrophoneId;
             _settings.PreferredMicrophoneName = previousMicrophoneName;
             _settings.ToggleHotkey = previousHotkey;
@@ -2395,7 +2400,8 @@ internal sealed class DictationTrayAppContext : ApplicationContext
     private async Task<SettingsApplyResult> ApplyLocalSettingsCoreAsync(
         string microphoneId,
         string microphoneName,
-        string hotkey)
+        string hotkey,
+        DictationPreferences? dictationPreferences)
     {
         if (!_audioInputDevices.IsMicrophoneActive(microphoneId, microphoneName))
         {
@@ -2403,6 +2409,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
 
         var previousProvider = _settings.DictationProvider;
+        var previousDictationPreferences = _settings.DictationPreferences;
         var previousMicrophoneId = _settings.PreferredMicrophoneId;
         var previousMicrophoneName = _settings.PreferredMicrophoneName;
         var previousHotkey = _settings.ToggleHotkey;
@@ -2437,6 +2444,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
 
         _settings.DictationProvider = DictationProviders.LocalWhisper;
+        _settings.DictationPreferences = (dictationPreferences ?? previousDictationPreferences).NormalizedCopy();
         _settings.PreferredMicrophoneId = microphoneId;
         _settings.PreferredMicrophoneName = microphoneName;
         _settings.ToggleHotkey = hotkey;
@@ -2444,6 +2452,7 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         if (!_settings.Save(_logger))
         {
             _settings.DictationProvider = previousProvider;
+            _settings.DictationPreferences = previousDictationPreferences;
             _settings.PreferredMicrophoneId = previousMicrophoneId;
             _settings.PreferredMicrophoneName = previousMicrophoneName;
             _settings.ToggleHotkey = previousHotkey;
@@ -2454,9 +2463,14 @@ internal sealed class DictationTrayAppContext : ApplicationContext
         }
 
         _recordingOverlay.SetToggleHotkey(hotkey);
+        var recognitionConfigurationChanged = previousDictationPreferences.Language != _settings.DictationPreferences.Language ||
+            DictationTextProcessor.BuildWhisperPrompt(previousDictationPreferences) !=
+            DictationTextProcessor.BuildWhisperPrompt(_settings.DictationPreferences);
+        if (recognitionConfigurationChanged && !_localPreparationTask.IsCompleted)
+            await StopLocalWhisperPreparationAsync(unloadModel: false);
         QueueLocalWhisperPreparation();
         _logger.Info($"Local settings applied. MicrophoneId='{microphoneId}' MicrophoneName='{microphoneName}' ToggleHotkey='{hotkey}'.");
-        ShowMessage($"Lokale deutsche Diktierung läuft jetzt mit {hotkey} im Hintergrund.");
+        ShowMessage($"Lokale Diktierung läuft jetzt mit {hotkey} im Hintergrund.");
         return SettingsApplyResult.Success(microphoneName, hotkey);
     }
 

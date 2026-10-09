@@ -376,12 +376,22 @@ final class LocalWhisperEngine {
 
     func transcribe(
         samples: [Float],
+        language: String = "de",
+        prompt: String = "ORhom, Codex, GitHub, macOS, Apple Silicon, Metal, Whisper",
         completion: @escaping (Result<String, Error>) -> Void
     ) {
         queue.async { [weak self] in
             guard let self, let context = self.context else {
                 DispatchQueue.main.async {
                     completion(.failure(ORhomError.modelLoad))
+                }
+                return
+            }
+
+            let prepared = ORhomAudioProcessing.prepareForRecognition(samples)
+            guard !prepared.isNearSilence else {
+                DispatchQueue.main.async {
+                    completion(.failure(ORhomError.emptyResult))
                 }
                 return
             }
@@ -401,12 +411,11 @@ final class LocalWhisperEngine {
             parameters.suppress_nst = true
             parameters.temperature = 0
 
-            let prompt = "ORhom, Codex, GitHub, macOS, Apple Silicon, Metal, Whisper"
-            let resultCode: Int32 = "de".withCString { language in
+            let resultCode: Int32 = language.withCString { language in
                 prompt.withCString { promptPointer in
                     parameters.language = language
                     parameters.initial_prompt = promptPointer
-                    return samples.withUnsafeBufferPointer { buffer in
+                    return prepared.samples.withUnsafeBufferPointer { buffer in
                         whisper_full(
                             context,
                             parameters,
@@ -471,6 +480,8 @@ final class MicrophoneRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDe
     private var measuredLevel: Float = 0
     private var capturedBuffers = 0
     private var capturedFrames: Int64 = 0
+    private var preferredMonoChannelIndex: Int?
+    private var phaseFallbackBuffers = 0
     private var activeFormatDescription = ""
     private var activeMicrophoneName = ""
     private var activeMicrophoneUniqueID = ""
@@ -550,7 +561,7 @@ final class MicrophoneRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDe
         defer { lock.unlock() }
         let activeName = activeMicrophoneName.isEmpty ? "none" : activeMicrophoneName
         let activeID = activeMicrophoneUniqueID.isEmpty ? "none" : activeMicrophoneUniqueID
-        return "SelectedMicrophoneID='\(selectedID)' ActiveMicrophone='\(activeName)' ActiveMicrophoneID='\(activeID)' Format='\(activeFormatDescription)' Buffers=\(capturedBuffers) Frames=\(capturedFrames) Samples=\(samples.count)"
+        return "SelectedMicrophoneID='\(selectedID)' ActiveMicrophone='\(activeName)' ActiveMicrophoneID='\(activeID)' Format='\(activeFormatDescription)' Buffers=\(capturedBuffers) Frames=\(capturedFrames) Samples=\(samples.count) PhaseFallbackBuffers=\(phaseFallbackBuffers)"
     }
 
     func requestPermission(completion: @escaping (Bool) -> Void) {
@@ -605,6 +616,8 @@ final class MicrophoneRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDe
         recordingError = nil
         capturedBuffers = 0
         capturedFrames = 0
+        preferredMonoChannelIndex = nil
+        phaseFallbackBuffers = 0
         activeFormatDescription = "Warte auf ersten Audiobuffer"
         activeMicrophoneName = device.localizedName
         activeMicrophoneUniqueID = device.uniqueID
@@ -657,6 +670,8 @@ final class MicrophoneRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDe
         recordingError = nil
         capturedBuffers = 0
         capturedFrames = 0
+        preferredMonoChannelIndex = nil
+        phaseFallbackBuffers = 0
         activeFormatDescription = ""
         activeMicrophoneName = ""
         activeMicrophoneUniqueID = ""
@@ -851,21 +866,19 @@ final class MicrophoneRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDe
         let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
         let channelCount = max(1, Int(streamDescription.mChannelsPerFrame))
         let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
-        var mono = [Float](repeating: 0, count: frameCount)
+        var channels: [[Float]] = []
 
         if buffers.count == 1, let data = buffers[0].mData {
             let availableValues = Int(buffers[0].mDataByteSize) / MemoryLayout<Float>.size
             let values = data.assumingMemoryBound(to: Float.self)
             let availableFrames = min(frameCount, availableValues / channelCount)
-            for frame in 0..<availableFrames {
-                var mixed: Float = 0
-                for channel in 0..<channelCount {
-                    mixed += values[(frame * channelCount) + channel]
+            guard availableFrames > 0 else { return }
+            for channel in 0..<channelCount {
+                var channelSamples = [Float](repeating: 0, count: availableFrames)
+                for frame in 0..<availableFrames {
+                    channelSamples[frame] = values[(frame * channelCount) + channel]
                 }
-                mono[frame] = mixed / Float(channelCount)
-            }
-            if availableFrames < frameCount {
-                mono.removeLast(frameCount - availableFrames)
+                channels.append(channelSamples)
             }
         } else {
             let availableFrames = buffers.reduce(frameCount) { current, buffer in
@@ -875,23 +888,23 @@ final class MicrophoneRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDe
                 )
             }
             guard availableFrames > 0 else { return }
-            mono.removeLast(frameCount - availableFrames)
             for buffer in buffers {
                 guard let data = buffer.mData else { continue }
                 let values = data.assumingMemoryBound(to: Float.self)
-                for frame in 0..<availableFrames {
-                    mono[frame] += values[frame] / Float(buffers.count)
-                }
+                channels.append(Array(UnsafeBufferPointer(start: values, count: availableFrames)))
             }
         }
+        lock.lock()
+        let preferredChannel = preferredMonoChannelIndex
+        lock.unlock()
+        let mix = ORhomAudioProcessing.mixToMono(
+            channels: channels,
+            preferredChannelIndex: preferredChannel
+        )
+        let mono = mix.samples
         guard !mono.isEmpty else { return }
 
-        var energy: Float = 0
-        for sample in mono {
-            energy += sample * sample
-        }
-        let rms = sqrt(energy / Float(mono.count))
-        let normalizedLevel = min(1, max(0.02, rms * 8))
+        let normalizedLevel = ORhomAudioProcessing.meterLevel(for: mono)
 
         lock.lock()
         if sourceSampleRate == 0 {
@@ -902,7 +915,12 @@ final class MicrophoneRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDe
         samples.append(contentsOf: mono)
         capturedBuffers += 1
         capturedFrames += Int64(mono.count)
-        measuredLevel = (measuredLevel * 0.55) + (normalizedLevel * 0.45)
+        if let selectedChannel = mix.channelFallbackIndex {
+            preferredMonoChannelIndex = selectedChannel
+            phaseFallbackBuffers += 1
+        }
+        let response: Float = normalizedLevel > measuredLevel ? 0.6 : 0.2
+        measuredLevel += (normalizedLevel - measuredLevel) * response
         lock.unlock()
     }
 

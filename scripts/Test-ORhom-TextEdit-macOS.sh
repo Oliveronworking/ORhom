@@ -137,20 +137,45 @@ close_test_document_if_needed() {
     return
   fi
 
+  local close_outcome
+  if ! close_outcome="$(
   ORHOM_TEXTEDIT_TEST_MARKER="${test_marker}" \
-    /usr/bin/osascript >/dev/null 2>&1 <<'APPLESCRIPT' || true
+  ORHOM_TEXTEDIT_TEST_TOKEN="${test_token}" \
+    /usr/bin/osascript 2>/dev/null <<'APPLESCRIPT'
 set testMarker to system attribute "ORHOM_TEXTEDIT_TEST_MARKER"
+set testToken to system attribute "ORHOM_TEXTEDIT_TEST_TOKEN"
+set knownInsertedText to testMarker & testToken
+set foundModifiedDocument to false
+set closedOwnedDocument to false
 
 tell application "TextEdit"
   repeat with candidateDocument in (every document)
     try
-      if (text of candidateDocument as text) contains testMarker then
+      set candidateText to text of candidateDocument as text
+      if candidateText is testMarker or candidateText is knownInsertedText then
         close candidateDocument saving no
+        set closedOwnedDocument to true
+      else if candidateText contains testMarker then
+        set foundModifiedDocument to true
       end if
     end try
   end repeat
 end tell
+
+if foundModifiedDocument then
+  return "modified"
+else if closedOwnedDocument then
+  return "closed"
+end if
+return "not-found"
 APPLESCRIPT
+  )"; then
+    echo "Warning: the controlled TextEdit document could not be inspected safely; it was left open." >&2
+    return
+  fi
+  if [[ "${close_outcome}" == "modified" ]]; then
+    echo "Warning: the controlled TextEdit document contains unexpected text; it was left open without discarding changes." >&2
+  fi
 }
 
 restart_orhom_best_effort() {
@@ -237,13 +262,22 @@ ORHOM_TEXTEDIT_TEST_MARKER="${test_marker}" \
 ORHOM_TEXTEDIT_CLIPBOARD_SENTINEL="${clipboard_sentinel}" \
 ORHOM_APP_PATH="${app_path}" \
   /usr/bin/osascript >/dev/null <<'APPLESCRIPT'
-on closeCreatedDocument(createdDocument)
+on closeCreatedDocument(createdDocument, testMarker, testToken)
   if createdDocument is missing value then
-    return
+    return true
   end if
-  tell application "TextEdit"
-    close createdDocument saving no
-  end tell
+  try
+    tell application "TextEdit"
+      set candidateText to text of createdDocument as text
+      if candidateText is not testMarker and candidateText is not (testMarker & testToken) then
+        return false
+      end if
+      close createdDocument saving no
+    end tell
+    return true
+  on error
+    return false
+  end try
 end closeCreatedDocument
 
 set testToken to system attribute "ORHOM_TEXTEDIT_TEST_TOKEN"
@@ -263,6 +297,10 @@ try
     if (text of front document as text) does not contain testMarker then
       error "The temporary TextEdit document is not the front document."
     end if
+    set createdWindowNumber to id of front window
+  end tell
+  tell application "System Events"
+    set textEditProcessIdentifier to unix id of application process "TextEdit"
   end tell
 
   tell application "System Events"
@@ -295,8 +333,12 @@ try
   end if
 
   set diagnosticEnvironment to quoted form of ("ORHOM_DIAGNOSTIC_TEXT=" & testToken)
+  set expectedProcessEnvironment to quoted form of ("ORHOM_DIAGNOSTIC_EXPECTED_PID=" & (textEditProcessIdentifier as text))
+  set expectedWindowEnvironment to quoted form of ("ORHOM_DIAGNOSTIC_EXPECTED_WINDOW_NUMBER=" & (createdWindowNumber as text))
   set diagnosticCommand to "/usr/bin/open -g -W -a " & ¬
     quoted form of appPath & " --env " & diagnosticEnvironment & ¬
+    " --env " & expectedProcessEnvironment & ¬
+    " --env " & expectedWindowEnvironment & ¬
     " --env ORHOM_DIAGNOSTIC_EXPECTED_BUNDLE=com.apple.TextEdit" & ¬
     " --args --diagnose-paste"
   do shell script diagnosticCommand
@@ -304,21 +346,20 @@ try
   tell application "TextEdit"
     set insertedText to text of createdDocument as text
   end tell
-  if insertedText does not contain testMarker then
-    error "The diagnostic paste replaced the TextEdit test marker."
-  end if
-  if insertedText does not contain testToken then
-    error "The focused native TextEdit field did not receive the diagnostic token."
+  if insertedText is not (testMarker & testToken) then
+    error "The focused native TextEdit field did not receive the token at the prepared cursor."
   end if
   if (the clipboard as text) is not clipboardSentinel then
     error "ORhom did not preserve and restore the clipboard sentinel."
   end if
 
-  my closeCreatedDocument(createdDocument)
+  if not my closeCreatedDocument(createdDocument, testMarker, testToken) then
+    error "The controlled TextEdit document contains unexpected text and was left open."
+  end if
   set createdDocument to missing value
 on error errorMessage number errorNumber
   try
-    my closeCreatedDocument(createdDocument)
+    my closeCreatedDocument(createdDocument, testMarker, testToken)
   end try
   error errorMessage number errorNumber
 end try

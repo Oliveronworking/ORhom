@@ -12,8 +12,97 @@ enum KeyboardPasteDelivery: Equatable {
     case targetProcess
 }
 
+enum DictationStartDisposition: Equatable {
+    case automaticPaste
+    case clipboard
+    case rejectProtectedTarget
+}
+
 enum MacPastePolicy {
+    private static let axSuccessRawValue: Int32 = 0
+    private static let axNotImplementedRawValue: Int32 = -25208
+    static let electronAccessibilityActivationDelay: TimeInterval = 3.2
+    static let unobservableEditorPasteSettlementDelay: TimeInterval = 0.8
     static let shortcutSequence = PasteShortcutEvent.allCases
+
+    static func dictationStartDisposition(
+        targetCaptured: Bool,
+        targetPotentiallyDeliverable: Bool,
+        targetProtected: Bool
+    ) -> DictationStartDisposition {
+        if targetCaptured && targetProtected {
+            return .rejectProtectedTarget
+        }
+        if targetCaptured && targetPotentiallyDeliverable {
+            return .automaticPaste
+        }
+        return .clipboard
+    }
+
+    static func chromiumEnhancedAccessibilityRequestWasDelivered(
+        resultRawValue: Int32
+    ) -> Bool {
+        resultRawValue == axSuccessRawValue ||
+            resultRawValue == axNotImplementedRawValue
+    }
+
+    static func electronAccessibilityDelayRemaining(
+        elapsed: TimeInterval,
+        enhancedExposureChanged: Bool,
+        focusedElementPresent: Bool
+    ) -> TimeInterval {
+        guard
+            enhancedExposureChanged,
+            !focusedElementPresent
+        else {
+            return 0
+        }
+        return max(
+            0,
+            electronAccessibilityActivationDelay - max(0, elapsed)
+        )
+    }
+
+    static func shouldEnableTemporaryAccessibility(
+        bundleIdentifier: String?,
+        focusedEditableElementPresent: Bool,
+        manualAttributeSettable: Bool,
+        manualAttributeValue: Bool?,
+        enhancedAttributeSettable: Bool,
+        enhancedAttributeValue: Bool?,
+        leaseAlreadyActive: Bool
+    ) -> Bool {
+        guard let bundleIdentifier else { return false }
+        let supportedApplications: Set<String> = [
+            "com.microsoft.VSCode",
+            "com.microsoft.VSCodeInsiders",
+            "com.cursor.Cursor",
+            "com.todesktop.230313mzl4w4u92",
+            "com.openai.chat",
+            "com.openai.codex",
+            "com.google.Chrome",
+            "com.google.Chrome.beta",
+            "com.google.Chrome.canary",
+            "org.chromium.Chromium",
+            "com.microsoft.edgemac",
+            "com.brave.Browser"
+        ]
+        return supportedApplications.contains(bundleIdentifier) &&
+            !focusedEditableElementPresent &&
+            !leaseAlreadyActive &&
+            manualAttributeValue != true &&
+            enhancedAttributeValue != true &&
+            (
+                (
+                    enhancedAttributeSettable &&
+                    enhancedAttributeValue == false
+                ) ||
+                (
+                    manualAttributeSettable &&
+                    manualAttributeValue == false
+                )
+            )
+    }
 
     static func keyboardPasteDelivery(
         usesNonactivatingWindow: Bool
@@ -51,11 +140,13 @@ enum MacPastePolicy {
         inputHistoryStable: Bool,
         capturedWindowMatchesCurrentWindow: Bool,
         knownEditorSurface: Bool,
-        secureInputActive: Bool
+        secureInputActive: Bool,
+        inputMonitorAvailable: Bool = true
     ) -> Bool {
         inputHistoryStable &&
             capturedWindowMatchesCurrentWindow &&
             knownEditorSurface &&
+            inputMonitorAvailable &&
             !secureInputActive
     }
 
@@ -64,6 +155,30 @@ enum MacPastePolicy {
         exactEditableElementMatch: Bool
     ) -> Bool {
         inputHistoryStable || exactEditableElementMatch
+    }
+
+    static func mayReuseNonactivatingTarget(
+        inputHistoryStable: Bool,
+        exactFocusedEditableElementMatch: Bool,
+        capturedWindowMatchesCurrentWindow: Bool
+    ) -> Bool {
+        inputHistoryStable ||
+            (
+                exactFocusedEditableElementMatch &&
+                    capturedWindowMatchesCurrentWindow
+            )
+    }
+
+    static func isPointerFreeChatGPTQuickChatWindow(
+        bundleIdentifier: String?,
+        windowRole: String?,
+        windowSubrole: String?,
+        windowLayer: Int
+    ) -> Bool {
+        bundleIdentifier == "com.openai.chat" &&
+            windowRole == "AXWindow" &&
+            windowSubrole == "AXSystemDialog" &&
+            windowLayer > 0
     }
 
     static func mayUseNonactivatingFocusedElement(

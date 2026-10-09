@@ -5,11 +5,15 @@ app_path="/Applications/ORhom.app"
 app_binary="${app_path}/Contents/MacOS/ORhom"
 log_path="${HOME}/Library/Logs/ORhom/app.log"
 test_token="ORhomChatGPTDesktop$(/usr/bin/uuidgen | /usr/bin/tr -d '-')"
+underlying_marker="${test_token}UnderlyingTextEdit"
 test_temp_dir="$(/usr/bin/mktemp -d -t orhom-chatgpt-test)"
 clipboard_before_path="${test_temp_dir}/clipboard-before.json"
 clipboard_after_path="${test_temp_dir}/clipboard-after.json"
 new_log_path="${test_temp_dir}/new-log.txt"
 log_start_size=0
+original_frontmost_pid=""
+textedit_was_running=false
+test_document_may_exist=false
 
 snapshot_clipboard() {
   local output_path="$1"
@@ -123,11 +127,78 @@ restart_orhom() {
   /usr/bin/open "${app_path}" >/dev/null 2>&1 || true
 }
 
+close_underlying_document_if_needed() {
+  if [[ "${test_document_may_exist}" != true ]] ||
+     ! /usr/bin/pgrep -x TextEdit >/dev/null 2>&1; then
+    return
+  fi
+
+  local close_outcome
+  if ! close_outcome="$(
+  ORHOM_CHATGPT_UNDERLYING_MARKER="${underlying_marker}" \
+  ORHOM_TEXTEDIT_WAS_RUNNING="${textedit_was_running}" \
+    /usr/bin/osascript 2>/dev/null <<'APPLESCRIPT'
+set underlyingMarker to system attribute "ORHOM_CHATGPT_UNDERLYING_MARKER"
+set textEditWasRunning to (system attribute "ORHOM_TEXTEDIT_WAS_RUNNING") is "true"
+set foundModifiedDocument to false
+set closedOwnedDocument to false
+
+tell application "TextEdit"
+  repeat with candidateDocument in (every document)
+    try
+      set candidateText to text of candidateDocument as text
+      if candidateText is underlyingMarker then
+        close candidateDocument saving no
+        set closedOwnedDocument to true
+      else if candidateText contains underlyingMarker then
+        set foundModifiedDocument to true
+      end if
+    end try
+  end repeat
+  if not foundModifiedDocument and not textEditWasRunning and (count documents) is 0 then
+    quit
+  end if
+end tell
+
+if foundModifiedDocument then
+  return "modified"
+else if closedOwnedDocument then
+  return "closed"
+end if
+return "not-found"
+APPLESCRIPT
+  )"; then
+    echo "Warning: the controlled TextEdit document could not be inspected safely; it was left open." >&2
+    return
+  fi
+  if [[ "${close_outcome}" == "modified" ]]; then
+    echo "Warning: the controlled TextEdit document contains unexpected text; it was left open without discarding changes." >&2
+  fi
+}
+
+restore_original_frontmost() {
+  if [[ "${original_frontmost_pid}" != <-> ]]; then
+    return
+  fi
+  ORHOM_ORIGINAL_FRONTMOST_PID="${original_frontmost_pid}" \
+    /usr/bin/osascript >/dev/null 2>&1 <<'APPLESCRIPT' || true
+set originalPID to (system attribute "ORHOM_ORIGINAL_FRONTMOST_PID") as integer
+tell application "System Events"
+  set matches to every application process whose unix id is originalPID
+  if (count matches) is 1 then
+    set frontmost of item 1 of matches to true
+  end if
+end tell
+APPLESCRIPT
+}
+
 cleanup() {
+  close_underlying_document_if_needed
   restore_clipboard_if_owned || {
     echo "Warning: the original clipboard could not be recovered." >&2
   }
   restart_orhom
+  restore_original_frontmost
   /bin/rm -rf -- "${test_temp_dir}"
 }
 trap cleanup EXIT
@@ -137,7 +208,21 @@ if [[ ! -x "${app_binary}" ]]; then
   exit 1
 fi
 
+original_frontmost_pid="$(
+  /usr/bin/osascript \
+    -e 'tell application "System Events" to return unix id of first application process whose frontmost is true' \
+    2>/dev/null || true
+)"
+if [[ "${original_frontmost_pid}" != <-> ]]; then
+  echo "The originally frontmost application could not be identified." >&2
+  exit 1
+fi
+if /usr/bin/pgrep -x TextEdit >/dev/null 2>&1; then
+  textedit_was_running=true
+fi
+
 snapshot_clipboard "${clipboard_before_path}"
+test_document_may_exist=true
 
 /usr/bin/osascript \
   -e 'tell application id "at.orhom.mac" to quit' >/dev/null 2>&1 || true
@@ -158,7 +243,9 @@ fi
 
 apple_script_succeeded=true
 if ! ORHOM_CHATGPT_TEST_TOKEN="${test_token}" \
+  ORHOM_CHATGPT_UNDERLYING_MARKER="${underlying_marker}" \
   ORHOM_TEST_APP_BINARY="${app_binary}" \
+  ORHOM_ORIGINAL_FRONTMOST_PID="${original_frontmost_pid}" \
   /usr/bin/osascript <<'APPLESCRIPT'
 on findChatProcess()
   tell application "System Events"
@@ -212,19 +299,102 @@ on currentFrontmostProcessIdentifier()
   end tell
 end currentFrontmostProcessIdentifier
 
-on activateFinder()
-  tell application "Finder" to activate
-  repeat 40 times
+on waitForFocusedUnderlyingEditor(underlyingMarker)
+  repeat 80 times
     tell application "System Events"
-      set frontApplications to every application process whose frontmost is true
-      if (count frontApplications) is 1 and bundle identifier of item 1 of frontApplications is "com.apple.finder" then
-        return true
-      end if
+      set textEditProcesses to every application process whose bundle identifier is "com.apple.TextEdit"
+      repeat with textEditProcess in textEditProcesses
+        try
+          if frontmost of textEditProcess then
+            set focusedEditor to value of attribute "AXFocusedUIElement" of textEditProcess
+            set focusedRole to role of focusedEditor as text
+            set reportsFocused to value of attribute "AXFocused" of focusedEditor
+            set editorValue to value of focusedEditor as text
+            if focusedRole is "AXTextArea" and reportsFocused is true and editorValue is underlyingMarker then
+              return true
+            end if
+          end if
+        end try
+      end repeat
     end tell
     delay 0.05
   end repeat
   return false
-end activateFinder
+end waitForFocusedUnderlyingEditor
+
+on underlyingEditorRemainsBeneathQuickChat(underlyingMarker)
+  set chatAppProcess to my findChatProcess()
+  tell application "System Events"
+    if frontmost of chatAppProcess then
+      return false
+    end if
+    set textEditProcesses to every application process whose bundle identifier is "com.apple.TextEdit"
+    repeat with textEditProcess in textEditProcesses
+      try
+        if frontmost of textEditProcess then
+          set focusedEditor to value of attribute "AXFocusedUIElement" of textEditProcess
+          set focusedRole to role of focusedEditor as text
+          set reportsFocused to value of attribute "AXFocused" of focusedEditor
+          set editorValue to value of focusedEditor as text
+          if focusedRole is "AXTextArea" and reportsFocused is true and editorValue is underlyingMarker then
+            return true
+          end if
+        end if
+      end try
+    end repeat
+  end tell
+  return false
+end underlyingEditorRemainsBeneathQuickChat
+
+on underlyingDocumentIsUnchanged(createdDocument, underlyingMarker)
+  if createdDocument is missing value then
+    return true
+  end if
+  try
+    tell application "TextEdit"
+      return (text of createdDocument as text) is underlyingMarker
+    end tell
+  on error
+    return false
+  end try
+end underlyingDocumentIsUnchanged
+
+on closeUnderlyingDocument(createdDocument, underlyingMarker)
+  if createdDocument is missing value then
+    return true
+  end if
+  try
+    tell application "TextEdit"
+      set candidateText to text of createdDocument as text
+      if candidateText is not underlyingMarker then
+        return false
+      end if
+      close createdDocument saving no
+    end tell
+    return true
+  on error
+    return false
+  end try
+end closeUnderlyingDocument
+
+on waitForUnderlyingEditorBeneathQuickChat(underlyingMarker)
+  repeat 40 times
+    if my underlyingEditorRemainsBeneathQuickChat(underlyingMarker) then
+      return true
+    end if
+    delay 0.05
+  end repeat
+  return false
+end waitForUnderlyingEditorBeneathQuickChat
+
+on createUnderlyingDocument(underlyingMarker)
+  tell application "TextEdit"
+    activate
+    set createdDocument to make new document with properties {text:underlyingMarker}
+  end tell
+  delay 0.35
+  return createdDocument
+end createUnderlyingDocument
 
 on toggleQuickChat()
   tell application "System Events"
@@ -243,9 +413,80 @@ on waitForQuickChatOpen()
   return missing value
 end waitForQuickChatOpen
 
+on quickChatPanelIsVisible()
+  set chatAppProcess to my findChatProcess()
+  tell application "System Events"
+    repeat with candidateWindow in windows of chatAppProcess
+      try
+        if (role of candidateWindow as text) is "AXWindow" and ¬
+          (subrole of candidateWindow as text) is "AXSystemDialog" then
+          return true
+        end if
+      end try
+    end repeat
+  end tell
+  return false
+end quickChatPanelIsVisible
+
+on quickChatAccessibilitySummary()
+  set chatAppProcess to my findChatProcess()
+  set windowSummary to {}
+  set focusedSummary to "missing"
+  tell application "System Events"
+    repeat with candidateWindow in windows of chatAppProcess
+      try
+        set end of windowSummary to ((role of candidateWindow as text) & "/" & (subrole of candidateWindow as text))
+      on error
+        set end of windowSummary to "unreadable"
+      end try
+    end repeat
+    try
+      set candidate to value of attribute "AXFocusedUIElement" of chatAppProcess
+      if candidate is not missing value then
+        set candidateRole to role of candidate as text
+        set candidateSubrole to "unknown"
+        set candidateDescription to ""
+        try
+          set candidateSubrole to subrole of candidate as text
+        end try
+        try
+          set candidateDescription to description of candidate as text
+        end try
+        set focusedSummary to candidateRole & "/" & candidateSubrole & "/" & candidateDescription
+      end if
+    end try
+  end tell
+  return "windows=" & (windowSummary as text) & "; focused=" & focusedSummary
+end quickChatAccessibilitySummary
+
+on openQuickChatWithRetry()
+  repeat with attemptNumber from 1 to 3
+    if my quickChatPanelIsVisible() then
+      return my waitForQuickChatOpen()
+    end if
+
+    my toggleQuickChat()
+    set composer to my waitForQuickChatOpen()
+    if composer is not missing value then
+      return composer
+    end if
+    if my quickChatPanelIsVisible() then
+      return my waitForQuickChatOpen()
+    end if
+
+    if attemptNumber < 3 then
+      delay 0.35
+      if my quickChatPanelIsVisible() then
+        return my waitForQuickChatOpen()
+      end if
+    end if
+  end repeat
+  return missing value
+end openQuickChatWithRetry
+
 on waitForQuickChatClosed()
   repeat 80 times
-    if my focusedQuickChatComposer() is missing value then
+    if not my quickChatPanelIsVisible() then
       return true
     end if
     delay 0.05
@@ -283,11 +524,16 @@ on restoreQuickChatState(stateKnown, initiallyOpen, composerIsSafe)
   if not composerIsSafe then
     return false
   end if
-  set composer to my focusedQuickChatComposer()
-  set currentlyOpen to composer is not missing value
+  set currentlyOpen to my quickChatPanelIsVisible()
   if initiallyOpen and not currentlyOpen then
     my toggleQuickChat()
-    return my waitForQuickChatOpen() is not missing value
+    repeat 80 times
+      if my quickChatPanelIsVisible() then
+        return true
+      end if
+      delay 0.05
+    end repeat
+    return false
   else if not initiallyOpen and currentlyOpen then
     my toggleQuickChat()
     return my waitForQuickChatClosed()
@@ -314,43 +560,31 @@ on restoreFrontmostApplication(processIdentifier)
   return false
 end restoreFrontmostApplication
 
-on finderRemainsUnderlyingApplication()
-  set chatAppProcess to my findChatProcess()
-  tell application "System Events"
-    if frontmost of chatAppProcess then
-      return false
-    end if
-    set frontApplications to every application process whose frontmost is true
-    if (count frontApplications) is 1 and bundle identifier of item 1 of frontApplications is "com.apple.finder" then
-      return true
-    end if
-  end tell
-  return false
-end finderRemainsUnderlyingApplication
-
 set testToken to system attribute "ORHOM_CHATGPT_TEST_TOKEN"
+set underlyingMarker to system attribute "ORHOM_CHATGPT_UNDERLYING_MARKER"
 set appBinary to system attribute "ORHOM_TEST_APP_BINARY"
+set originalFrontmostProcessIdentifier to (system attribute "ORHOM_ORIGINAL_FRONTMOST_PID") as integer
 set panelStateKnown to false
 set panelInitiallyOpen to false
 set testComposerWasPrepared to false
-set originalFrontmostProcessIdentifier to missing value
+set createdUnderlyingDocument to missing value
+set underlyingTextUnchanged to true
+set underlyingDocumentClosed to true
 set failureText to missing value
 set failureNumber to 1
 
 try
-  set originalFrontmostProcessIdentifier to my currentFrontmostProcessIdentifier()
-  set initialComposer to my focusedQuickChatComposer()
-  set panelInitiallyOpen to initialComposer is not missing value
+  set panelInitiallyOpen to my quickChatPanelIsVisible()
   set panelStateKnown to true
   if panelInitiallyOpen then
+    set initialComposer to my waitForQuickChatOpen()
+    if initialComposer is missing value then
+      error "Quick Chat was already visible but its composer was not safely focused; the integration test did not modify it."
+    end if
     set initialComposerValue to my quickChatComposerText(initialComposer)
     if initialComposerValue is not "" then
       error "Quick Chat already contains text. The integration test did not modify it."
     end if
-  end if
-
-  if not my activateFinder() then
-    error "Finder could not become the controlled underlying application."
   end if
 
   if panelInitiallyOpen then
@@ -360,21 +594,30 @@ try
     end if
   end if
 
-  my toggleQuickChat()
-  set composer to my waitForQuickChatOpen()
-  if composer is missing value then
-    error "Option-Space did not expose a focused AXTextArea inside an AXSystemDialog."
+  set createdUnderlyingDocument to my createUnderlyingDocument(underlyingMarker)
+  if not my waitForFocusedUnderlyingEditor(underlyingMarker) then
+    error "TextEdit did not expose the controlled document as its focused AXTextArea."
   end if
-  if not my finderRemainsUnderlyingApplication() then
-    error "Quick Chat did not remain a nonactivating panel above Finder."
+
+  set composer to my openQuickChatWithRetry()
+  if composer is missing value then
+    error "Option-Space did not expose a focused AXTextArea inside an AXSystemDialog. " & my quickChatAccessibilitySummary()
+  end if
+  if not my waitForUnderlyingEditorBeneathQuickChat(underlyingMarker) then
+    error "Quick Chat did not remain a nonactivating panel above the focused TextEdit editor."
   end if
   if my quickChatComposerText(composer) is not "" then
     error "Quick Chat contains text. The integration test did not overwrite it."
   end if
   set testComposerWasPrepared to true
 
-  set diagnosticCommand to "/usr/bin/env -u ORHOM_DIAGNOSTIC_POINTER_X -u ORHOM_DIAGNOSTIC_POINTER_Y -u ORHOM_DIAGNOSTIC_SIMULATE_INTERVENING_INPUT ORHOM_DIAGNOSTIC_TEXT=" & ¬
-    quoted form of testToken & " ORHOM_DIAGNOSTIC_EXPECTED_BUNDLE=com.openai.chat ORHOM_DIAGNOSTIC_TRACE_FOCUS=1 " & ¬
+  set chatAppProcess to my findChatProcess()
+  tell application "System Events"
+    set chatProcessIdentifier to unix id of chatAppProcess
+  end tell
+  set diagnosticCommand to "/usr/bin/env -u ORHOM_DIAGNOSTIC_POINTER_X -u ORHOM_DIAGNOSTIC_POINTER_Y ORHOM_DIAGNOSTIC_SIMULATE_INTERVENING_INPUT=1 ORHOM_DIAGNOSTIC_TEXT=" & ¬
+    quoted form of testToken & " ORHOM_DIAGNOSTIC_EXPECTED_BUNDLE=com.openai.chat ORHOM_DIAGNOSTIC_EXPECTED_PID=" & ¬
+    quoted form of (chatProcessIdentifier as text) & " ORHOM_DIAGNOSTIC_TRACE_FOCUS=1 " & ¬
     quoted form of appBinary & " --diagnose-paste"
   do shell script diagnosticCommand
 
@@ -393,13 +636,18 @@ try
   if insertedValue is not testToken then
     error "The ChatGPT Quick Chat composer does not contain exactly the diagnostic token."
   end if
+  if not my underlyingEditorRemainsBeneathQuickChat(underlyingMarker) then
+    error "The controlled TextEdit editor lost its underlying focused state during the paste diagnostic."
+  end if
 on error errorText number errorNumber
   set failureText to errorText
   set failureNumber to errorNumber
 end try
 
+set underlyingTextUnchanged to my underlyingDocumentIsUnchanged(createdUnderlyingDocument, underlyingMarker)
 set composerRestored to my clearOwnedTestComposer(testToken, testComposerWasPrepared)
 set panelRestored to my restoreQuickChatState(panelStateKnown, panelInitiallyOpen, composerRestored)
+set underlyingDocumentClosed to my closeUnderlyingDocument(createdUnderlyingDocument, underlyingMarker)
 set frontmostRestored to true
 if originalFrontmostProcessIdentifier is not missing value then
   set frontmostRestored to my restoreFrontmostApplication(originalFrontmostProcessIdentifier)
@@ -413,6 +661,12 @@ if not composerRestored then
 end if
 if not panelRestored then
   error "The original ChatGPT Quick Chat visibility could not be restored."
+end if
+if not underlyingTextUnchanged then
+  error "The controlled underlying TextEdit document was modified."
+end if
+if not underlyingDocumentClosed then
+  error "The controlled underlying TextEdit document could not be closed without saving."
 end if
 if not frontmostRestored then
   error "The originally frontmost application could not be restored."
@@ -457,6 +711,13 @@ if [[ -z "${focus_line}" ||
   exit 1
 fi
 
+if ! /usr/bin/grep -Fq \
+  "Paste diagnostic simulated intervening input." "${new_log_path}"; then
+  echo "ORhom did not exercise the intervening-input Quick Chat path." >&2
+  /bin/cat "${new_log_path}" >&2
+  exit 1
+fi
+
 if /usr/bin/grep -Eq \
   "Paste fallback|Paste diagnostic failed|Paste failed|Verified=false" \
   "${new_log_path}"; then
@@ -494,4 +755,4 @@ if ! /usr/bin/grep -Fq \
   exit 1
 fi
 
-echo "ORhom pointer-free ChatGPT Quick Chat integration test passed; composer, clipboard, and panel state restored."
+echo "ORhom pointer-free ChatGPT Quick Chat integration test passed over a focused TextEdit editor after intervening input; underlying text, composer, clipboard, panel, and frontmost state restored."
