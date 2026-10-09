@@ -655,23 +655,35 @@ internal sealed class SettingsForm : Form
 
     private static CheckBox CreatePreferenceCheck(string text, string name) => new()
     {
-        Name = name, Text = text, AutoSize = true, Dock = DockStyle.Fill,
-        ForeColor = TextSecondary, BackColor = Color.Transparent,
-        AccessibleName = text, Margin = Padding.Empty
+        Name = name,
+        Text = text,
+        AutoSize = true,
+        Dock = DockStyle.Fill,
+        ForeColor = TextSecondary,
+        BackColor = Color.Transparent,
+        AccessibleName = text,
+        Margin = Padding.Empty
     };
 
     private static DataGridView CreateReplacementGrid(string name, int height)
     {
         var grid = new DataGridView
         {
-            Name = name, Height = height, Dock = DockStyle.Fill,
-            BackgroundColor = RaisedSurface, ForeColor = TextPrimary,
-            BorderStyle = BorderStyle.FixedSingle, RowHeadersVisible = false,
+            Name = name,
+            Height = height,
+            Dock = DockStyle.Fill,
+            BackgroundColor = RaisedSurface,
+            ForeColor = TextPrimary,
+            BorderStyle = BorderStyle.FixedSingle,
+            RowHeadersVisible = false,
             AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
             AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells,
-            AllowUserToAddRows = true, AllowUserToDeleteRows = true,
-            AllowUserToOrderColumns = false, AllowUserToResizeRows = false,
-            EnableHeadersVisualStyles = false, MultiSelect = false,
+            AllowUserToAddRows = true,
+            AllowUserToDeleteRows = true,
+            AllowUserToOrderColumns = false,
+            AllowUserToResizeRows = false,
+            EnableHeadersVisualStyles = false,
+            MultiSelect = false,
             SelectionMode = DataGridViewSelectionMode.CellSelect,
             AccessibleName = name == "dictionaryGrid" ? "Persönliches Wörterbuch" : "Sprachkürzel",
             AccessibleDescription = "Gesprochener Auslöser und exakter Ersatztext. Leere Zeilen werden ignoriert."
@@ -690,10 +702,16 @@ internal sealed class SettingsForm : Form
 
     private static TextBox CreatePreviewBox(string name, bool readOnly) => new()
     {
-        Name = name, Multiline = true, ReadOnly = readOnly, Height = 66,
-        Dock = DockStyle.Fill, ScrollBars = ScrollBars.Vertical,
-        BackColor = RaisedSurface, ForeColor = TextPrimary,
-        BorderStyle = BorderStyle.FixedSingle, AcceptsReturn = true
+        Name = name,
+        Multiline = true,
+        ReadOnly = readOnly,
+        Height = 66,
+        Dock = DockStyle.Fill,
+        ScrollBars = ScrollBars.Vertical,
+        BackColor = RaisedSurface,
+        ForeColor = TextPrimary,
+        BorderStyle = BorderStyle.FixedSingle,
+        AcceptsReturn = true
     };
 
     private void LoadDictationPreferences()

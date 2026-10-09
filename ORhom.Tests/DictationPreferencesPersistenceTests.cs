@@ -28,7 +28,10 @@ public sealed class DictationPreferencesPersistenceTests : IDisposable
         const string literal = "  Mit  Leerzeichen\nORhom Komma ähm\nBeste Grüße  ";
         settings.DictationPreferences = new()
         {
-            Language = "en", SmartFormatting = false, RemoveFillers = false, SpokenCommands = false,
+            Language = "en",
+            SmartFormatting = false,
+            RemoveFillers = false,
+            SpokenCommands = false,
             Dictionary = [new() { Cue = "ore home", Replacement = "ORhom" }],
             Snippets = [new() { Cue = "my signature", Replacement = literal }]
         };
