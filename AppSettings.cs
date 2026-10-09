@@ -18,6 +18,7 @@ internal sealed class AppSettings
     public string DictationProvider { get; set; } = DictationProviders.LocalWhisper;
     public string PreferredMicrophoneId { get; set; } = string.Empty;
     public string PreferredMicrophoneName { get; set; } = string.Empty;
+    public DictationPreferences DictationPreferences { get; set; } = new();
     public bool SetupCompleted { get; set; } = false;
     public string ChatGptDictationHotkey { get; set; } = "Ctrl+Shift+D";
     public string ChatGptUrl { get; set; } = "https://chatgpt.com";
@@ -203,6 +204,7 @@ internal sealed class AppSettings
         DictationProvider = DictationProviders.Normalize(DictationProvider);
         PreferredMicrophoneId ??= string.Empty;
         PreferredMicrophoneName ??= string.Empty;
+        DictationPreferences = (DictationPreferences ?? new()).NormalizedCopy();
         LocalMaxRecordingSeconds = Math.Clamp(LocalMaxRecordingSeconds, 30, 600);
         ChatGptDictationHotkey = string.IsNullOrWhiteSpace(ChatGptDictationHotkey)
             ? "Ctrl+Shift+D"

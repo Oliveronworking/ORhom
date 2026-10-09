@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+  <title>ORHOM_WEB:BOOTING</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #f8fafc;
+    }
+
+    body {
+      box-sizing: border-box;
+      margin: 0;
+      min-height: 100vh;
+      padding: 48px;
+      display: grid;
+      place-items: center;
+    }
+
+    main {
+      box-sizing: border-box;
+      width: min(760px, 100%);
+      padding: 32px;
+      border: 1px solid #334155;
+      border-radius: 18px;
+      background: #111827;
+      box-shadow: 0 24px 80px rgb(0 0 0 / 35%);
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: 26px;
+    }
+
+    p {
+      margin: 0 0 22px;
+      color: #94a3b8;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 650;
+    }
+
+    input,
+    textarea,
+    [contenteditable] {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 46px;
+      padding: 11px 13px;
+      border: 2px solid #3b82f6;
+      border-radius: 10px;
+      outline: none;
+      background: #1e293b;
+      color: #f8fafc;
+      font: 17px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    textarea,
+    [contenteditable] {
+      min-height: 120px;
+      resize: vertical;
+      white-space: pre-wrap;
+    }
+
+    :focus {
+      border-color: #22c55e;
+      box-shadow: 0 0 0 4px rgb(34 197 94 / 18%);
+    }
+
+    :disabled,
+    [readonly] {
+      border-color: #64748b;
+      color: #94a3b8;
+      opacity: 0.78;
+    }
+
+    output {
+      display: block;
+      margin-top: 18px;
+      color: #94a3b8;
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>ORhom browser text-field matrix</h1>
+    <p id="description"></p>
+    <label id="field-label" for="orhom-target"></label>
+    <div id="fixture-host"></div>
+    <output id="state"></output>
+  </main>
+
+  <script>
+    "use strict";
+
+    const parameterSource = window.location.hash.length > 1
+      ? window.location.hash.slice(1)
+      : window.location.search.slice(1);
+    const parameters = new URLSearchParams(parameterSource);
+    const testCase = parameters.get("case") ?? "";
+    const initialText = parameters.get("initial") ?? "";
+
+    const cases = {
+      "input-text": {
+        label: "input type=text",
+        description: "Editable single-line HTML text input.",
+        build: () => makeInput("text")
+      },
+      "input-search": {
+        label: "input type=search",
+        description: "Editable HTML search input.",
+        build: () => makeInput("search")
+      },
+      "input-email": {
+        label: "input type=email",
+        description: "Editable HTML email input.",
+        build: () => makeInput("email")
+      },
+      "input-url": {
+        label: "input type=url",
+        description: "Editable HTML URL input.",
+        build: () => makeInput("url")
+      },
+      "textarea": {
+        label: "textarea",
+        description: "Editable multiline HTML text area.",
+        build: () => document.createElement("textarea")
+      },
+      "contenteditable": {
+        label: "contenteditable",
+        description: "Editable rich-text host exposed as a text box.",
+        build: () => {
+          const element = document.createElement("div");
+          element.contentEditable = "true";
+          element.setAttribute("role", "textbox");
+          element.setAttribute("aria-multiline", "true");
+          return element;
+        }
+      },
+      "input-password": {
+        label: "input type=password",
+        description:
+          "Secure field; automatic insertion must be refused.",
+        build: () => makeInput("password")
+      },
+      "input-readonly": {
+        label: "input readonly",
+        description:
+          "Focusable read-only field; its value must remain unchanged.",
+        build: () => {
+          const element = makeInput("text");
+          element.readOnly = true;
+          return element;
+        }
+      },
+      "input-disabled": {
+        label: "input disabled",
+        description:
+          "Disabled field; it must reject focus and remain unchanged.",
+        build: () => {
+          const element = makeInput("text");
+          element.disabled = true;
+          return element;
+        }
+      }
+    };
+
+    function makeInput(type) {
+      const element = document.createElement("input");
+      element.type = type;
+      return element;
+    }
+
+    function currentValue(element) {
+      return element.isContentEditable
+        ? element.textContent
+        : element.value;
+    }
+
+    function setCurrentValue(element, value) {
+      if (element.isContentEditable) {
+        element.textContent = value;
+      } else {
+        element.value = value;
+      }
+    }
+
+    function moveCaretBeforeFinalCharacter(element) {
+      const location = Math.max(0, currentValue(element).length - 1);
+      if (element.isContentEditable) {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.setStart(element.firstChild, location);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return;
+      }
+
+      if (
+        typeof element.setSelectionRange === "function" &&
+        !element.disabled
+      ) {
+        element.setSelectionRange(location, location);
+      }
+    }
+
+    const definition = cases[testCase];
+    if (!definition) {
+      document.title = `ORHOM_WEB:ERROR:unsupported-case:${testCase}`;
+      throw new Error(`Unsupported web field fixture case: ${testCase}`);
+    }
+
+    let inputEvents = 0;
+    let pasteEvents = 0;
+    const field = definition.build();
+    field.id = "orhom-target";
+    field.dataset.testCase = testCase;
+    field.setAttribute(
+      "aria-label",
+      `ORhom test target ${definition.label}`
+    );
+    field.setAttribute(
+      "data-orhom-accessibility-identifier",
+      `at.orhom.tests.web-text-fields.${testCase}`
+    );
+    setCurrentValue(field, initialText);
+
+    document.querySelector("#field-label").textContent = definition.label;
+    document.querySelector("#description").textContent =
+      definition.description;
+    document.querySelector("#fixture-host").append(field);
+
+    function publishState() {
+      const value = currentValue(field);
+      const focused = document.activeElement === field ? "1" : "0";
+      const encodedValue = encodeURIComponent(value);
+      document.title = [
+        "ORHOM_WEB",
+        testCase,
+        encodedValue,
+        focused,
+        String(inputEvents),
+        String(pasteEvents)
+      ].join(":");
+      document.querySelector("#state").textContent = JSON.stringify({
+        case: testCase,
+        value,
+        focused: focused === "1",
+        inputEvents,
+        pasteEvents
+      });
+    }
+
+    field.addEventListener("input", () => {
+      inputEvents += 1;
+      publishState();
+    });
+    field.addEventListener("paste", () => {
+      pasteEvents += 1;
+      publishState();
+    });
+    field.addEventListener("focus", publishState);
+    field.addEventListener("blur", publishState);
+
+    window.addEventListener("load", () => {
+      field.focus({preventScroll: true});
+      moveCaretBeforeFinalCharacter(field);
+      publishState();
+      window.setInterval(publishState, 50);
+    });
+  </script>
+</body>
+</html>

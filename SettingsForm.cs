@@ -26,6 +26,15 @@ internal sealed class SettingsForm : Form
     private readonly TableLayoutPanel _profileCard;
     private readonly Label _providerHintLabel;
     private readonly TextBox _hotkeyBox;
+    private readonly TableLayoutPanel _dictationCard;
+    private readonly ComboBox _languageCombo;
+    private readonly CheckBox _smartFormattingCheck;
+    private readonly CheckBox _fillersCheck;
+    private readonly CheckBox _commandsCheck;
+    private readonly DataGridView _dictionaryGrid;
+    private readonly DataGridView _snippetsGrid;
+    private readonly TextBox _previewInput;
+    private readonly TextBox _previewOutput;
     private readonly Label _statusLabel;
     private readonly Button _profileRefreshButton;
     private readonly Button _microphoneRefreshButton;
@@ -109,7 +118,7 @@ internal sealed class SettingsForm : Form
             Margin = Padding.Empty,
             TabStop = false,
             AccessibleName = "Einrichtungsschritte",
-            AccessibleDescription = "Enthält die drei Schritte zur Einrichtung von ORhom."
+            AccessibleDescription = "Enthält Einrichtung und persönliche Diktiereinstellungen für ORhom."
         };
         rootLayout.Controls.Add(scrollPanel, 0, 2);
 
@@ -144,7 +153,7 @@ internal sealed class SettingsForm : Form
         _providerCombo.TabIndex = 0;
         _providerCombo.Items.Add(new DictationProviderOption(
             DictationProviders.LocalWhisper,
-            "Lokal · whisper.cpp · Vulkan · Deutsch"));
+            "Lokal · whisper.cpp · Vulkan · Mehrsprachig"));
         _providerCombo.Items.Add(new DictationProviderOption(
             DictationProviders.ChatGptBrowser,
             "ChatGPT-Browser-Diktierung · Fallback"));
@@ -307,6 +316,57 @@ internal sealed class SettingsForm : Form
             new Font("Segoe UI", 8.75f));
         AddFullWidthRow(hotkeyStep, hotkeyHelp, new Padding(44, 7, 0, 0));
 
+        _dictationCard = CreateStepCard(
+            "4", "Diktate anpassen",
+            "Persönliches Wörterbuch, Sprachkürzel und Textbefehle für die lokale Erkennung.");
+        _dictationCard.Name = "dictationStepCard";
+        _dictationCard.TabIndex = 3;
+        AddStackRow(stepsLayout, _dictationCard, new Padding(0, 14, 0, 0));
+        _languageCombo = CreateComboBox("Erkennungssprache", "Sprache für das lokale Whisper-Modell.");
+        _languageCombo.Name = "dictationLanguageCombo";
+        foreach (var (code, label) in DictationLanguages.Options)
+            _languageCombo.Items.Add(new DictationLanguageOption(code, label));
+        AddFullWidthRow(_dictationCard, _languageCombo, new Padding(44, 14, 0, 0));
+        _smartFormattingCheck = CreatePreferenceCheck("Satzzeichen und Abstände formatieren", "smartFormattingCheck");
+        _fillersCheck = CreatePreferenceCheck("Zögerlaute entfernen (äh, ähm, uh, um)", "removeFillersCheck");
+        _commandsCheck = CreatePreferenceCheck("Gesprochene Textbefehle anwenden", "spokenCommandsCheck");
+        foreach (var check in new[] { _smartFormattingCheck, _fillersCheck, _commandsCheck })
+            AddFullWidthRow(_dictationCard, check, new Padding(44, 7, 0, 0));
+        AddFullWidthRow(_dictationCard, CreateBodyLabel(
+            "Befehle: Sprachbefehl Komma · Sprachbefehl neuer Absatz · Sprachbefehl letztes Wort löschen · Sprachbefehl letzten Satz löschen.\n" +
+            "Listen: Sprachbefehl Listenpunkt · Sprachbefehl Nummer eins (bis zehn).\n" +
+            "Korrektur: Sprachbefehl ersetze Dienstag durch Mittwoch Sprachbefehl Korrektur Ende.\n" +
+            "Auch Diktat, ORhom und englische Befehle funktionieren. Korrekturen betreffen nur dieses Diktat.",
+            TextMuted, new Font("Segoe UI", 8.75f)), new Padding(44, 8, 0, 0));
+        AddFullWidthRow(_dictationCard, CreateBodyLabel(
+            "Wörterbuch · Gesprochene Variante → exakte Schreibweise (z. B. ore home → ORhom)", TextSecondary),
+            new Padding(44, 14, 0, 6));
+        _dictionaryGrid = CreateReplacementGrid("dictionaryGrid", 112);
+        AddFullWidthRow(_dictationCard, _dictionaryGrid, new Padding(44, 0, 0, 0));
+        AddFullWidthRow(_dictationCard, CreateBodyLabel(
+            "Sprachkürzel · Auslöser → fertiger Text. Zeilenumbrüche im Text: Umschalt + Eingabe.", TextSecondary),
+            new Padding(44, 14, 0, 6));
+        _snippetsGrid = CreateReplacementGrid("snippetsGrid", 138);
+        AddFullWidthRow(_dictationCard, _snippetsGrid, new Padding(44, 0, 0, 0));
+        _previewInput = CreatePreviewBox("dictationPreviewInput", readOnly: false);
+        _previewInput.Text = "ähm Hallo Sprachbefehl Komma neuer Absatz Dienstag Sprachbefehl ersetze Dienstag durch Mittwoch Sprachbefehl Korrektur Ende";
+        _previewInput.AccessibleName = "Vorschau: erkannter Text";
+        AddFullWidthRow(_dictationCard, _previewInput, new Padding(44, 14, 0, 0));
+        var previewButton = CreateButton("Textvorschau testen", secondary: true,
+            "Testet Wörterbuch, Kürzel und Befehle auf dem eingegebenen Text, ohne Einstellungen zu speichern.");
+        previewButton.Height = 34;
+        previewButton.Name = "dictationPreviewButton";
+        _previewOutput = CreatePreviewBox("dictationPreviewOutput", readOnly: true);
+        previewButton.Click += (_, _) =>
+        {
+            if (TryReadDictationPreferences(out var preferences))
+                _previewOutput.Text = DictationTextProcessor.Process(_previewInput.Text, preferences!);
+        };
+        AddFullWidthRow(_dictationCard, previewButton, new Padding(44, 7, 0, 0));
+        _previewOutput.AccessibleName = "Vorschau: fertiger Text";
+        AddFullWidthRow(_dictationCard, _previewOutput, new Padding(44, 7, 0, 0));
+        LoadDictationPreferences();
+
         var footer = new TableLayoutPanel
         {
             Name = "settingsFooter",
@@ -467,6 +527,7 @@ internal sealed class SettingsForm : Form
                 StringComparison.OrdinalIgnoreCase));
 
         _hotkeyBox.Text = _settings.ToggleHotkey;
+        LoadDictationPreferences();
         _hotkeyBox.AccessibleDescription =
             $"Gewählter Aufnahme-Shortcut: {_hotkeyBox.Text}. Klicken und drücken, um ihn zu ändern.";
 
@@ -479,6 +540,7 @@ internal sealed class SettingsForm : Form
     {
         _profileCard.Visible = !IsLocalProvider;
         _profileCard.Enabled = !_saveInProgress && !IsLocalProvider;
+        _dictationCard.Enabled = !_saveInProgress && IsLocalProvider;
         _providerHintLabel.Text = IsLocalProvider
             ? "Empfohlen · Die Audiodaten bleiben auf deinem PC."
             : "Fallback · ORhom verwendet dein angemeldetes ChatGPT-Chrome-Profil.";
@@ -487,7 +549,7 @@ internal sealed class SettingsForm : Form
         {
             SetStatus(
                 IsLocalProvider
-                    ? "Lokale deutsche Erkennung über whisper.cpp und Vulkan ist ausgewählt."
+                    ? "Lokale mehrsprachige Erkennung über whisper.cpp und Vulkan ist ausgewählt."
                     : "Browser-Fallback ausgewählt. Bitte darunter das passende Chrome-Profil prüfen.",
                 TextMuted);
         }
@@ -591,6 +653,127 @@ internal sealed class SettingsForm : Form
         }
     }
 
+    private static CheckBox CreatePreferenceCheck(string text, string name) => new()
+    {
+        Name = name,
+        Text = text,
+        AutoSize = true,
+        Dock = DockStyle.Fill,
+        ForeColor = TextSecondary,
+        BackColor = Color.Transparent,
+        AccessibleName = text,
+        Margin = Padding.Empty
+    };
+
+    private static DataGridView CreateReplacementGrid(string name, int height)
+    {
+        var grid = new DataGridView
+        {
+            Name = name,
+            Height = height,
+            Dock = DockStyle.Fill,
+            BackgroundColor = RaisedSurface,
+            ForeColor = TextPrimary,
+            BorderStyle = BorderStyle.FixedSingle,
+            RowHeadersVisible = false,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+            AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells,
+            AllowUserToAddRows = true,
+            AllowUserToDeleteRows = true,
+            AllowUserToOrderColumns = false,
+            AllowUserToResizeRows = false,
+            EnableHeadersVisualStyles = false,
+            MultiSelect = false,
+            SelectionMode = DataGridViewSelectionMode.CellSelect,
+            AccessibleName = name == "dictionaryGrid" ? "Persönliches Wörterbuch" : "Sprachkürzel",
+            AccessibleDescription = "Gesprochener Auslöser und exakter Ersatztext. Leere Zeilen werden ignoriert."
+        };
+        grid.ColumnHeadersDefaultCellStyle.BackColor = Surface;
+        grid.ColumnHeadersDefaultCellStyle.ForeColor = TextPrimary;
+        grid.DefaultCellStyle.BackColor = RaisedSurface;
+        grid.DefaultCellStyle.ForeColor = TextPrimary;
+        grid.DefaultCellStyle.SelectionBackColor = Primary;
+        grid.DefaultCellStyle.SelectionForeColor = TextPrimary;
+        grid.DefaultCellStyle.WrapMode = DataGridViewTriState.True;
+        grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "cue", HeaderText = "Gesprochen", FillWeight = 35 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "replacement", HeaderText = "Schreiben", FillWeight = 65 });
+        return grid;
+    }
+
+    private static TextBox CreatePreviewBox(string name, bool readOnly) => new()
+    {
+        Name = name,
+        Multiline = true,
+        ReadOnly = readOnly,
+        Height = 66,
+        Dock = DockStyle.Fill,
+        ScrollBars = ScrollBars.Vertical,
+        BackColor = RaisedSurface,
+        ForeColor = TextPrimary,
+        BorderStyle = BorderStyle.FixedSingle,
+        AcceptsReturn = true
+    };
+
+    private void LoadDictationPreferences()
+    {
+        var preferences = _settings.DictationPreferences.NormalizedCopy();
+        _languageCombo.SelectedItem = _languageCombo.Items.Cast<DictationLanguageOption>()
+            .First(option => option.Code == preferences.Language);
+        _smartFormattingCheck.Checked = preferences.SmartFormatting;
+        _fillersCheck.Checked = preferences.RemoveFillers;
+        _commandsCheck.Checked = preferences.SpokenCommands;
+        LoadEntries(_dictionaryGrid, preferences.Dictionary);
+        LoadEntries(_snippetsGrid, preferences.Snippets);
+    }
+
+    private static void LoadEntries(DataGridView grid, IEnumerable<DictationReplacement> entries)
+    {
+        grid.Rows.Clear();
+        foreach (var entry in entries) grid.Rows.Add(entry.Cue, entry.Replacement);
+    }
+
+    private bool TryReadDictationPreferences(out DictationPreferences? preferences)
+    {
+        preferences = null;
+        if (!TryReadEntries(_dictionaryGrid, out var dictionary) ||
+            !TryReadEntries(_snippetsGrid, out var snippets)) return false;
+        preferences = new DictationPreferences
+        {
+            Language = (_languageCombo.SelectedItem as DictationLanguageOption)?.Code ?? "de",
+            SmartFormatting = _smartFormattingCheck.Checked,
+            RemoveFillers = _fillersCheck.Checked,
+            SpokenCommands = _commandsCheck.Checked,
+            Dictionary = dictionary,
+            Snippets = snippets
+        };
+        return true;
+    }
+
+    private bool TryReadEntries(DataGridView grid, out DictationReplacement[] entries)
+    {
+        grid.EndEdit();
+        var result = new List<DictationReplacement>();
+        var cues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (DataGridViewRow row in grid.Rows)
+        {
+            if (row.IsNewRow) continue;
+            var cue = Convert.ToString(row.Cells["cue"].Value)?.Trim() ?? string.Empty;
+            var replacement = Convert.ToString(row.Cells["replacement"].Value) ?? string.Empty;
+            if (cue.Length == 0 && replacement.Length == 0) continue;
+            cue = System.Text.RegularExpressions.Regex.Replace(cue, @"\s+", " ");
+            if (cue.Length == 0 || replacement.Length == 0 || !cues.Add(cue))
+            {
+                SetStatus("Jeder Wörterbuch- oder Kürzeleintrag braucht einen eindeutigen Auslöser und einen Ersatztext.", Error);
+                grid.Focus();
+                entries = [];
+                return false;
+            }
+            result.Add(new DictationReplacement { Cue = cue, Replacement = replacement });
+        }
+        entries = result.ToArray();
+        return true;
+    }
+
     private async Task SaveAsync()
     {
         if (_microphoneCombo.SelectedItem is not AudioInputDeviceInfo microphone)
@@ -610,6 +793,8 @@ internal sealed class SettingsForm : Form
             return;
         }
 
+        if (!TryReadDictationPreferences(out var preferences)) return;
+
         _saveInProgress = true;
         _microphoneRefreshTimer.Stop();
         SetInputsEnabled(false);
@@ -621,7 +806,8 @@ internal sealed class SettingsForm : Form
                 microphone.Id,
                 microphone.DisplayName,
                 _hotkeyBox.Text.Trim(),
-                chromeProfile));
+                chromeProfile,
+                preferences));
             if (!result.Ok)
             {
                 SetStatus(result.Message, Error);
@@ -656,6 +842,7 @@ internal sealed class SettingsForm : Form
         _profileRefreshButton.Enabled = enabled && !IsLocalProvider;
         _profileCard.Enabled = enabled && !IsLocalProvider;
         _hotkeyBox.Enabled = enabled;
+        _dictationCard.Enabled = enabled && IsLocalProvider;
     }
 
     private void CaptureHotkey(object? sender, KeyEventArgs e)
@@ -947,7 +1134,13 @@ internal sealed record SettingsFormValues(
     string MicrophoneId,
     string MicrophoneName,
     string Hotkey,
-    ChromeProfileInfo? ChromeProfile);
+    ChromeProfileInfo? ChromeProfile,
+    DictationPreferences? DictationPreferences = null);
+
+internal sealed record DictationLanguageOption(string Code, string Label)
+{
+    public override string ToString() => Label;
+}
 
 internal sealed record SettingsApplyResult(
     bool Ok,

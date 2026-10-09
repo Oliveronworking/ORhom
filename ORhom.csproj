@@ -14,8 +14,8 @@
     <AssemblyTitle>ORhom</AssemblyTitle>
     <Product>ORhom</Product>
     <Description>Lokale deutsche Windows-Diktierhilfe mit ChatGPT-Browser-Fallback.</Description>
-    <Version>1.1.0</Version>
-    <InformationalVersion>1.1.0</InformationalVersion>
+    <Version>1.2.0</Version>
+    <InformationalVersion>1.2.0</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Authors>ORhom</Authors>
   </PropertyGroup>

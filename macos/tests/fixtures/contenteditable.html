@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>ORHOM_TEST:LOADING</title>
+  <style>
+    body {
+      margin: 40px;
+      font: 18px -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #111827;
+      color: #f9fafb;
+    }
+    .editor {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 160px;
+      padding: 18px;
+      border: 2px solid #3b82f6;
+      border-radius: 12px;
+      background: #1f2937;
+      outline: none;
+      white-space: pre-wrap;
+    }
+    input.editor {
+      min-height: 64px;
+    }
+    [hidden] {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <p>ORhom Chrome-Integrationstest</p>
+  <input
+    id="text"
+    class="editor"
+    type="text"
+    aria-label="ORhom text input"
+    hidden
+  >
+  <textarea
+    id="textarea"
+    class="editor"
+    aria-label="ORhom textarea"
+    hidden
+  ></textarea>
+  <input
+    id="search"
+    class="editor"
+    type="search"
+    aria-label="ORhom search input"
+    hidden
+  >
+  <div
+    id="contenteditable"
+    class="editor"
+    role="textbox"
+    aria-label="ORhom contenteditable"
+    aria-multiline="true"
+    contenteditable="true"
+    hidden
+  ></div>
+  <input
+    id="password"
+    class="editor"
+    type="password"
+    aria-label="ORhom password input"
+    autocomplete="off"
+    hidden
+  >
+  <script>
+    const initialValue = "LEFTRIGHT";
+    const supportedCases = new Set([
+      "text",
+      "textarea",
+      "search",
+      "contenteditable",
+      "password"
+    ]);
+    const requestedCase =
+      new URLSearchParams(window.location.search).get("case");
+    const selectedCase = supportedCases.has(requestedCase)
+      ? requestedCase
+      : "contenteditable";
+    const editor = document.querySelector(`#${selectedCase}`);
+    editor.hidden = false;
+
+    if (selectedCase === "contenteditable") {
+      editor.textContent = initialValue;
+    } else {
+      editor.value = initialValue;
+    }
+
+    const currentValue = () =>
+      selectedCase === "contenteditable"
+        ? editor.innerText
+        : editor.value;
+
+    const updateTitle = () => {
+      if (selectedCase === "password") {
+        document.title =
+          currentValue() === initialValue
+            ? "ORHOM_TEST:READY:password"
+            : "ORHOM_TEST:PASSWORD_CHANGED";
+        return;
+      }
+      document.title =
+        `ORHOM_TEST:VALUE:${selectedCase}:${currentValue()}`;
+    };
+
+    editor.addEventListener("input", updateTitle);
+    editor.addEventListener("paste", () => {
+      document.title = `ORHOM_TEST:PASTE_EVENT:${selectedCase}`;
+      setTimeout(updateTitle);
+    });
+
+    const prepareCaret = () => {
+      editor.focus();
+      if (selectedCase === "contenteditable") {
+        const range = document.createRange();
+        range.setStart(editor.firstChild, 4);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      } else {
+        editor.setSelectionRange(4, 4);
+      }
+    };
+
+    window.addEventListener("load", () => {
+      prepareCaret();
+      document.title = requestedCase
+        ? `ORHOM_TEST:READY:${selectedCase}`
+        : "ORHOM_TEST:READY";
+    });
+  </script>
+</body>
+</html>

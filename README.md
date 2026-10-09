@@ -1,16 +1,112 @@
 # ORhom
 
-ORhom ist eine Windows-Tray-App für lokale deutsche Diktierung. Ein Klick auf die kompakte Diktierleiste oder der eingestellte Hotkey startet die Aufnahme direkt am gewählten Windows-Mikrofon. Während der Aufnahme stehen **Stopp & einfügen** und ein separates **X** zum Abbrechen sichtbar nebeneinander. Der reguläre Stopp transkribiert lokal mit `whisper.cpp` über Vulkan und fügt den Text am ursprünglichen Cursor ein. Alternativ funktioniert derselbe Hotkey als Push-to-talk: länger halten, sprechen und zum Stoppen loslassen. Ein kurzer Tastendruck behält den Toggle-Modus. Escape entspricht dem Abbruch und versucht, bereits gesprochenen Text im lokalen Diktierverlauf zu retten.
+ORhom ist eine lokale Diktier-App für Windows und macOS. Ein Klick auf die kompakte Diktierleiste oder der eingestellte Hotkey startet die Aufnahme direkt am gewählten Windows-Mikrofon. Während der Aufnahme stehen **Stopp & einfügen** und ein separates **X** zum Abbrechen sichtbar nebeneinander. Der reguläre Stopp transkribiert lokal mit `whisper.cpp` über Vulkan und fügt den Text am ursprünglichen Cursor ein. Alternativ funktioniert derselbe Hotkey als Push-to-talk: länger halten, sprechen und zum Stoppen loslassen. Ein kurzer Tastendruck behält den Toggle-Modus. Escape entspricht dem Abbruch und versucht, bereits gesprochenen Text im lokalen Diktierverlauf zu retten.
 
-Die Spracherkennung läuft standardmäßig vollständig lokal, fest auf Deutsch (`de`) und ohne OpenAI-API-Key. Als ausdrücklich auswählbarer Fallback bleibt die bisherige ChatGPT-Browser-Diktierung erhalten.
+Die Spracherkennung läuft standardmäßig vollständig lokal auf Deutsch (`de`) und ohne OpenAI-API-Key. Die Sprache kann in den Einstellungen gewechselt oder automatisch erkannt werden. Als ausdrücklich auswählbarer Fallback bleibt die bisherige ChatGPT-Browser-Diktierung erhalten.
+
+## Neue persönliche Diktierung
+
+Die neue Version ergänzt lokale Funktionen, die sich an [Wispr Flow](https://wisprflow.ai/features) orientieren:
+
+- **Persönliches Wörterbuch:** Erkannte Schreibweisen werden durch deine Namen und Fachbegriffe ersetzt. Die gewünschten Begriffe werden Whisper außerdem als begrenzter Erkennungshinweis mitgegeben. Wörter werden an Wortgrenzen ersetzt; längere passende Begriffe haben Vorrang.
+- **Sprachkürzel:** Ein selbst gewähltes Kürzel wie „meine Signatur“ fügt den gespeicherten Text einschließlich Zeilenumbrüchen ein. Der Inhalt wird anschließend nicht als Sprachbefehl interpretiert oder umformatiert.
+- **Sprachwahl:** Deutsch, Englisch und weitere Sprachen oder automatische Erkennung. Die Spracherkennung bleibt lokal; die Formatierungsbefehle unterstützen Deutsch und Englisch.
+- **Fülllaute entfernen:** Eindeutige Zögerlaute wie „ähm“ lassen sich entfernen. Bedeutungsvolle Wörter wie „also“ und das deutsche „um“ bleiben erhalten.
+- **Gesprochene Formatierung:** „Sprachbefehl Komma“, „Sprachbefehl Punkt“, „Sprachbefehl Fragezeichen“, „Sprachbefehl neuer Absatz“ und „Sprachbefehl neue Zeile“. Auch „neuer Absatz“ und „neue Zeile“ funktionieren ohne Präfix. „Sprachbefehl Listenpunkt“ beginnt einen Aufzählungspunkt, „Sprachbefehl Nummer eins“ bis „Sprachbefehl Nummer zehn“ einen nummerierten Listeneintrag.
+- **Korrektur im aktuellen Diktat:** „Sprachbefehl letztes Wort löschen“, „Sprachbefehl letzten Satz löschen“ sowie „Sprachbefehl ersetze Dienstag durch Mittwoch Sprachbefehl Korrektur Ende“. Der Ersetzungsbefehl korrigiert das letzte passende Vorkommen im bereits gesprochenen Text. Der Abschluss „Sprachbefehl Korrektur Ende“ verhindert, dass nachfolgende Sätze zur Ersetzung gehören. Ein nicht gefundenes Ziel bleibt als lesbarer Befehl erhalten.
+- **Direkte Vorschau:** In den Einstellungen kann ein erkannter Text eingegeben werden, um Wörterbuch, Kürzel und Befehle unmittelbar zu überprüfen.
+
+Beispiel:
+
+```text
+Ähm hallo Team Sprachbefehl Komma wir treffen uns Dienstag Sprachbefehl Punkt
+Sprachbefehl ersetze Dienstag durch Mittwoch Sprachbefehl Korrektur Ende
+```
+
+Auf dem Mac entsteht damit „Hallo Team, wir treffen uns Mittwoch.“. Mehrdeutige Satzzeichen wie „Punkt“ werden nur mit einem Befehlsanfang wie „Sprachbefehl“ als Befehl behandelt. „ORhom“ und „Diktat“ bleiben alternative Befehlsanfänge; „Sprachbefehl“ ist für die Aussprache empfohlen. Sprachbefehle, Fülllautentfernung und Formatierung sind einzeln abschaltbar. Das Wörterbuch wird manuell gepflegt; ORhom liest dafür keine fremden Texte aus Zielanwendungen und lernt keine Änderungen automatisch.
+
+Auf **macOS** verbessert die Version zusätzlich die Audioverarbeitung: konservative Verstärkung leiser Aufnahmen bis 4× mit Schutz vor Übersteuerung, Bereinigung ungültiger Samples und DC-Störungen, Abweisung nahezu digitaler Stille, 300 ms Randpolster ohne Abschneiden von aufgenommenen Silben und eine logarithmische Mikrofonpegelanzeige. Bei Stereo-Mikrofonen verhindert eine phasenrobuste Kanalwahl, dass sich gegenphasige Sprachsignale auslöschen. Beim Stoppen wird noch 150 ms realer Ton aufgenommen, um die letzte Silbe zu schützen. Der Hotkey bietet jetzt wie unter Windows Push-to-talk: kurz drücken zum Umschalten oder mindestens 350 ms halten und zum Stoppen loslassen. Dies lässt sich deaktivieren.
+
+Diese Funktionen benötigen keine Cloud und keine zusätzlichen Sprachmodelle. Die Bereinigung arbeitet mit überprüfbaren Regeln und schreibt Texte nicht generativ um. Wispr-Flow-Funktionen wie generative Stilwahl, automatisch gelernte Korrekturen, Geräte-/Team-Synchronisierung und Entwickler-Dateitagging sind damit nicht vollständig nachgebildet. Eine gleichwertige oder bessere Erkennungsqualität ist ohne gemeinsame Testaufnahmen nicht nachgewiesen.
+
+## macOS
+
+Für Apple-Silicon-Macs gibt es zusätzlich eine native Menüleisten-App. Sie verwendet
+`whisper.cpp` mit Metal-Beschleunigung und dem quantisierten Whisper-Large-V3-Turbo-
+Modell. Siri und die macOS-Diktierfunktion werden nicht benötigt. Aufnahme und
+Transkription bleiben vollständig lokal. Die Mac-Ausgabe bietet:
+
+- ein frei aufzeichnungsbares globales Tastenkürzel (Standard: `F8`) mit Toggle und Halten-zum-Sprechen,
+- eine persistente Mikrofonauswahl, die beim ersten Start das interne Mac-Mikrofon bevorzugt,
+- eine Windows-paritätische Diktierleiste in **Klein**, **Mittel** oder **Groß** mit
+  **Stopp & einfügen** und **Abbrechen**,
+- gezieltes Einfügen am zuvor aktiven Cursor mit stabiler Fenster-/Fokusbestätigung,
+  pointerloser Erkennung des per `⌥ Leertaste` geöffneten ChatGPT Quick Chat,
+  WebView-/Electron-Unterstützung, vollständiger systemweiter `⌘V`-Sequenz wie
+  bei manueller Eingabe, automatischer Wiederherstellung der Zwischenablage und
+  direkter Clipboard-Ausgabe, wenn beim Start kein Textfeld erkannt wird,
+- einen auswählbaren lokalen Verlauf der letzten zehn Diktate mit `⌘C`,
+- standardmäßig aktiviertes Audio-Ducking während der Aufnahme und
+- optionalen Start beim Anmelden.
+
+Zum Bauen werden nur die Apple Command Line Tools benötigt:
+
+```zsh
+./scripts/Build-ORhom-macOS.sh
+```
+
+Die lokale Installation nach `/Applications/ORhom.app` erfolgt mit:
+
+```zsh
+./scripts/Install-ORhom-macOS.sh
+```
+
+Lokale Builds erhalten standardmäßig eine stabile, explizite App-Anforderung, damit
+macOS die einmal gewährten Datenschutzfreigaben bei weiteren persönlichen Builds
+wiedererkennt. Für eine verteilte Version sollte stattdessen eine reguläre
+Apple-Code-Signing-Identität über `ORHOM_CODESIGN_IDENTITY` verwendet werden.
+
+Beim ersten Start lädt ORhom das rund 574 MB große, per SHA-256 geprüfte Modell und
+fragt macOS nach Mikrofonzugriff. Mikrofon und Tastenkürzel lassen sich danach direkt
+im ORhom-Fenster auswählen; Änderungen werden sofort gespeichert. Für das
+automatische Einfügen muss ORhom außerdem unter **Datenschutz & Sicherheit >
+Bedienungshilfen** freigegeben werden. ORhom fordert diese Freigabe an und aktualisiert
+den Status nach der Rückkehr aus den Systemeinstellungen automatisch. Ohne Freigabe
+bleibt der erkannte Text im lokalen Diktierverlauf; ORhom überschreibt dafür nicht
+die Zwischenablage und fordert nicht zu einem zweiten, möglicherweise doppelten
+`Cmd+V` auf. Wird bereits beim Start kein beschreibbares Ziel erkannt, zeichnet
+ORhom trotzdem auf und legt das fertige Diktat in die Zwischenablage; es kann direkt
+mit `Cmd+V` eingefügt werden. Sicher erkennbare Passwortfelder werden bewusst bereits
+vor der Aufnahme abgewiesen.
+
+Chromium-/Electron-Anwendungen wie Chrome, ChatGPT und VS Code veröffentlichen
+ihren aktiven Editor teilweise erst im Bedienungshilfen-Modus. Falls dort kein
+Textcursor sichtbar ist, fordert ORhom für die laufende Diktierung vorübergehend
+den erweiterten Chromium-Bedienungshilfenmodus an und verwendet den manuellen
+Modus nur als Rückfallpfad. Danach prüft ORhom erneut das exakte
+App-/Fenster-/Editorziel und stellt den ursprünglichen Zustand wieder her.
+
+Unter **Anzeige & Audio** lässt sich festlegen, ob ORhom den aktuellen
+Systemausgang während einer bestätigten Aufnahme leiser stellt und welcher Pegel
+verbleibt (Standard: 10 %). Nach Stopp, Abbruch, Fehler oder Beenden wird der
+vorherige Pegel wiederhergestellt. Ändert der Benutzer die Lautstärke während des
+Diktats selbst, überschreibt ORhom diese Änderung nicht. Anders als Windows stellt
+macOS öffentlich keine gleichwertige Lautstärkesteuerung pro fremder App bereit;
+deshalb wird auf dem Mac der aktuelle Ausgabekanal als Ganzes abgesenkt.
 
 ## Bedienung auf einen Blick
 
 - Das Hauptfenster führt in drei Schritten durch **Modus wählen**, **Mikrofon auswählen** und **Shortcut festlegen**.
 - Im Bereitschaftszustand startet ein Klick auf die Diktierleiste das Diktat; der konfigurierte Hotkey funktioniert app-übergreifend.
+- Unter **Anzeige & Audio** lässt sich die Diktierleiste sofort zwischen **Klein** (210 × 42),
+  **Mittel** (255 × 50) und **Groß** (300 × 56) umstellen; neue Installationen
+  verwenden standardmäßig **Klein**. Position und Bildschirm der Leiste bleiben
+  auch nach Neustarts sowie Monitorwechseln erhalten.
 - Während der Aufnahme beendet **Stopp & einfügen** das Diktat regulär. Das separate **X** beziehungsweise Escape bricht ohne Einfügen ab.
 - Das Tray-Menü zeigt Status und Hinweise auf Deutsch. Seine Primäraktion passt sich dem Zustand an, etwa **Diktieren**, **Aufnahme stoppen** oder **Verarbeitung abbrechen**.
 - Im Tray lassen sich das Mikrofon schnell auswählen, das letzte Diktat erneut einfügen und die Diktierleiste ein- oder ausblenden.
+- Im **Diktierverlauf** ist das neueste Diktat bereits markiert; jede beliebige
+  Auswahl lässt sich direkt mit `⌘C` kopieren.
 - Technische Funktionen und die ChatGPT-Diagnose liegen gesammelt unter **Erweitert**.
 
 ## Voraussetzungen und Build
@@ -48,7 +144,7 @@ Das X des Hauptfensters und **Im Hintergrund schließen** blenden nur die Einste
 - Engine: `whisper.cpp`, eingebettet über `Whisper.net.Runtime.Vulkan` 1.9.1 (native Basis: gepinnter whisper.cpp-Commit `f24588a`, entsprechend v1.8.5)
 - Aufnahme: `NAudio.Wasapi` 2.3.0 im gemeinsam genutzten Windows-Audiomodus
 - Modell: unquantisiertes, mehrsprachiges `ggml-large-v3-turbo.bin`
-- Sprache/Aufgabe: fest `de`, Transkription und keine automatische Spracherkennung
+- Sprache/Aufgabe: standardmäßig `de`, auswählbare Sprache oder `auto`; Transkription ohne Übersetzung
 - Decoder: Greedy-Decoding mit Ausgangstemperatur `0`; ein kurzer lokaler Fachwort-Prompt stabilisiert insbesondere Schreibweisen wie `ORhom`, `Codex`, `GitHub`, `PowerShell`, `.NET`, `JSON`, `Vulkan` und `Whisper Large V3 Turbo`
 - GPU: vollständiger GPU-Offload und Flash Attention; die RX 7700 XT wird aus der Vulkan-Geräteliste erkannt und auch dann gezielt gewählt, wenn sie nicht Gerät 0 ist. Ein fehlendes Vulkan-Backend wird als Fehler gemeldet, nicht still als CPU-Lauf fortgesetzt
 - Modellquelle: immutable Revision `5359861c739e955e79d9a303bcbc70fb988958b1` von `ggerganov/whisper.cpp`
@@ -123,6 +219,8 @@ Beim Einfügen wird das ursprüngliche Zielfenster verifiziert aktiviert. In VS 
 
 Chromium kann unmittelbar nach dem globalen Hotkey kurz den übergeordneten `main`-Knoten statt des eigentlichen ProseMirror-Editors melden. Sobald WASAPI bereits aufnimmt, prüft ORhom diesen Fokus deshalb ein zweites Mal und übernimmt ausschließlich einen starken Editor-Fingerprint im selben Fenster, Prozess und derselben nichtleeren `RootWebArea`. Diese erneute Prüfung läuft außerhalb des UI-Threads und wird nach 180 ms sicher ignoriert. Auch beim späteren Einfügen werden Fensterhandle, Prozess-ID, unveränderter Fenstertitel, WebView-Wurzel und ein inhaltsfreier relativer Layout-Fingerprint erneut abgeglichen. Ein wiederverwendetes Handle, ein anderer Tab beziehungsweise eine andere WebView-Wurzel, ein geänderter View-Titel, ein Passwortfeld oder eine abweichende Editor-Geometrie autorisiert dadurch keinen semantischen Ersatz für das ursprüngliche Ziel.
 
+Ein sichtbarer ChatGPT Quick Chat wird nur als erhöhtes `AXSystemDialog` mit exakt fokussiertem, beschreibbarem und nicht sicherem Editor erkannt und dann vor einem fokussierten Feld der darunterliegenden Arbeits-App behandelt. Gab es während des Diktats weitere Eingaben, bleibt das Ziel ausschließlich dann gültig, wenn dieselbe ChatGPT-App-Instanz, dasselbe AX-/CG-Fenster und exakt dasselbe weiterhin fokussierte Textelement bestätigt werden.
+
 ## Tray-Menü und Diagnose
 
 - Die oberste Zeile zeigt den aktuellen deutschen Status samt Hotkey-Hinweis; direkt darunter steht die passende Primäraktion.
@@ -174,7 +272,7 @@ Die mitgelieferte `settings.json` enthält insbesondere:
 }
 ```
 
-`dictationProvider` akzeptiert `LocalWhisper` (Standard) oder `ChatGptBrowser`. Unbekannte beziehungsweise fehlende Werte werden datenschutzfreundlich auf die lokale Engine normalisiert. Die Sprache ist absichtlich keine frei editierbare Einstellung, sondern im Inferenzpfad fest auf `de` verdrahtet. `preferredMicrophoneId` ist die stabile WASAPI-Geräte-ID; für bestehende Installationen bleibt der Anzeigename als Migrations-Fallback erhalten.
+`dictationProvider` akzeptiert `LocalWhisper` (Standard) oder `ChatGptBrowser`. Unbekannte beziehungsweise fehlende Werte werden datenschutzfreundlich auf die lokale Engine normalisiert. Die Sprache sowie Wörterbuch, Sprachkürzel und Bereinigungsoptionen werden über die Diktier-Einstellungen gespeichert; Standard ist weiterhin Deutsch (`de`). `preferredMicrophoneId` ist die stabile WASAPI-Geräte-ID; für bestehende Installationen bleibt der Anzeigename als Migrations-Fallback erhalten.
 
 `recordingStateTimeoutMs` bleibt die kurze Bestätigungsfrist für den Aufnahmestart. Für die Transkription gilt unabhängig von älteren lokalen Einstellungen eine Sicherheitsuntergrenze von fünf Minuten; konfigurierbar sind bis zu 15 Minuten. Ein einzelnes leeres Ergebnis beendet die Suche nicht. Für `dictationTextStableMs` gilt eine Sicherheitsuntergrenze von drei Sekunden, damit Verarbeitungspausen bei langen Texten nicht als Fertigstellung gelten. `dictationStopGracePeriodMs` schützt das letzte gesprochene Wort vor einem zu harten Aufnahmeende.
 
@@ -196,7 +294,7 @@ Bei Problemen unter **Erweitert** zuerst **Chrome-Profil prüfen** und danach **
 
 ## Tests
 
-Die Solution enthält deterministische Regressionstests für den gepinnten Modelldownload samt Fortschritt, SHA-256, Cache-Hit und Abbruch, lokale PCM/Float-Audiokonvertierung, Stereo-Downmix, 16-kHz-Resampling, Sprach-Gate, leise Randsilben, Randstille, Warm-up, Technik-Prompt, Provider-Migration und feste Sprache `de`. Hinzu kommen die bestehenden Tests für Zustandsbestätigung, Push-to-talk, Clipboard-Snapshots, Fokus-, Root- und Layout-Fingerprints, HWND/PID-Schutz, Sicherheitsregeln, atomare Persistenz, Chrome-Ownership, Escape-Recovery sowie Rendering und Multi-Monitor-Positionierung. Ein opt-in Hardwaretest lädt das echte Modell, verlangt ein bestätigtes Vulkan-Backend und führt eine Inferenz aus:
+Die Solution enthält deterministische Regressionstests für den gepinnten Modelldownload samt Fortschritt, SHA-256, Cache-Hit und Abbruch, lokale PCM/Float-Audiokonvertierung, Stereo-Downmix, 16-kHz-Resampling, Sprach-Gate, leise Randsilben, Randstille, Warm-up, Technik-Prompt, Provider-Migration, den Deutsch-Standard sowie persönliche Diktierregeln. Hinzu kommen die bestehenden Tests für Zustandsbestätigung, Push-to-talk, Clipboard-Snapshots, Fokus-, Root- und Layout-Fingerprints, HWND/PID-Schutz, Sicherheitsregeln, atomare Persistenz, Chrome-Ownership, Escape-Recovery sowie Rendering und Multi-Monitor-Positionierung. Ein opt-in Hardwaretest lädt das echte Modell, verlangt ein bestätigtes Vulkan-Backend und führt eine Inferenz aus:
 
 ```powershell
 dotnet test .\ORhom.sln -c Release
@@ -211,6 +309,42 @@ Der reale Regressionstest für zwei Chrome-Profile im selben User-Data-Verzeichn
 $env:ORHOM_RUN_CHROME_INTEGRATION = '1'
 dotnet test .\ORhom.sln -c Release --filter 'Category=ChromeIntegration'
 ```
+
+Die macOS-Suite prüft Browser-/Native-Paste-Routing, die vollständige
+`Cmd↓ V↓ V↑ Cmd↑`-Sequenz, `⌘C` im Verlauf sowie Audio-Ducking einschließlich
+Restore, Nutzeränderung und Ausgabegerätewechsel. Der optionale Hardwarelauf
+senkt den realen Ausgang kurz auf 90 % und stellt den exakten Ausgangspegel
+sofort wieder her. Isolierte Feldmatrizen prüfen AppKit-/SwiftUI-Textfelder,
+mehrzeilige Editoren, Suchfelder, Comboboxen sowie HTML-Inputs, Textareas,
+`contenteditable` und die Chrome-Adressleiste; Passwort-, schreibgeschützte und
+deaktivierte Felder müssen unverändert bleiben. Zusätzliche Smokes decken
+TextEdit, Chrome, Safari, VS Code und ChatGPT Quick Chat ab. Testdokumente,
+Fensterzustand und Zwischenablage werden anschließend wiederhergestellt.
+
+Die kanonische macOS-Gesamtsuite läuft seriell, weil Fokus und Zwischenablage
+systemweit geteilt werden. Sie umfasst genau die Policy-/Unit-Tests, die native
+AppKit-/SwiftUI-Matrix, TextEdit, die isolierten Chrome- und Safari-Feldmatrizen,
+VS Code sowie ChatGPT Quick Chat:
+
+```zsh
+./scripts/Test-ORhom-AllTextFields-macOS.sh
+```
+
+Der optionale Audio-Hardwaretest bleibt ein separater, bewusst expliziter Lauf:
+
+```zsh
+ORHOM_RUN_AUDIO_HARDWARE_TEST=1 ./scripts/Test-ORhom-macOS.sh
+```
+
+Die Suite belegt das Verhalten für die enthaltenen nativen, Web- und
+Electron-Feldklassen, ist aber keine absolute Garantie für jedes unbekannte oder
+proprietäre Custom-Control einer Drittanbieter-App. Kann ORhom ein Ziel nicht
+bereits vor der Aufnahme eindeutig als beschreibbar verifizieren, startet es im
+Zwischenablage-Modus und stellt das fertige Diktat für `Cmd+V` bereit. Wird ein zuvor
+sicheres Ziel erst während eines möglicherweise bereits ausgelösten Einfügeversuchs
+unklar, bleibt der Text zur Vermeidung einer Doppeleinfügung im lokalen Verlauf und
+die Zwischenablage unverändert. Sichere Passwortfelder werden absichtlich nicht
+beschrieben.
 
 ## Recherchequellen und Lizenzen
 
